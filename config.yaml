@@ -1,0 +1,3406 @@
+# op_specs.yaml
+
+topology:
+  dies: 2
+  planes: 4
+  blocks_per_die: 1000
+  pages_per_block: 2564
+
+celltypes:
+  - NONE
+  - FWSLC
+  - SLC
+  - AESLC
+  - A0SLC
+  - ACSLC
+  - TLC
+
+op_bases:
+  DEFAULT:
+    scope: "NONE"
+    affect_state: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  ERASE:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_erase
+        duration: 8.0
+  PROGRAM_SLC:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_program
+        duration: 8.0
+  CACHE_PROGRAM_SLC:
+    scope: "DIE_WIDE"
+    affect_state: true
+    sequence: 
+      probs:
+        - NONE: 0.9
+        - CACHE_PROGRAM_SLC.SEQ: 0.1
+      inherit:
+        - CACHE_PROGRAM_SLC.SEQ: ['inc_page']
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_program
+        duration: 8.0
+      - DATA_IN:
+        bus: false
+        exclusion: on_datain
+        duration: 8.0
+  ONESHOT_PROGRAM_LSB:
+    scope: "DIE_WIDE"
+    affect_state: true
+    sequence:
+      probs:
+        - ONESHOT_PROGRAM_CSB.SEQ: 0.9
+        - ONESHOT_PROGRAM_CSB_CACHE.SEQ: 0.1
+      inherit:
+        - ONESHOT_PROGRAM_CSB.SEQ: ['same_page']
+        - ONESHOT_PROGRAM_CSB_CACHE.SEQ: ['same_page']
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_program
+        duration: 8.0
+  ONESHOT_PROGRAM_CSB:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_program
+        duration: 8.0
+  ONESHOT_PROGRAM_MSB:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_program
+        duration: 8.0
+  ONESHOT_PROGRAM_EXEC_MSB:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_program
+        duration: 8.0
+  ONESHOT_CACHE_PROGRAM:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_program
+        duration: 8.0
+      - DATA_IN:
+        bus: false
+        exclusion: on_datain
+        duration: 8.0
+  READ:
+    scope: "PLANE_SET"
+    affect_state: true
+    sequence:
+      probs:
+        - DOUT: 0.9
+        - CACHE_READ.SEQ: 0.1
+      inherit:
+        - DOUT: ['same_page', 'same_chunk', 'multi']
+        - CACHE_READ.SEQ: ['same_celltype']
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_read
+        duration: 8.0
+      - DATA_OUT:
+        bus: false
+        exclusion: on_dout
+        duration: 2.0
+  READ4K:
+    scope: "PLANE_SET"
+    affect_state: true
+    sequence:
+      probs:
+        - DOUT: 1
+      inherit:
+        - DOUT: ['same_page', 'same_chunk', 'multi']
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_read
+        duration: 8.0
+      - DATA_OUT:
+        bus: false
+        exclusion: on_dout
+        duration: 2.0
+  CACHE_READ:
+    scope: "PLANE_SET"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_read
+        duration: 8.0
+      - DATA_OUT:
+        bus: false
+        exclusion: on_dout
+        duration: 2.0
+  CACHE_READ_END:
+    scope: "PLANE_SET"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_read
+        duration: 8.0
+  PLANE_READ:
+    scope: "PLANE_SET"
+    affect_state: true
+    sequence:
+      probs:
+        - DOUT: 0.9
+        - CACHE_READ.SEQ: 0.1
+      inherit:
+        - DOUT: ['same_page', 'same_chunk', 'multi']
+        - CACHE_READ.SEQ: ['same_celltype']
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_plane_read
+        duration: 8.0
+      - DATA_OUT:
+        bus: false
+        exclusion: on_dout
+        duration: 2.0
+  PLANE_READ4K:
+    scope: "PLANE_SET"
+    affect_state: true
+    sequence:
+      probs:
+        - DOUT: 1
+      inherit:
+        - DOUT: ['same_page', 'same_chunk', 'multi']
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_plane_read
+        duration: 8.0
+      - DATA_OUT:
+        bus: false
+        exclusion: on_dout
+        duration: 2.0
+  PLANE_CACHE_READ:
+    scope: "PLANE_SET"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        duration: 8.0
+      - DATA_OUT:
+        bus: false
+        duration: 2.0
+  PLANE_CACHE_READ_END:
+    scope: "PLANE_SET"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_plane_read
+        duration: 8.0
+  COPYBACK_READ:
+    scope: "PLANE_SET"
+    affect_state: true
+    sequence:
+      probs:
+        - DOUT: 0.9
+        - COPYBACK_PROGRAM_SLC.SEQ: 0.05
+        - ONESHOT_COPYBACK_PROGRAM_LSB.SEQ: 0.05
+      inherit:
+        - DOUT: ['same_page', 'same_chunk', 'multi']
+        - COPYBACK_PROGRAM_SLC.SEQ: ['same_celltype']
+        - ONESHOT_COPYBACK_PROGRAM_LSB.SEQ: ['same_celltype']
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_read
+        duration: 8.0
+      - DATA_OUT:
+        bus: false
+        exclusion: on_dout
+        duration: 2.0
+  COPYBACK_PROGRAM_SLC:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_program
+        duration: 8.0
+  ONESHOT_COPYBACK_PROGRAM_LSB:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_program
+        duration: 8.0
+  ONESHOT_COPYBACK_PROGRAM_CSB:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_program
+        duration: 8.0
+  ONESHOT_COPYBACK_PROGRAM_MSB:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_program
+        duration: 8.0
+  ONESHOT_COPYBACK_PROGRAM_EXEC_MSB:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_program
+        duration: 8.0
+  DOUT:
+    scope: "NONE"
+    affect_state: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  DATAIN:
+    scope: "NONE"
+    affect_state: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  SR:
+    scope: "NONE"
+    affect_state: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  SR_ADD:
+    scope: "NONE"
+    affect_state: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  CAMREAD:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_camread
+        duration: 8.0
+  CAMREAD_LUN:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_camread
+        duration: 8.0
+  ERASE_SUSPEND:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_busy
+        duration: 8.0
+  ERASE_RESUME:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_busy
+        duration: 8.0
+  PROGRAM_SUSPEND:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_busy
+        duration: 8.0
+  PROGRAM_RESUME:
+    scope: "DIE_WIDE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        exclusion: on_busy
+        duration: 8.0
+  TRAINING:
+    scope: "NONE"
+    affect_state: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  READID:
+    scope: "NONE"
+    affect_state: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  SETPARA:
+    scope: "NONE"
+    affect_state: false
+    sequence:
+      probs:
+        - NONE: 0.9
+        - GETPARA: 0.1
+      inherit:
+        - GETPARA: ['same_reg']
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  GETPARA:
+    scope: "NONE"
+    affect_state: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  PLANE_SETPARA:
+    scope: "PLANE_SET"
+    affect_state: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  SETFEATURE:
+    scope: "NONE"
+    affect_state: false
+    sequence:
+      probs:
+        - NONE: 0.9
+        - GETFEATURE: 0.1
+      inherit:
+        - GETFEATURE: ['same_reg']
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  GETFEATURE:
+    scope: "NONE"
+    affect_state: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  SETFEATURE_LUN:
+    scope: "NONE"
+    affect_state: false
+    sequence:
+      probs:
+        - NONE: 0.9
+        - GETFEATURE_LUN: 0.1
+      inherit:
+        - GETFEATURE_LUN: ['same_reg']  
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  GETFEATURE_LUN:
+    scope: "NONE"
+    affect_state: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  RESET:
+    scope: "NONE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  RESET_LUN:
+    scope: "NONE"
+    affect_state: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  TEMPSENSOR:
+    scope: "NONE"
+    affect_state: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  ZQCAL:
+    scope: "NONE"
+    affect_state: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  ODTDISABLE:
+    scope: "NONE"
+    affect_state: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  ODTENABLE:
+    scope: "NONE"
+    affect_state: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+
+exclusion_groups:
+  on_busy:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    - RESET
+    - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  on_camread:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    - DOUT
+    - DATAIN
+    - SR
+    - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    - RESET
+    - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  on_dout:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    # - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    - RESET
+    - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  on_datain:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    - DOUT
+    # - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    - RESET
+    - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  on_read:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_CACHE_PROGRAM
+    # - READ
+    # - READ4K
+    # - CACHE_READ
+    # - CACHE_READ_END
+    # - PLANE_READ
+    # - PLANE_READ4K
+    # - PLANE_CACHE_READ
+    # - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    # - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    # - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  on_plane_read:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_CACHE_PROGRAM
+    # - READ
+    # - READ4K
+    # - CACHE_READ
+    # - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    # - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    # - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  on_erase:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    # - ERASE_RESUME
+    # - PROGRAM_SUSPEND
+    # - PROGRAM_RESUME
+    # - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    # - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  on_program:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    # - ERASE_SUSPEND
+    # - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    # - PROGRAM_RESUME
+    # - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    # - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  odt_disable:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    # - CAMREAD
+    # - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    # - READID
+    # - SETPARA
+    # - GETPARA
+    # - PLANE_SETPARA
+    # - SETFEATURE
+    # - GETFEATURE
+    # - SETFEATURE_LUN
+    # - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    # - TEMPSENSOR
+    # - ZQCAL
+    # - ODTDISABLE
+    # - ODTENABLE
+  erase_suspended:
+    - ERASE
+    # - PROGRAM_SLC
+    # - CACHE_PROGRAM_SLC
+    # - ONESHOT_PROGRAM_LSB
+    # - ONESHOT_PROGRAM_CSB
+    # - ONESHOT_PROGRAM_MSB
+    # - ONESHOT_PROGRAM_EXEC_LSB
+    # - ONESHOT_CACHE_PROGRAM
+    # - READ
+    # - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    # - PLANE_READ
+    # - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    # - COPYBACK_READ
+    # - COPYBACK_PROGRAM_SLC
+    # - ONESHOT_COPYBACK_PROGRAM_LSB
+    # - ONESHOT_COPYBACK_PROGRAM_CSB
+    # - ONESHOT_COPYBACK_PROGRAM_MSB
+    # - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    # - DOUT
+    # - DATAIN
+    # - SR
+    # - SR_ADD
+    # - CAMREAD
+    # - CAMREAD_LUN
+    # - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    # - PROGRAM_RESUME
+    # - TRAINING
+    # - READID
+    # - SETPARA
+    # - GETPARA
+    # - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    # - TEMPSENSOR
+    # - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  pgm_suspended:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_CACHE_PROGRAM
+    # - READ
+    # - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    # - PLANE_READ
+    # - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    # - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    # - CAMREAD
+    # - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    # - PROGRAM_RESUME
+    # - TRAINING
+    # - READID
+    # - SETPARA
+    # - GETPARA
+    # - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    # - TEMPSENSOR
+    # - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  nested_suspended:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_CACHE_PROGRAM
+    # - READ
+    # - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    # - PLANE_READ
+    # - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    # - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    # - CAMREAD
+    # - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    # - PROGRAM_RESUME
+    # - TRAINING
+    # - READID
+    # - SETPARA
+    # - GETPARA
+    # - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    # - TEMPSENSOR
+    # - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+
+maxplanes: 4
+seq_maxloop: 4
+
+# gen_seq_rules inheritance conditions 설명
+# same_plane : 이전 operation 과 동일한 plane set
+# inc_page : 이전 operation 의 page 에서 +1
+# same_page : 이전 operation 의 page 와 동일한 page
+# pgm_same_page : 이전 program 의 page 와 동일한 page
+# same_celltype : 이전 operation 과 동일한 cell type
+# multi : 이전 read 동작이 multi-plane 이었다면 plane_set 의 수 만큼 dout 순차적으로 생성
+
+generate_seq_rules:
+  CACHE_PROGRAM_SLC.SEQ:
+    sequences:
+      - CACHE_PROGRAM_SLC: ['inc_page', 'same_celltype'] # inheritance conditions
+      - PROGRAM_SLC: ['inc_page', 'same_celltype']
+  ONESHOT_PROGRAM_CSB.SEQ:
+    sequences:
+      - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype']
+      - ONESHOT_PROGRAM_EXEC_MSB: ['same_page', 'same_celltype']
+  ONESHOT_PROGRAM_CSB_CACHE.SEQ:
+    sequences:
+      - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype']
+      - ONESHOT_CACHE_PROGRAM: ['same_page', 'same_celltype']
+      - ONESHOT_PROGRAM_LSB: ['inc_page', 'same_celltype']
+      - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype']
+      - ONESHOT_PROGRAM_EXEC_MSB: ['same_page', 'same_celltype']
+  CACHE_READ.SEQ:
+    sequences:
+      - CACHE_READ: ['same_page', 'same_celltype']
+      - DOUT: ['prev_page', 'same_celltype', 'same_chunk', 'multi']
+      - CACHE_READ_END: ['inc_page', 'same_celltype']
+      - DOUT: ['same_page', 'same_celltype', 'same_chunk', 'multi']
+  COPYBACK_PROGRAM_SLC.SEQ:
+    sequences:
+      - COPYBACK_PROGRAM_SLC: ['none', 'same_celltype']
+  ONESHOT_COPYBACK_PROGRAM_LSB.SEQ:
+    sequences:
+      - ONESHOT_COPYBACK_PROGRAM_LSB: ['pgm_same_page']
+      - COPYBACK_READ: ['none']
+      - ONESHOT_COPYBACK_PROGRAM_CSB: ['pgm_same_page']
+      - COPYBACK_READ: ['none']
+      - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB: ['pgm_same_page']
+
+latencies:
+  erase.slc.busy: &erase_slc_busy 7000.0
+  erase.tlc.busy: &erase_tlc_busy 7000.0
+  program.slc.busy: &program_slc_busy 300.0
+  oneshot_program.trans.busy: &oneshot_program_trans_busy 20.0
+  oneshot_program.tlc.busy: &oneshot_program_tlc_busy 2000.0
+  cache_program.slc.busy: &cache_program_slc_busy 300.0
+  cache_program.slc.datain: &cache_program_slc_datain 10.0
+  oneshot_cache_program.tlc.busy: &oneshot_cache_program_tlc_busy 2000.0
+  oneshot_cache_program.tlc.datain: &oneshot_cache_program_tlc_datain 10.0
+  read.4k.dout: &read_4k_dout 2.0
+  read.16k.dout: &read_16k_dout 6.0
+  read.4k.slc.busy: &read_4k_slc_busy 20.0
+  read.16k.slc.busy: &read_16k_slc_busy 25.0
+  read.16k.fwslc.busy: &read_16k_fwslc_busy 20.0
+  read.4k.lsb.busy: &read_4k_lsb_busy 35.0
+  read.4k.csb.busy: &read_4k_csb_busy 50.0
+  read.4k.msb.busy: &read_4k_msb_busy 35.0
+  read.16k.lsb.busy: &read_16k_lsb_busy 35.0
+  read.16k.csb.busy: &read_16k_csb_busy 50.0
+  read.16k.msb.busy: &read_16k_msb_busy 35.0
+  read.soft.slc.busy: &read_soft_slc_busy 35.0
+  read.soft.lsb.busy: &read_soft_lsb_busy 45.0
+  read.soft.csb.busy: &read_soft_csb_busy 60.0
+  read.soft.msb.busy: &read_soft_msb_busy 45.0
+  read.4k.fast.slc.busy: &read_4k_fast_slc_busy 20.0
+  read.4k.fast.lsb.busy: &read_4k_fast_lsb_busy 35.0
+  read.4k.fast.csb.busy: &read_4k_fast_csb_busy 50.0
+  read.4k.fast.msb.busy: &read_4k_fast_msb_busy 35.0
+  read.16k.fast.lsb.busy: &read_16k_fast_lsb_busy 35.0
+  read.16k.fast.csb.busy: &read_16k_fast_csb_busy 50.0
+  read.16k.fast.msb.busy: &read_16k_fast_msb_busy 35.0
+  cache_read.slc.busy: &cache_read_slc_busy 20.0
+  cache_read.fwslc.busy: &cache_read_fwslc_busy 30.0
+  cache_read.lsb.busy: &cache_read_lsb_busy 35.0
+  cache_read.csb.busy: &cache_read_csb_busy 50.0
+  cache_read.msb.busy: &cache_read_msb_busy 35.0
+  cache_read.slc.dout: &cache_read_slc_dout 10.0
+  cache_read.fwslc.dout: &cache_read_fwslc_dout 10.0
+  cache_read.lsb.dout: &cache_read_lsb_dout 10.0
+  cache_read.csb.dout: &cache_read_csb_dout 10.0
+  cache_read.msb.dout: &cache_read_msb_dout 10.0
+  cache_read.fast.slc.busy: &cache_read_fast_slc_busy 30.0
+  cache_read.fast.lsb.busy: &cache_read_fast_lsb_busy 35.0
+  cache_read.fast.csb.busy: &cache_read_fast_csb_busy 50.0
+  cache_read.fast.msb.busy: &cache_read_fast_msb_busy 35.0
+  cache_read.fast.slc.dout: &cache_read_fast_slc_dout 10.0
+  cache_read.fast.lsb.dout: &cache_read_fast_lsb_dout 10.0
+  cache_read.fast.csb.dout: &cache_read_fast_csb_dout 10.0
+  cache_read.fast.msb.dout: &cache_read_fast_msb_dout 10.0
+  camread.busy: &camread_busy 1000.0
+  erase_suspend.busy: &erase_suspend_busy 100.0
+  erase_resume.busy: &erase_resume_busy 150.0
+  program_suspend.busy: &program_suspend_busy 100.0
+  program_resume.busy: &program_resume_busy 150.0
+  reset.busy: &reset_busy 30.0
+
+op_names:
+  4KB_Page_Read_confirm_FWSLC:
+    base: READ4K
+    multi: false
+    celltype: FWSLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_16k_fwslc_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_AESLC_AARV:
+    base: READ4K
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.16
+      CORE_BUSY: *read_4k_slc_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_AESLC:
+    base: READ4K
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_4k_slc_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_AESLC_Fast_tR_AARV:
+    base: READ4K
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_4k_fast_slc_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_AESLC_Fast_tR:
+    base: READ4K
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_4k_slc_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_CSB_AARV:
+    base: READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.16
+      CORE_BUSY: *read_4k_csb_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_CSB:
+    base: READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_4k_csb_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_CSB_Fast_tR_AARV:
+    base: READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_4k_csb_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_CSB_Fast_tR:
+    base: READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_4k_csb_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_LSB_AARV:
+    base: READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.16
+      CORE_BUSY: *read_4k_lsb_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_LSB:
+    base: READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_4k_lsb_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_LSB_Fast_tR_AARV:
+    base: READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_4k_lsb_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_LSB_Fast_tR:
+    base: READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_4k_lsb_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_MSB_AARV:
+    base: READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.16
+      CORE_BUSY: *read_4k_msb_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_MSB:
+    base: READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_4k_msb_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_MSB_Fast_tR_AARV:
+    base: READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_4k_msb_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_MSB_Fast_tR:
+    base: READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_4k_msb_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_SLC_AARV:
+    base: READ4K
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.16
+      CORE_BUSY: *read_4k_slc_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_SLC:
+    base: READ4K
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_4k_slc_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_SLC_Fast_tR_AARV:
+    base: READ4K
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_4k_slc_busy
+      DOUT: *read_4k_dout
+  4KB_Page_Read_confirm_SLC_Fast_tR:
+    base: READ4K
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_4k_slc_busy
+      DOUT: *read_4k_dout
+  All_WL_Dummy_Program:
+    base: PROGRAM_SLC
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.085
+      CORE_BUSY: *program_slc_busy
+  All_WL_Dummy_Program_Multi_Plane:
+    base: PROGRAM_SLC
+    multi: true
+    celltype: NONE
+    durations:
+      ISSUE: 0.34
+      CORE_BUSY: *program_slc_busy
+  Auto_Read_by_38h_Cmd_Target_Level:
+    base: CAMREAD
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.025
+      CORE_BUSY: *camread_busy
+  Auto_Read_by_39h_Cmd_LUN_Level:
+    base: CAMREAD_LUN
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.025
+      CORE_BUSY: *camread_busy
+  Auto_Read_by_FDh_Cmd_LUN_Level:
+    base: CAMREAD_LUN
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.025
+      CORE_BUSY: *camread_busy
+  Block_Erase_TLC:
+    base: ERASE
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.085
+      CORE_BUSY: *erase_tlc_busy
+  Block_Erase_AESLC:
+    base: ERASE
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.11
+      CORE_BUSY: *erase_slc_busy
+  Block_Erase_SLC:
+    base: ERASE
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.11
+      CORE_BUSY: *erase_slc_busy
+  Block_Erase_Multi_Plane_Legacy_TLC:
+    base: ERASE
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.32
+      CORE_BUSY: *erase_tlc_busy
+  Block_Erase_Multi_Plane_Legacy_AESLC:
+    base: ERASE
+    multi: true
+    celltype: AESLC
+    durations:
+      ISSUE: 3.42
+      CORE_BUSY: *erase_slc_busy
+  Block_Erase_Multi_Plane_Legacy_SLC:
+    base: ERASE
+    multi: true
+    celltype: SLC
+    durations:
+      ISSUE: 3.42
+      CORE_BUSY: *erase_slc_busy
+  Block_Erase_Multi_Plane_ONFI_TLC:
+    base: ERASE
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.325
+      CORE_BUSY: *erase_tlc_busy
+  Block_Erase_Multi_Plane_ONFI_AESLC:
+    base: ERASE
+    multi: true
+    celltype: AESLC
+    durations:
+      ISSUE: 3.425
+      CORE_BUSY: *erase_slc_busy
+  Block_Erase_Multi_Plane_ONFI_SLC:
+    base: ERASE
+    multi: true
+    celltype: SLC
+    durations:
+      ISSUE: 3.425
+      CORE_BUSY: *erase_slc_busy
+  Cache_Program_A0SLC:
+    base: CACHE_PROGRAM_SLC
+    multi: false
+    celltype: A0SLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *cache_program_slc_busy
+      DATAIN: *cache_program_slc_datain
+  Cache_Program_ACSLC:
+    base: CACHE_PROGRAM_SLC
+    multi: false
+    celltype: ACSLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *cache_program_slc_busy
+      DATAIN: *cache_program_slc_datain
+  Cache_Program_AESLC:
+    base: CACHE_PROGRAM_SLC
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *cache_program_slc_busy
+      DATAIN: *cache_program_slc_datain
+  Cache_Program_SLC:
+    base: CACHE_PROGRAM_SLC
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *cache_program_slc_busy
+      DATAIN: *cache_program_slc_datain
+  Cache_Program_MSB:
+    base: ONESHOT_CACHE_PROGRAM
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *oneshot_cache_program_tlc_busy
+      DATAIN: *oneshot_cache_program_tlc_datain
+  Cache_Program_Multi_Plane_Legacy_A0SLC:
+    base: CACHE_PROGRAM_SLC
+    multi: true
+    celltype: A0SLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *cache_program_slc_busy
+      DATAIN: *cache_program_slc_datain
+  Cache_Program_Multi_Plane_Legacy_ACSLC:
+    base: CACHE_PROGRAM_SLC
+    multi: true
+    celltype: ACSLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *cache_program_slc_busy
+      DATAIN: *cache_program_slc_datain
+  Cache_Program_Multi_Plane_Legacy_AESLC:
+    base: CACHE_PROGRAM_SLC
+    multi: true
+    celltype: AESLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *cache_program_slc_busy
+      DATAIN: *cache_program_slc_datain
+  Cache_Program_Multi_Plane_Legacy_SLC:
+    base: CACHE_PROGRAM_SLC
+    multi: true
+    celltype: SLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *cache_program_slc_busy
+      DATAIN: *cache_program_slc_datain
+  Cache_Program_Multi_Plane_Legacy_MSB:
+    base: ONESHOT_CACHE_PROGRAM
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *oneshot_cache_program_tlc_busy
+      DATAIN: *oneshot_cache_program_tlc_datain
+  Cache_Program_Multi_Plane_ONFI_A0SLC:
+    base: CACHE_PROGRAM_SLC
+    multi: true
+    celltype: A0SLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *cache_program_slc_busy
+      DATAIN: *cache_program_slc_datain
+  Cache_Program_Multi_Plane_ONFI_ACSLC:
+    base: CACHE_PROGRAM_SLC
+    multi: true
+    celltype: ACSLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *cache_program_slc_busy
+      DATAIN: *cache_program_slc_datain
+  Cache_Program_Multi_Plane_ONFI_AESLC:
+    base: CACHE_PROGRAM_SLC
+    multi: true
+    celltype: AESLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *cache_program_slc_busy
+      DATAIN: *cache_program_slc_datain
+  Cache_Program_Multi_Plane_ONFI_SLC:
+    base: CACHE_PROGRAM_SLC
+    multi: true
+    celltype: SLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *cache_program_slc_busy
+      DATAIN: *cache_program_slc_datain
+  Cache_Program_Multi_Plane_ONFI_MSB:
+    base: ONESHOT_CACHE_PROGRAM
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *oneshot_cache_program_tlc_busy
+      DATAIN: *oneshot_cache_program_tlc_datain
+  Change_Read_Column_Random_Data_Output:
+    base: DOUT
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 9.9444
+  Change_Row_Address:
+    base: DEFAULT
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.07
+  Change_Write_Column:
+    base: DATAIN
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.055
+  Copyback_Program_A0SLC:
+    base: COPYBACK_PROGRAM_SLC
+    multi: false
+    celltype: A0SLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *program_slc_busy
+  Copyback_Program_ACSLC:
+    base: COPYBACK_PROGRAM_SLC
+    multi: false
+    celltype: ACSLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *program_slc_busy
+  Copyback_Program_AESLC:
+    base: COPYBACK_PROGRAM_SLC
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *program_slc_busy
+  Copyback_Program_SLC:
+    base: COPYBACK_PROGRAM_SLC
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *program_slc_busy
+  Copyback_Program_Multi_Plane_A0SLC_Legacy:
+    base: COPYBACK_PROGRAM_SLC
+    multi: true
+    celltype: A0SLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *program_slc_busy
+  Copyback_Program_Multi_Plane_A0SLC_ONFI:
+    base: COPYBACK_PROGRAM_SLC
+    multi: true
+    celltype: A0SLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *program_slc_busy
+  Copyback_Program_Multi_Plane_ACSLC_Legacy:
+    base: COPYBACK_PROGRAM_SLC
+    multi: true
+    celltype: ACSLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *program_slc_busy
+  Copyback_Program_Multi_Plane_ACSLC_ONFI:
+    base: COPYBACK_PROGRAM_SLC
+    multi: true
+    celltype: ACSLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *program_slc_busy
+  Copyback_Program_Multi_Plane_AESLC_Legacy:
+    base: COPYBACK_PROGRAM_SLC
+    multi: true
+    celltype: AESLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *program_slc_busy
+  Copyback_Program_Multi_Plane_AESLC_ONFI:
+    base: COPYBACK_PROGRAM_SLC
+    multi: true
+    celltype: AESLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *program_slc_busy
+  Copyback_Program_Multi_Plane_SLC_Legacy:
+    base: COPYBACK_PROGRAM_SLC
+    multi: true
+    celltype: SLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *program_slc_busy
+  Copyback_Program_Multi_Plane_SLC_ONFI:
+    base: COPYBACK_PROGRAM_SLC
+    multi: true
+    celltype: SLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *program_slc_busy
+  Copyback_Read_SLC:
+    base: COPYBACK_READ
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_16k_slc_busy
+      DOUT: *read_16k_dout
+  Copyback_Read_AESLC:
+    base: COPYBACK_READ
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_16k_slc_busy
+      DOUT: *read_16k_dout
+  Copyback_Read_CSB:
+    base: COPYBACK_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_16k_csb_busy
+      DOUT: *read_16k_dout
+  Copyback_Read_LSB:
+    base: COPYBACK_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_16k_lsb_busy
+      DOUT: *read_16k_dout
+  Copyback_Read_MSB:
+    base: COPYBACK_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_16k_msb_busy
+      DOUT: *read_16k_dout
+  Copyback_Read_Multi_Plane_ONFI_AESLC:
+    base: COPYBACK_READ
+    multi: true
+    celltype: AESLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *read_16k_slc_busy
+      DOUT: *read_16k_dout
+  Copyback_Read_Multi_Plane_ONFI_SLC:
+    base: COPYBACK_READ
+    multi: true
+    celltype: SLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *read_16k_slc_busy
+      DOUT: *read_16k_dout
+  Copyback_Read_Multi_Plane_ONFI_CSB:
+    base: COPYBACK_READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *read_16k_csb_busy
+      DOUT: *read_16k_dout
+  Copyback_Read_Multi_Plane_ONFI_LSB:
+    base: COPYBACK_READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *read_16k_lsb_busy
+      DOUT: *read_16k_dout
+  Copyback_Read_Multi_Plane_ONFI_MSB:
+    base: COPYBACK_READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *read_16k_msb_busy
+      DOUT: *read_16k_dout
+  Data_Out_Termination:
+    base: DEFAULT
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.025
+  Data_transfer_to_cache_for_1st_Page_TLC:
+    base: ONESHOT_PROGRAM_LSB
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.05
+      CORE_BUSY: *oneshot_program_trans_busy
+  Data_transfer_to_cache_for_2nd_Page_TLC:
+    base: ONESHOT_PROGRAM_CSB
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.05
+      CORE_BUSY: *oneshot_program_trans_busy
+  Data_transfer_to_cache_for_3rd_Page_TLC:
+    base: ONESHOT_PROGRAM_MSB
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.05
+      CORE_BUSY: *oneshot_program_trans_busy
+  DCC_training:
+    base: TRAINING
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.07
+  Delay:
+    base: DEFAULT
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.02
+  Device_Identification_Table_Read:
+    base: READID
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.07
+  Disable_Cache_PGM_Flag:
+    base: DEFAULT
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.025
+  DSL_Vth_Check:
+    base: DEFAULT
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.085
+  DSL_Vth_Check_Multi_Plane:
+    base: READ
+    multi: true
+    celltype: NONE
+    durations:
+      ISSUE: 0.34
+      CORE_BUSY: *read_16k_slc_busy
+  Enhanced_Random_Data_Output_Primary:
+    base: DOUT
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 9.9794
+  Enhanced_Random_Data_Output_Secondary:
+    base: DOUT
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 10.0144
+  Erase_Suspend_Reset:
+    base: ERASE_SUSPEND
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.025
+      CORE_BUSY: *erase_suspend_busy
+  Get_Parameter:
+    base: GETPARA
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.4036
+  LUN_Status_Read_for_LUN1:
+    base: SR
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.2786
+  LUN_Status_Read_for_LUN3:
+    base: SR
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.2786
+  ODT_Reenable:
+    base: ODTENABLE
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.025
+  One_Shot_Copyback_Program_LSB:
+    base: ONESHOT_COPYBACK_PROGRAM_LSB
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *oneshot_program_trans_busy
+  One_Shot_Copyback_Program_Multi_Plane_CSB:
+    base: ONESHOT_COPYBACK_PROGRAM_CSB
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 39.2976
+      CORE_BUSY: *oneshot_program_trans_busy
+  One_Shot_PGM_Execution_MSB:
+    base: ONESHOT_PROGRAM_EXEC_MSB
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.095
+      CORE_BUSY: *oneshot_program_tlc_busy
+  One_Shot_PGM_Multi_Plane_CSB:
+    base: ONESHOT_PROGRAM_CSB
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 39.2976
+      CORE_BUSY: *oneshot_program_trans_busy
+  One_Shot_PGM_Multi_Plane_CSB_Legacy:
+    base: ONESHOT_PROGRAM_CSB
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 39.2976
+      CORE_BUSY: *oneshot_program_trans_busy
+  One_Shot_PGM_Multi_Plane_LSB:
+    base: ONESHOT_PROGRAM_LSB
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 39.2976
+      CORE_BUSY: *oneshot_program_trans_busy
+  One_Shot_PGM_Multi_Plane_MSB:
+    base: ONESHOT_PROGRAM_MSB
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 39.2976
+      CORE_BUSY: *oneshot_program_tlc_busy
+  Page_Program_A0SLC:
+    base: PROGRAM_SLC
+    multi: false
+    celltype: A0SLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *program_slc_busy
+  Page_Program_AESLC:
+    base: PROGRAM_SLC
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *program_slc_busy
+  Plane_Level_4KB_Page_Read_AESLC:
+    base: PLANE_READ4K
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.145
+  Erase_Resume:
+    base: ERASE_RESUME
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.025
+      CORE_BUSY: *erase_resume_busy
+  Get_Features:
+    base: GETFEATURE
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 1.2472
+  Get_Features_LUN_Level:
+    base: GETFEATURE_LUN
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 1.2522
+  LUN_Status_Read_for_LUN0:
+    base: READ
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.2786
+  LUN_Status_Read_for_LUN2:
+    base: READ
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.2786
+  ODT_Disable:
+    base: ODTDISABLE
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.025
+  One_Shot_Copyback_Program_CSB:
+    base: ONESHOT_COPYBACK_PROGRAM_CSB
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *oneshot_program_trans_busy
+  One_Shot_Copyback_Program_Execution_MSB:
+    base: ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *oneshot_program_tlc_busy
+  One_Shot_Copyback_Program_Multi_Plane_LSB:
+    base: ONESHOT_COPYBACK_PROGRAM_LSB
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 39.2976
+      CORE_BUSY: *oneshot_program_trans_busy
+  One_Shot_PGM_CSB:
+    base: ONESHOT_PROGRAM_CSB
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *oneshot_program_trans_busy
+  One_Shot_PGM_LSB:
+    base: ONESHOT_PROGRAM_LSB
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *oneshot_program_trans_busy
+  One_Shot_PGM_MSB:
+    base: ONESHOT_PROGRAM_MSB
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *oneshot_program_trans_busy
+  One_Shot_PGM_Multi_Plane_Execution_MSB:
+    base: ONESHOT_PROGRAM_EXEC_MSB
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 0.38
+      CORE_BUSY: *oneshot_program_tlc_busy
+  One_Shot_PGM_Multi_Plane_Execution_MSB_Legacy:
+    base: ONESHOT_PROGRAM_EXEC_MSB
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 0.38
+      CORE_BUSY: *oneshot_program_tlc_busy
+  One_Shot_PGM_Multi_Plane_LSB_Legacy:
+    base: ONESHOT_PROGRAM_LSB
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 39.2976
+      CORE_BUSY: *oneshot_program_trans_busy
+  One_Shot_PGM_Multi_Plane_MSB_Legacy:
+    base: ONESHOT_PROGRAM_MSB
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 39.2976
+      CORE_BUSY: *oneshot_program_trans_busy
+  Page_Program_ACSLC:
+    base: PROGRAM_SLC
+    multi: false
+    celltype: ACSLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *program_slc_busy
+  Page_Program_Multi_Plane_Legacy_A0SLC:
+    base: PROGRAM_SLC
+    multi: true
+    celltype: A0SLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *program_slc_busy
+  Page_Program_Multi_Plane_Legacy_ACSLC:
+    base: PROGRAM_SLC
+    multi: true
+    celltype: ACSLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *program_slc_busy
+  Page_Program_Multi_Plane_Legacy_AESLC:
+    base: PROGRAM_SLC
+    multi: true
+    celltype: AESLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *program_slc_busy
+  Page_Program_Multi_Plane_Legacy_SLC:
+    base: PROGRAM_SLC
+    multi: true
+    celltype: SLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *program_slc_busy
+  Page_Program_SLC:
+    base: PROGRAM_SLC
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *program_slc_busy
+  Read_write_conflict_Fire_N_Forget_CSB_AARV:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 129.6582
+      CORE_BUSY: *read_16k_csb_busy
+  Read_write_conflict_Fire_N_Forget_CSB:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 129.5482
+      CORE_BUSY: *read_16k_csb_busy
+  Read_write_conflict_Fire_N_Forget_LSB_AARV:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 129.6582
+      CORE_BUSY: *read_16k_lsb_busy
+  Read_write_conflict_Fire_N_Forget_LSB:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 129.6582
+      CORE_BUSY: *read_16k_lsb_busy
+  Read_write_conflict_Fire_N_Forget_MSB_AARV:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 129.6582
+      CORE_BUSY: *read_16k_msb_busy
+  Read_write_conflict_Fire_N_Forget_MSB:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 129.5482
+      CORE_BUSY: *read_16k_msb_busy
+  Read_write_conflict_Fire_N_Forget_Multi_Plane_CSB_AARV:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 218.0778
+      CORE_BUSY: *read_16k_csb_busy
+  Read_write_conflict_Fire_N_Forget_Multi_Plane_CSB:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 217.9678
+      CORE_BUSY: *read_16k_csb_busy
+  Read_write_conflict_Fire_N_Forget_Multi_Plane_LSB_AARV:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 218.0778
+      CORE_BUSY: *read_16k_lsb_busy
+  Read_write_conflict_Fire_N_Forget_Multi_Plane_LSB:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 217.9678
+      CORE_BUSY: *read_16k_lsb_busy
+  Read_write_conflict_Fire_N_Forget_Multi_Plane_MSB_AARV:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 218.0778
+      CORE_BUSY: *read_16k_msb_busy
+  Read_write_conflict_Fire_N_Forget_Multi_Plane_MSB:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 217.9678
+      CORE_BUSY: *read_16k_msb_busy
+  Reset_LUN:
+    base: RESET_LUN
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.06
+      CORE_BUSY: *reset_busy
+  Set_Features:
+    base: SETFEATURE
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.1872
+  Set_Features_LUN_Level:
+    base: SETFEATURE_LUN
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 1.2922
+  Set_Parameter:
+    base: SETPARA
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.4886
+  Soft_Read_AESLC:
+    base: READ
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_soft_slc_busy
+      DOUT: *read_16k_dout
+  Soft_Read_CSB:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_soft_csb_busy
+      DOUT: *read_16k_dout
+  Soft_Read_LSB:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_soft_lsb_busy
+      DOUT: *read_16k_dout
+  Soft_Read_MSB:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_soft_msb_busy
+      DOUT: *read_16k_dout
+  Soft_Read_Multi_Plane_AESLC:
+    base: READ
+    multi: true
+    celltype: AESLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *read_soft_slc_busy
+      DOUT: *read_16k_dout
+  Soft_Read_Multi_Plane_CSB:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *read_soft_csb_busy
+      DOUT: *read_16k_dout
+  Soft_Read_Multi_Plane_LSB:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *read_soft_lsb_busy
+      DOUT: *read_16k_dout
+  Soft_Read_Multi_Plane_MSB:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *read_soft_msb_busy
+      DOUT: *read_16k_dout
+  Soft_Read_Multi_Plane_SLC:
+    base: READ
+    multi: true
+    celltype: SLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *read_soft_slc_busy
+      DOUT: *read_16k_dout
+  Soft_Read_SLC:
+    base: READ
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_soft_slc_busy
+      DOUT: *read_16k_dout
+  Super_Reset:
+    base: RESET
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.025
+      CORE_BUSY: *reset_busy
+  Synchronous_Reset:
+    base: RESET
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.025
+      CORE_BUSY: *reset_busy
+  Temperature_Sensor_Fast_mode:
+    base: TEMPSENSOR
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.025
+  Temperature_Sensor_Slow_mode:
+    base: TEMPSENSOR
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.025
+  VPP_Parameter_Read_Target_Level:
+    base: CAMREAD
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.05
+  Write_Protect_Operation:
+    base: DEFAULT
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.02
+  Write_training_din:
+    base: TRAINING
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 2.2144
+  Write_training_dout:
+    base: TRAINING
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 2.248
+  ZQ_Calibration_Long:
+    base: ZQCAL
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.05
+  ZQ_Calibration_Short:
+    base: ZQCAL
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.05
+  Plane_Level_Page_Read_MSB_AARV:
+    base: PLANE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_16k_msb_busy
+      DOUT: *read_16k_dout
+  Plane_Level_Page_Read_SLC_AARV:
+    base: PLANE_READ
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_16k_slc_busy
+      DOUT: *read_16k_dout
+  Plane_Level_Read_Column_Enhanced:
+    base: PLANE_READ
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 9.9944
+  Program_Execution_Multi_Plane_MSB:
+    base: ONESHOT_PROGRAM_EXEC_MSB
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 0.38
+      CORE_BUSY: *oneshot_program_tlc_busy
+  Progressive_Suspend:
+    base: PROGRAM_SUSPEND
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.05
+      CORE_BUSY: *program_suspend_busy
+  Read_AESLC:
+    base: READ
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_16k_slc_busy
+      DOUT: *read_16k_dout
+  Read_Cache_Random_AESLC_AARV:
+    base: CACHE_READ
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.16
+      CORE_BUSY: *cache_read_slc_busy
+      DOUT: *cache_read_slc_dout
+  Read_Cache_Random_CSB_AARV:
+    base: CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.16
+      CORE_BUSY: *cache_read_csb_busy
+      DOUT: *cache_read_csb_dout
+  Read_Cache_Random_CSB_Fast_tR_AARV:
+    base: CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *cache_read_fast_csb_busy
+      DOUT: *cache_read_fast_csb_dout
+  Read_CSB_AARV:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.16
+      CORE_BUSY: *read_16k_csb_busy
+      DOUT: *read_16k_dout
+  Page_Program_Multi_Plane_ONFI_A0SLC:
+    base: PROGRAM_SLC
+    multi: true
+    celltype: A0SLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *program_slc_busy
+  Page_Program_Multi_Plane_ONFI_ACSLC:
+    base: PROGRAM_SLC
+    multi: true
+    celltype: ACSLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *program_slc_busy
+  Page_Program_Multi_Plane_ONFI_AESLC:
+    base: PROGRAM_SLC
+    multi: true
+    celltype: AESLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *program_slc_busy
+  Page_Program_Multi_Plane_ONFI_SLC:
+    base: PROGRAM_SLC
+    multi: true
+    celltype: SLC
+    durations:
+      ISSUE: 42.2826
+      CORE_BUSY: *program_slc_busy
+  Plane_Level_4KB_Page_Read_AESLC_AARV:
+    base: PLANE_READ4K
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_4k_slc_busy
+      DOUT: *read_4k_dout
+  Plane_Level_4KB_Page_Read_AESLC_Fast_tR:
+    base: PLANE_READ4K
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.17
+      CORE_BUSY: *read_4k_fast_slc_busy
+      DOUT: *read_4k_dout
+  Plane_Level_4KB_Page_Read_CSB_AARV:
+    base: PLANE_READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_4k_csb_busy
+      DOUT: *read_4k_dout
+  Plane_Level_4KB_Page_Read_CSB:
+    base: PLANE_READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_4k_csb_busy
+      DOUT: *read_4k_dout
+  Plane_Level_4KB_Page_Read_CSB_Fast_tR:
+    base: PLANE_READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.17
+      CORE_BUSY: *read_4k_csb_busy
+      DOUT: *read_4k_dout
+  Plane_Level_4KB_Page_Read_LSB_AARV:
+    base: PLANE_READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_4k_lsb_busy
+      DOUT: *read_4k_dout
+  Plane_Level_4KB_Page_Read_LSB:
+    base: PLANE_READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_4k_lsb_busy
+      DOUT: *read_4k_dout
+  Plane_Level_4KB_Page_Read_LSB_Fast_tR:
+    base: PLANE_READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.17
+      CORE_BUSY: *read_4k_fast_lsb_busy
+      DOUT: *read_4k_dout
+  Plane_Level_4KB_Page_Read_MSB_AARV:
+    base: PLANE_READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_4k_msb_busy
+      DOUT: *read_4k_dout
+  Plane_Level_4KB_Page_Read_MSB:
+    base: PLANE_READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_4k_msb_busy
+      DOUT: *read_4k_dout
+  Plane_Level_4KB_Page_Read_MSB_Fast_tR:
+    base: PLANE_READ4K
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.17
+      CORE_BUSY: *read_4k_fast_msb_busy
+      DOUT: *read_4k_dout
+  Plane_Level_4KB_Page_Read_SLC_AARV:
+    base: PLANE_READ4K
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_4k_slc_busy
+      DOUT: *read_4k_dout
+  Plane_Level_4KB_Page_Read_SLC:
+    base: PLANE_READ4K
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_4k_slc_busy
+      DOUT: *read_4k_dout
+  Plane_Level_4KB_Page_Read_SLC_Fast_tR:
+    base: PLANE_READ4K
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.17
+      CORE_BUSY: *read_4k_fast_slc_busy
+      DOUT: *read_4k_dout
+  Plane_Level_Cache_Read_AESLC_AARV:
+    base: PLANE_CACHE_READ
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *cache_read_slc_busy
+      DOUT: *cache_read_slc_dout
+  Plane_Level_Cache_Read_AESLC:
+    base: PLANE_CACHE_READ
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *cache_read_slc_busy
+      DOUT: *cache_read_slc_dout
+  Plane_Level_Cache_Read_AESLC_Fast_tR:
+    base: PLANE_CACHE_READ
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.17
+      CORE_BUSY: *cache_read_fast_slc_busy
+      DOUT: *cache_read_fast_slc_dout
+  Plane_Level_Cache_Read_CSB_AARV:
+    base: PLANE_CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *cache_read_csb_busy
+      DOUT: *cache_read_csb_dout
+  Plane_Level_Cache_Read_CSB:
+    base: PLANE_CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *cache_read_csb_busy
+      DOUT: *cache_read_csb_dout
+  Plane_Level_Cache_Read_CSB_Fast_tR:
+    base: PLANE_CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.17
+      CORE_BUSY: *cache_read_fast_csb_busy
+      DOUT: *cache_read_fast_csb_dout
+  Plane_Level_Cache_Read_End:
+    base: PLANE_CACHE_READ_END
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.05
+      CORE_BUSY: *read_16k_csb_busy
+  Plane_Level_Cache_Read_LSB_AARV:
+    base: PLANE_CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *cache_read_lsb_busy
+      DOUT: *cache_read_lsb_dout
+  Plane_Level_Cache_Read_LSB:
+    base: PLANE_CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *cache_read_lsb_busy
+      DOUT: *cache_read_lsb_dout
+  Plane_Level_Cache_Read_LSB_Fast_tR:
+    base: PLANE_CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.17
+      CORE_BUSY: *cache_read_fast_lsb_busy
+      DOUT: *cache_read_fast_lsb_dout
+  Plane_Level_Cache_Read_MSB_AARV:
+    base: PLANE_CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *cache_read_msb_busy
+      DOUT: *cache_read_msb_dout
+  Plane_Level_Cache_Read_MSB:
+    base: PLANE_CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *cache_read_msb_busy
+      DOUT: *cache_read_msb_dout
+  Plane_Level_Cache_Read_MSB_Fast_tR:
+    base: PLANE_CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.17
+      CORE_BUSY: *cache_read_fast_msb_busy
+      DOUT: *cache_read_fast_msb_dout
+  Plane_Level_Cache_Read_SLC_AARV:
+    base: PLANE_CACHE_READ
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *cache_read_slc_busy
+      DOUT: *cache_read_slc_dout
+  Plane_Level_Cache_Read_SLC:
+    base: PLANE_CACHE_READ
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *cache_read_slc_busy
+      DOUT: *cache_read_slc_dout
+  Plane_Level_Cache_Read_SLC_Fast_tR:
+    base: PLANE_CACHE_READ
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.17
+      CORE_BUSY: *cache_read_fast_slc_busy
+      DOUT: *cache_read_fast_slc_dout
+  Plane_Level_Page_Read_AESLC_AARV:
+    base: PLANE_READ
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_16k_slc_busy
+      DOUT: *read_16k_dout
+  Plane_Level_Page_Read_AESLC:
+    base: PLANE_READ
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_16k_slc_busy
+      DOUT: *read_16k_dout
+  Plane_Level_Page_Read_CSB_AARV:
+    base: PLANE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_16k_csb_busy
+      DOUT: *read_16k_dout
+  Plane_Level_Page_Read_CSB:
+    base: PLANE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_16k_csb_busy
+      DOUT: *read_16k_dout
+  Plane_Level_Page_Read_CSB_Fast_tR:
+    base: PLANE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.17
+      CORE_BUSY: *read_16k_fast_csb_busy
+      DOUT: *read_16k_dout
+  Plane_Level_Page_Read_LSB_AARV:
+    base: PLANE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_16k_lsb_busy
+      DOUT: *read_16k_dout
+  Plane_Level_Page_Read_LSB:
+    base: PLANE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_16k_lsb_busy
+      DOUT: *read_16k_dout
+  Plane_Level_Page_Read_LSB_Fast_tR:
+    base: PLANE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.17
+      CORE_BUSY: *read_16k_fast_lsb_busy
+      DOUT: *read_16k_dout
+  Plane_Level_Page_Read_MSB:
+    base: PLANE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_16k_msb_busy
+      DOUT: *read_16k_dout
+  Plane_Level_Page_Read_MSB_Fast_tR:
+    base: PLANE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.17
+      CORE_BUSY: *read_16k_fast_msb_busy
+      DOUT: *read_16k_dout
+  Plane_Level_Page_Read_SLC:
+    base: PLANE_READ
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_16k_slc_busy
+      DOUT: *read_16k_dout
+  Plane_Level_Set_Parameter:
+    base: PLANE_SETPARA
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.5586
+  Program_Execution_MSB:
+    base: ONESHOT_PROGRAM_EXEC_MSB
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.095
+  Program_Resume:
+    base: PROGRAM_RESUME
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.025
+      CORE_BUSY: *program_resume_busy
+  Program_Suspend_Reset:
+    base: PROGRAM_SUSPEND
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.025
+      CORE_BUSY: *program_suspend_busy
+  Read_AESLC_AARV:
+    base: READ
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.16
+      CORE_BUSY: *read_16k_slc_busy
+      DOUT: *read_16k_dout
+  Read_Cache_End:
+    base: CACHE_READ_END
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.045
+      CORE_BUSY: *read_16k_csb_busy
+  Read_Cache_Random_AESLC:
+    base: CACHE_READ
+    multi: false
+    celltype: AESLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *cache_read_slc_busy
+      DOUT: *cache_read_slc_dout
+  Read_Cache_Random_CSB:
+    base: CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *cache_read_csb_busy
+      DOUT: *cache_read_csb_dout
+  Read_Cache_Random_CSB_Fast_tR:
+    base: CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *cache_read_fast_csb_busy
+      DOUT: *cache_read_fast_csb_dout
+  Read_CSB:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_16k_csb_busy
+      DOUT: *read_16k_dout
+  Read_Cache_Random_MSB_Fast_tR_AARV:
+    base: CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *cache_read_fast_msb_busy
+      DOUT: *cache_read_fast_msb_dout
+  Read_Cache_Random_Multi_Plane_ONFI_AESLC_AARV:
+    base: CACHE_READ
+    multi: true
+    celltype: AESLC
+    durations:
+      ISSUE: 3.505
+      CORE_BUSY: *cache_read_fast_slc_busy
+      DOUT: *cache_read_fast_slc_dout
+  Read_Cache_Random_Multi_Plane_ONFI_CSB_AARV:
+    base: CACHE_READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.505
+      CORE_BUSY: *cache_read_fast_csb_busy
+      DOUT: *cache_read_fast_csb_dout
+  Read_Cache_Random_Multi_Plane_ONFI_LSB_AARV:
+    base: CACHE_READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.505
+      CORE_BUSY: *cache_read_fast_lsb_busy
+      DOUT: *cache_read_fast_lsb_dout
+  Read_Cache_Random_Multi_Plane_ONFI_MSB_AARV:
+    base: CACHE_READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.505
+      CORE_BUSY: *cache_read_fast_msb_busy
+      DOUT: *cache_read_fast_msb_dout
+  Read_Cache_Random_Multi_Plane_ONFI_SLC_AARV:
+    base: CACHE_READ
+    multi: true
+    celltype: SLC
+    durations:
+      ISSUE: 3.505
+      CORE_BUSY: *cache_read_fast_slc_busy
+      DOUT: *cache_read_fast_slc_dout
+  Read_Cache_Random_SLC_AARV:
+    base: CACHE_READ
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.16
+      CORE_BUSY: *cache_read_slc_busy
+      DOUT: *cache_read_slc_dout
+  Read_Cache_Sequential:
+    base: CACHE_READ
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.045
+      CORE_BUSY: *cache_read_slc_busy
+      DOUT: *cache_read_slc_dout
+  Read_CSB_Fast_tR:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_16k_fast_csb_busy
+      DOUT: *read_16k_dout
+  Read_FWSLC:
+    base: READ
+    multi: false
+    celltype: FWSLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_16k_fwslc_busy
+      DOUT: *read_16k_dout
+  Read_ID_JEDEC_Manufacturer_ID:
+    base: READID
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.4508
+  Read_LSB:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_16k_lsb_busy
+      DOUT: *read_16k_dout
+  Read_LSB_Fast_tR:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_16k_lsb_busy
+      DOUT: *read_16k_dout
+  Read_MSB:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_16k_msb_busy
+      DOUT: *read_16k_dout
+  Read_MSB_Fast_tR:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *read_16k_msb_busy
+      DOUT: *read_16k_dout
+  Read_Multi_Plane_ONFI_AESLC:
+    base: READ
+    multi: true
+    celltype: AESLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *read_16k_slc_busy
+      DOUT: *read_16k_dout
+  Read_Multi_Plane_ONFI_AESLC_AARV:
+    base: READ
+    multi: true
+    celltype: AESLC
+    durations:
+      ISSUE: 3.545
+      CORE_BUSY: *read_16k_slc_busy
+      DOUT: *read_16k_dout
+  Read_Multi_Plane_ONFI_FWSLC:
+    base: READ
+    multi: true
+    celltype: FWSLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *read_16k_fwslc_busy
+      DOUT: *read_16k_dout
+  Read_Multi_Plane_ONFI_SLC:
+    base: READ
+    multi: true
+    celltype: SLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *read_16k_slc_busy
+      DOUT: *read_16k_dout
+  Read_Multi_Plane_ONFI_SLC_AARV:
+    base: READ
+    multi: true
+    celltype: SLC
+    durations:
+      ISSUE: 3.545
+      CORE_BUSY: *read_16k_slc_busy
+      DOUT: *read_16k_dout
+  Read_Multi_Plane_ONFI_CSB:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *read_16k_csb_busy
+      DOUT: *read_16k_dout
+  Read_Multi_Plane_ONFI_CSB_AARV:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.505
+      CORE_BUSY: *read_16k_csb_busy
+      DOUT: *read_16k_dout
+  Read_Multi_Plane_ONFI_CSB_Fast_tR:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.565
+      CORE_BUSY: *read_16k_csb_busy
+      DOUT: *read_16k_dout
+  Read_Multi_Plane_ONFI_LSB:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *read_16k_lsb_busy
+      DOUT: *read_16k_dout
+  Read_Multi_Plane_ONFI_LSB_AARV:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.505
+      CORE_BUSY: *read_16k_lsb_busy
+      DOUT: *read_16k_dout
+  Read_Multi_Plane_ONFI_LSB_Fast_tR:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.565
+      CORE_BUSY: *read_16k_lsb_busy
+      DOUT: *read_16k_dout
+  Read_Multi_Plane_ONFI_MSB:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *read_16k_msb_busy
+      DOUT: *read_16k_dout
+  Read_Multi_Plane_ONFI_MSB_AARV:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.505
+      CORE_BUSY: *read_16k_msb_busy
+      DOUT: *read_16k_dout
+  Read_Multi_Plane_ONFI_MSB_Fast_tR:
+    base: READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.565
+      CORE_BUSY: *read_16k_fast_msb_busy
+      DOUT: *read_16k_dout
+  Read_SLC_AARV:
+    base: READ
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.16
+      CORE_BUSY: *read_16k_slc_busy
+      DOUT: *read_16k_dout
+  Read_Status_Enhanced_70h:
+    base: SR
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.2786
+  Read_Status_Enhanced_71h:
+    base: SR
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.3036
+  Read_Status_Enhanced_72h:
+    base: SR
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.3036
+  Read_Status_Enhanced_78h:
+    base: SR
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.3136
+  Read_Status_Enhanced_7Ah:
+    base: SR
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.3136
+  Read_Status_Enhanced_7Bh:
+    base: SR
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.3136
+  Read_Status_Enhanced_7Ch:
+    base: SR
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.3136
+  Read_Status_Enhanced_7Dh:
+    base: SR
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.3036
+  Read_Status_Enhanced_7Eh:
+    base: SR
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.3036
+  Read_training:
+    base: TRAINING
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 2.248
+  Read_Cache_Random_FWSLC:
+    base: CACHE_READ
+    multi: false
+    celltype: FWSLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *cache_read_fwslc_busy
+      DOUT: *cache_read_fwslc_dout
+  Read_Cache_Random_LSB_AARV:
+    base: CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.16
+      CORE_BUSY: *cache_read_lsb_busy
+      DOUT: *cache_read_lsb_dout
+  Read_Cache_Random_LSB:
+    base: CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *cache_read_lsb_busy
+      DOUT: *cache_read_lsb_dout
+  Read_Cache_Random_LSB_Fast_tR_AARV:
+    base: CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *cache_read_fast_lsb_busy
+      DOUT: *cache_read_fast_lsb_dout
+  Read_Cache_Random_LSB_Fast_tR:
+    base: CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *cache_read_fast_lsb_busy
+      DOUT: *cache_read_fast_lsb_dout
+  Read_Cache_Random_MSB_AARV:
+    base: CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.16
+      CORE_BUSY: *cache_read_msb_busy
+      DOUT: *cache_read_msb_dout
+  Read_Cache_Random_MSB:
+    base: CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *cache_read_msb_busy
+      DOUT: *cache_read_msb_dout
+  Read_Cache_Random_MSB_Fast_tR:
+    base: CACHE_READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.145
+      CORE_BUSY: *cache_read_fast_msb_busy
+      DOUT: *cache_read_fast_msb_dout
+  Read_Cache_Random_Multi_Plane_ONFI_AESLC:
+    base: CACHE_READ
+    multi: true
+    celltype: AESLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *cache_read_slc_busy
+      DOUT: *cache_read_slc_dout
+  Read_Cache_Random_Multi_Plane_ONFI_CSB:
+    base: CACHE_READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *cache_read_csb_busy
+      DOUT: *cache_read_csb_dout
+  Read_Cache_Random_Multi_Plane_ONFI_CSB_Fast_tR:
+    base: CACHE_READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.565
+      CORE_BUSY: *cache_read_fast_csb_busy
+      DOUT: *cache_read_fast_csb_dout
+  Read_Cache_Random_Multi_Plane_ONFI_FWSLC:
+    base: CACHE_READ
+    multi: true
+    celltype: FWSLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *cache_read_fwslc_busy
+      DOUT: *cache_read_fwslc_dout
+  Read_Cache_Random_Multi_Plane_ONFI_LSB:
+    base: CACHE_READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *cache_read_lsb_busy
+      DOUT: *cache_read_lsb_dout
+  Read_Cache_Random_Multi_Plane_ONFI_LSB_Fast_tR:
+    base: CACHE_READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.565
+      CORE_BUSY: *cache_read_fast_lsb_busy
+      DOUT: *cache_read_fast_lsb_dout
+  Read_Cache_Random_Multi_Plane_ONFI_MSB:
+    base: CACHE_READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *cache_read_msb_busy
+      DOUT: *cache_read_msb_dout
+  Read_Cache_Random_Multi_Plane_ONFI_MSB_Fast_tR:
+    base: CACHE_READ
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 3.565
+      CORE_BUSY: *cache_read_fast_msb_busy
+      DOUT: *cache_read_fast_msb_dout
+  Read_Cache_Random_Multi_Plane_ONFI_SLC:
+    base: CACHE_READ
+    multi: true
+    celltype: SLC
+    durations:
+      ISSUE: 3.465
+      CORE_BUSY: *cache_read_slc_busy
+      DOUT: *cache_read_slc_dout
+  Read_Cache_Random_SLC:
+    base: CACHE_READ
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *cache_read_slc_busy
+      DOUT: *cache_read_slc_dout
+  Read_CSB_Fast_tR_AARV:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_16k_fast_csb_busy
+      DOUT: *read_16k_dout
+  Read_Dout_Resume_After_tR:
+    base: DEFAULT
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.025
+  Read_ID_JEDEC:
+    base: READID
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 0.4508
+  Read_LSB_AARV:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.16
+      CORE_BUSY: *read_16k_lsb_busy
+      DOUT: *read_16k_dout
+  Read_LSB_Fast_tR_AARV:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_16k_fast_lsb_busy
+      DOUT: *read_16k_dout
+  Read_MSB_AARV:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.16
+      CORE_BUSY: *read_16k_msb_busy
+      DOUT: *read_16k_dout
+  Read_MSB_Fast_tR_AARV:
+    base: READ
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 0.185
+      CORE_BUSY: *read_16k_fast_msb_busy
+      DOUT: *read_16k_dout
+  Read_SLC:
+    base: READ
+    multi: false
+    celltype: SLC
+    durations:
+      ISSUE: 0.12
+      CORE_BUSY: *read_16k_slc_busy
+      DOUT: *read_16k_dout
+
+phase_conditional:
+  # to be autofilled
+  READ.CORE_BUSY:
+    - Read_SLC: 0.0
+    - Read_SLC_AARV: 0.0
+  READ.DOUT:
+    - Read_SLC: 0.0
+  READ.END:
+    - Read_SLC: 0.0
+    - Read_SLC_AARV: 0.0
