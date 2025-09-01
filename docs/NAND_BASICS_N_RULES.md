@@ -1,11 +1,15 @@
-# NAND_RULES.md
+# NAND_BASICS_N_RULES.md
 
-## Summary
+## 이 문서의 목적
+- NAND operation sequence 생성을 위한 시스템을 디자인하기 위해 필요한 문서를 만들 목적으로 만든 지식 기반 문서이다.
+- 결과물은 `PRD.md`, `config.yaml`, `addrman.py` 에 반영돼야 한다.
+
+## NAND Summary
 - NAND 는 non-volatile memory device 로 IO bus 를 통해 CMD 를 던져 내부 memory cell array 에 데이터를 쓰고 읽을 수 있다.
 - memory cell array 에 접근하기 위해서는 CMD, address 가 필요하다.
 - CMD 를 입력하면 대부분의 경우 ISSUE->CORE_BUSY->END 의 state 변화가 시간순으로 일어난다.
 
-## Addressing
+## Addressing: 반영 완료
 - target → 하나 이상의 die → 각 die는 2~4 plane → plane 안에 여러 block → block 내 다수 page → page 당 TLC 셀(3bit/cell) → page 안에 LSB/CSB/MSB
 - dies: NAND device 내 여러 개의 die 존재.
 - block: die 내 Erase 의 대상이 되는 주소 단위.
@@ -14,12 +18,12 @@
 - column: page 내 byte 주소 단위. dout, datain 시 column 지정 가능
 - cell_mode: 기본 동작에 cell mode 를 지정하여 동작 가능. e.g) erase_slc, erase_tlc, read_slc, read_tlc.
 
-## Cell mode
+## Cell mode: 반영 완료
 - block 별로 cell mode 를 지정하여 erase/program/read 할 수 있다.
 - 종류: TLC/FWSLC/SLC/AESLC/A0SLC/ACSLC
 - cell mode 별로 busy latency 가 다르다.
 
-## `Basic operation` (not fully listed)
+## `Basic operation` (not fully listed): 반영 완료
 - erase: block 에 존재하는 모든 page data 를 지운다. ERASE.CORE_BUSY->ERASE.END
 - datain: program 하고자 하는 data 를 cache latch 에 채운다. DATAIN.END
 - program: erase 된 page 에 data 를 기록한다. datain 후 execution CMD 를 atomic set 로 구성한다. PROGRAM.CORE_BUSY->PROGRAM.END
@@ -64,29 +68,29 @@
 - oneshot_copyback_program_msb: copyback_read 한 데이터를 msb latch 에 적재한다. COPYBACK_PGM_MSB
 - oneshot_copyback_program_msb: copyback_read 한 데이터를 msb latch 에 적재하면서 동시에 oneshot_copyback_program 을 진행시킨다. ONESHOT_COPYBACK_PROGRAM.CORE_BUSY->ONESHOT_COPYBACK_PROGRAM.END
 - oneshot_copyback_program: copyback_read 한 데이터를 oneshot_program 방식으로 program 한다. COPYBACK_PGM_LSB->COPYBACK_PGM_CSB->(COPYBACK_MSB)->ONESHOT_COPYBACK_PROGRAM.CORE_BUSY->ONESHOT_COPYBACK_PROGRAM.END
-- data_transfer_to_cache_1st_page_tlc: oneshot_program_lsb 데이터를 read 한다. TRANSFER_LSB.CORE_BUSY->TRANSFER_LSB.DOUT->TRANSFER_LSB.END
-- data_transfer_to_cache_2nd_page_tlc: oneshot_program_csb 데이터를 read 한다. TRANSFER_CSB.CORE_BUSY->TRANSFER_CSB.DOUT->TRANSFER_LSB.END
-- data_transfer_to_cache_3rd_page_tlc: oneshot_program_msb 데이터를 read 한다. TRANSFER_MSB.CORE_BUSY->TRANSFER_MSB.DOUT->TRANSFER_LSB.END
+- data_transfer_to_cache_for_1st_page_tlc: oneshot_program_lsb 데이터를 read 한다. TRANSFER_LSB.CORE_BUSY->TRANSFER_LSB.DOUT->TRANSFER_LSB.END
+- data_transfer_to_cache_for_2nd_page_tlc: oneshot_program_csb 데이터를 read 한다. TRANSFER_CSB.CORE_BUSY->TRANSFER_CSB.DOUT->TRANSFER_LSB.END
+- data_transfer_to_cache_for_3rd_page_tlc: oneshot_program_msb 데이터를 read 한다. TRANSFER_MSB.CORE_BUSY->TRANSFER_MSB.DOUT->TRANSFER_LSB.END
 - all_wl_dummy_program: block 전체 page 들에 coerce program 을 한다. ALLWL_DUMMY_PROGRAM.CORE_BUSY->ALLWL_DUMMY_PROGRAM.END
 - dsl_vth_check: monitoring 목적의 system page data 를 출력한다. DSLVTH_CHECK.CORE_BUSY->DSLVTH_CHECK.END
 
-## Cache operation
-- cache 동작 중 dout 파이프라이닝이 가능하다.
+## `Cache operation`: 반영 완료
+- cache read 동작 중 dout 파이프라이닝이 가능하다.
 - cache_read 이후 이어지는 dout 동작은 이전 read 에 대한 data 이다.
-- cache_read 동작 중에 target plane 에 대해서 celltype 변경이나, 기본 read 동작은 허용되지 않고, cache_read_end 동작으로 cache 상태를 종료하고 나서 기본 read 동작이 허용된다.
+- cache_read 동작 중에 target plane 에 대해서 celltype 변경이나, 기본 read 동작은 허용되지 않고, cache_read_end 동작으로 cache 상태를 종료하고 나서 기본 read 동작 허용 및 celltype 이 다른 read 가 허용된다.
 - cache_program 동작 중 datain 파이프라이닝이 가능하다.
 - cache_program 동작이 진행되는 동안에는 cache_program/program 은 celltype 이 같아야 하며, 기본 program 동작으로 cache 상태를 종료하고 나서 기본 program 동작이 허용된다.
 
-## Multi-plane operation
+## Multi-plane operation: 반영 완료
 - 여러 plane 을 선택하여 동시에 erase/program/read 을 각 plane 마다 동작하게 가능하다.
 - multi-plane 동작이 끝나는 시점은 plane 마다 완전히 동일하다.
 
-## plane_interleave_read
+## plane_interleave_read: 반영 완료
 - single-plane read/cache_read 동작은 plane wide 로 동작되며, 동작 중이지 않는 plane 에 single-plane read/cache_read 동작을 추가할 수 있다.
 
 ## Resources & Rules
 
-### addr_state, addr_mode: erase/program/read address dependencies
+### addr_state, addr_mode: erase/program/read address dependencies: 반영 완료, `addrman.py`
 - erase 는 cell_mode 에 상관없이 모든 block 에 대하여 수행될 수 있지만, 초기 상태가 BADBLOCK 인 경우에는 금지된다
 - erase 되지 않은 block 에 program 할 수 없다.
 - erase 가 특정 block 에 특정 cell mode 로 수행됐다면, 해당 block 에 program/read 동일한 cell mode 로 수행해야 된다.
@@ -102,56 +106,55 @@
     - good: ((die0,plane0,block4,page32), (die0,plane2,block6,page32), (die0,plane3,block7,page32))
     - bad: ((die0,plane2,block6,page32), (die0,plane0,block4,page31), (die0,plane3,block7,page28))
 
-### IO_bus
+### IO_bus: 반영 완료
 - 제한: CMD 입력 시 ISSUE 하는 시간이 필요하고, 동시에 여러 CMD 를 중첩하여 ISSUE 할 수 없다.
 
-### latches
-- 제한: plane-level 에서 page read 후 dout 전에 erase/program 을 할 수 없다.
+### latches: 
 - NAND 의 입출력을 도와주는 cache/lsb/csb/msb latch 가 존재한다.
-- page read 후 data 는 cache latch 에 저장된다. dout 동작 전에 erase/program 수행 시 cache latch 데이터는 없어진다.
 - oneshot_program_lsb/csb/msb 에 data 는 임시로 cache latch 에 저장되고, 최종으로 lsb/csb/msb latch 로 이동된다.
+- page read 후 data 는 cache latch 에 저장된다. dout 동작 전에 erase/program 수행 시 cache latch 데이터는 없어진다.
+- 제한
+  - read_dout: plane-level 에서 page read 후 해당 plane 에서 dout 전에 erase/program 을 할 수 없다.
+  - oneshot_program: erase/program_slc/cache_program_slc/oneshot_cache_program 을 수행하면 기존에 oneshot_program_lsb/oneshot_program_csb/oneshot_program/msb 로 적재해둔 lsb/csb/msb latch 데이터가 초기화 되므로 이 동작들은 oneshot_program 이 끝날때까지 금지된다.
+    - oneshot_program_lsb 이후 oneshot_program_csb 이외의 모든 erase/program/cache_read 금지. read 는 oneshot_program 진행 중인 target (die,block,page) 가 아닌 다른 주소에 가능.
 
-### states
+### logic_states
 - 제한: 어떤 state, phase 이냐에 따라 허용되는 CMD 가 바뀌고, state 에 따라 일부 CMD 가 제한된다.
 - operation 종류에 따라 logic state 를 변하게 하는 것과 안 변하는 것으로 나뉜다.
 - operation 동작 시 state 는 여러 phase 를 가지고, 시간에 따라서 변한다. e.g) READ.ISSUE->READ.CORE_BUSY->READ.END
 - operation 종류에 따라 plane-level, die-level, global-level 에서 state 가 바뀌게 된다.
-- erase/program 은 single-plane, multi-plane 상관없이 동작 시 die-wide 로 일부 CMD 를 제외하고 모든 plane 에서 erase/program/read 가 금지된다.
+- erase/program 은 동작 시 die-wide 로 모든 plane 의 state 가 바뀌게 되고 동작 중에는 모든 plane 에서 erase/program/read 가 금지된다.
 - read 는 single-plane 동작에 한해서, 동작하지 않는 IDLE 상태의 plane 에 동시에 read 가 가능하다. 이는 multi-plane 동작과는 다른 것으로 plane_interleave_read 라고 부른다
 - read_status, reset 등의 operation 은 state 에 상관없이 동작 가능하다.
-- single-plane 동작과 multi-plane 동작, multi-plane 동작과 multi-plane 동작은 overlap 될 수 없다.
+- single-plane x multi-plane, multi-plane x multi-plane 동작은 overlap 될 수 없다.
 - 그 외 state 별 operation 제약은 별도의 파일에 정의한다; `op_specs.yaml`
 
-#### state 종류 (not fully listed)
+#### logic_state 종류 (not fully listed)
 - IDLE
 - ERASE.CORE_BUSY
 - PROGRAM.CORE_BUSY
 - READ.CORE_BUSY
 - RESET.CORE_BUSY
 - SUSPEND.CORE_BUSY
-- 그 외 `Basic operation` 에서 언급한 것들
-- 추후 추가할 예정
+- 실제 쓰이는 것은 `config.yaml` 파일에 정의
 
-### cache_state
+### cache_state: 반영 완료
 - 제한
-  - cache_read 이 진행 중일 때는 cache_read_end 동작 없이 기본 read 는 허용되지 않고, cache_read, dout 만 허용하되 target plane 을 바꾸거나 celltype 을 바꾸어서는 안된다.
-  - cache_program 이 진행 중일 때는 기본 program 동작으로 cache_program 상태를 종료할 수 있다. cache_program 종료 없이 target plane 이나 celltype 을 바꾸어서는 안된다.
+  - cache_read 이 진행 중일 때는 cache_read_end 동작 없이 기본 read 는 허용되지 않고, cache_read, dout 등 만 허용하되 target plane 안에서는 celltype 을 바꾸어서는 안된다. cache_read_end 이후에는 가능하다.
+  - cache_program 이 진행 중일 때는 기본 program 동작으로 cache_program 상태를 종료할 수 있다. cache_program 종료 없이 target plane 이나 celltype 을 바꾸어서는 안된다. cache_program_end 이후에는 가능하다.
 - target plane 에 대해서 cache_read 진행중임을 나타내는 상태 값이 필요하다
 - target die 에 대해서 cache_program 진행중임을 나타내는 상태 값이 필요하다
-
-### suspend_states
+  
+### suspend_states: 반영 완료
 - 제한: 아래 세가지 종류가 있고, 종류에 따라 허용되는 operation 이 달라진다.
 - erase_suspend: erase 동작이 중단된 상태
 - program_suspend: program 동작이 중단된 상태
-- nested_suspend: erase_suspend->program_suspend 순서로 suspend 가 중단된 상태
-- resume 동작이 수행되면, 멈춰있던 erase/program 동작이 재개된다. state, phase 는 마지막 저장된 것으로 복원된다.
+- nested_suspend: erase_suspend->program_suspend 순서로 suspend 중첩된 상태. program_suspend->erase_suspend 순서는 불가능하다.
+- resume 동작이 수행되면, 멈춰있던 erase/program 동작이 재개된다. logic_state 는 마지막 저장된 것으로 복원된다.
 - reset 동작이 수행되면 suspend states 는 모두 없어지고 erase/proogram 동작은 reset 된다.
 
-### ODT_state
+### odt_state: 반영 완료
 - 제한: ODT_disable operation 동작 시 특정 operation 의 허용이 제한되고, ODT_reenable 입력 시 그 제한이 풀린다.
 
-### write_protect_state
-- 제한: write_protection operation 동작 시 erase, program 이 제한된다.
-
-### etc_states
+### etc_states: 반영 완료
 - 추후 디자인 필요하지만 현재는 필요 없음: 특정 set_parameter, set_feature operation 에 의해 상태가 변할 수 있다.

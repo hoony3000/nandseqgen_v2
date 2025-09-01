@@ -32,7 +32,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_erase
         duration: 8.0
   PROGRAM_SLC:
     scope: "DIE_WIDE"
@@ -43,7 +42,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_program
         duration: 8.0
   CACHE_PROGRAM_SLC:
     scope: "DIE_WIDE"
@@ -60,11 +58,9 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_program
         duration: 8.0
       - DATA_IN:
         bus: false
-        exclusion: on_datain
         duration: 8.0
   ONESHOT_PROGRAM_LSB:
     scope: "DIE_WIDE"
@@ -82,7 +78,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_program
         duration: 8.0
   ONESHOT_PROGRAM_CSB:
     scope: "DIE_WIDE"
@@ -93,7 +88,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_program
         duration: 8.0
   ONESHOT_PROGRAM_MSB:
     scope: "DIE_WIDE"
@@ -104,7 +98,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_program
         duration: 8.0
   ONESHOT_PROGRAM_EXEC_MSB:
     scope: "DIE_WIDE"
@@ -115,7 +108,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_program
         duration: 8.0
   ONESHOT_CACHE_PROGRAM:
     scope: "DIE_WIDE"
@@ -126,11 +118,9 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_program
         duration: 8.0
       - DATA_IN:
         bus: false
-        exclusion: on_datain
         duration: 8.0
   READ:
     scope: "PLANE_SET"
@@ -148,11 +138,9 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_read
         duration: 8.0
       - DATA_OUT:
         bus: false
-        exclusion: on_dout
         duration: 2.0
   READ4K:
     scope: "PLANE_SET"
@@ -168,11 +156,9 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_read
         duration: 8.0
       - DATA_OUT:
         bus: false
-        exclusion: on_dout
         duration: 2.0
   CACHE_READ:
     scope: "PLANE_SET"
@@ -183,11 +169,9 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_read
         duration: 8.0
       - DATA_OUT:
         bus: false
-        exclusion: on_dout
         duration: 2.0
   CACHE_READ_END:
     scope: "PLANE_SET"
@@ -198,7 +182,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_read
         duration: 8.0
   PLANE_READ:
     scope: "PLANE_SET"
@@ -216,11 +199,9 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_plane_read
         duration: 8.0
       - DATA_OUT:
         bus: false
-        exclusion: on_dout
         duration: 2.0
   PLANE_READ4K:
     scope: "PLANE_SET"
@@ -236,11 +217,9 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_plane_read
         duration: 8.0
       - DATA_OUT:
         bus: false
-        exclusion: on_dout
         duration: 2.0
   PLANE_CACHE_READ:
     scope: "PLANE_SET"
@@ -264,7 +243,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_plane_read
         duration: 8.0
   COPYBACK_READ:
     scope: "PLANE_SET"
@@ -284,11 +262,9 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_read
         duration: 8.0
       - DATA_OUT:
         bus: false
-        exclusion: on_dout
         duration: 2.0
   COPYBACK_PROGRAM_SLC:
     scope: "DIE_WIDE"
@@ -299,7 +275,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_program
         duration: 8.0
   ONESHOT_COPYBACK_PROGRAM_LSB:
     scope: "DIE_WIDE"
@@ -310,7 +285,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_program
         duration: 8.0
   ONESHOT_COPYBACK_PROGRAM_CSB:
     scope: "DIE_WIDE"
@@ -321,7 +295,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_program
         duration: 8.0
   ONESHOT_COPYBACK_PROGRAM_MSB:
     scope: "DIE_WIDE"
@@ -332,7 +305,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_program
         duration: 8.0
   ONESHOT_COPYBACK_PROGRAM_EXEC_MSB:
     scope: "DIE_WIDE"
@@ -343,7 +315,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_program
         duration: 8.0
   DOUT:
     scope: "NONE"
@@ -382,7 +353,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_camread
         duration: 8.0
   CAMREAD_LUN:
     scope: "DIE_WIDE"
@@ -393,7 +363,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_camread
         duration: 8.0
   ERASE_SUSPEND:
     scope: "DIE_WIDE"
@@ -404,7 +373,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_busy
         duration: 8.0
   ERASE_RESUME:
     scope: "DIE_WIDE"
@@ -415,7 +383,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_busy
         duration: 8.0
   PROGRAM_SUSPEND:
     scope: "DIE_WIDE"
@@ -426,7 +393,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_busy
         duration: 8.0
   PROGRAM_RESUME:
     scope: "DIE_WIDE"
@@ -437,7 +403,6 @@ op_bases:
         duration: 0.4
       - CORE_BUSY:
         bus: false
-        exclusion: on_busy
         duration: 8.0
   TRAINING:
     scope: "NONE"
@@ -571,7 +536,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
     - READ4K
@@ -606,12 +571,60 @@ exclusion_groups:
     - GETFEATURE
     - SETFEATURE_LUN
     - GETFEATURE_LUN
-    - RESET
-    - RESET_LUN
+    # - RESET
+    # - RESET_LUN
     - TEMPSENSOR
     - ZQCAL
     - ODTDISABLE
     - ODTENABLE
+  write_protect:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_MSB
+    - ONESHOT_CACHE_PROGRAM
+    # - READ
+    # - READ4K
+    # - CACHE_READ
+    # - CACHE_READ_END
+    # - PLANE_READ
+    # - PLANE_READ4K
+    # - PLANE_CACHE_READ
+    # - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    # - DOUT
+    # - DATAIN
+    # - SR
+    # - SR_ADD
+    # - CAMREAD
+    # - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    # - TRAINING
+    # - READID
+    # - SETPARA
+    # - GETPARA
+    # - PLANE_SETPARA
+    # - SETFEATURE
+    # - GETFEATURE
+    # - SETFEATURE_LUN
+    # - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    # - TEMPSENSOR
+    # - ZQCAL
+    # - ODTDISABLE
+    # - ODTENABLE
   on_camread:
     - ERASE
     - PROGRAM_SLC
@@ -619,7 +632,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
     - READ4K
@@ -667,7 +680,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
     - READ4K
@@ -702,25 +715,25 @@ exclusion_groups:
     - GETFEATURE
     - SETFEATURE_LUN
     - GETFEATURE_LUN
-    - RESET
-    - RESET_LUN
+    # - RESET
+    # - RESET_LUN
     - TEMPSENSOR
     - ZQCAL
     - ODTDISABLE
     - ODTENABLE
-  on_datain:
+  on_cache_dout:
     - ERASE
     - PROGRAM_SLC
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
     - READ4K
-    - CACHE_READ
-    - CACHE_READ_END
+    # - CACHE_READ
+    # - CACHE_READ_END
     - PLANE_READ
     - PLANE_READ4K
     - PLANE_CACHE_READ
@@ -731,8 +744,8 @@ exclusion_groups:
     - ONESHOT_COPYBACK_PROGRAM_CSB
     - ONESHOT_COPYBACK_PROGRAM_MSB
     - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
-    - DOUT
-    # - DATAIN
+    # - DOUT
+    - DATAIN
     # - SR
     # - SR_ADD
     - CAMREAD
@@ -750,29 +763,413 @@ exclusion_groups:
     - GETFEATURE
     - SETFEATURE_LUN
     - GETFEATURE_LUN
-    - RESET
-    - RESET_LUN
+    # - RESET
+    # - RESET_LUN
     - TEMPSENSOR
     - ZQCAL
     - ODTDISABLE
     - ODTENABLE
-  on_read:
+  on_plane_cache_dout:
     - ERASE
     - PROGRAM_SLC
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
-    # - READ
-    # - READ4K
-    # - CACHE_READ
-    # - CACHE_READ_END
-    # - PLANE_READ
-    # - PLANE_READ4K
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
     # - PLANE_CACHE_READ
     # - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    # - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  after_read:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_MSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    # - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  after_copyback_read:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_MSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    # - COPYBACK_PROGRAM_SLC
+    # - ONESHOT_COPYBACK_PROGRAM_LSB
+    # - ONESHOT_COPYBACK_PROGRAM_CSB
+    # - ONESHOT_COPYBACK_PROGRAM_MSB
+    # - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    # - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  after_oneshot_copyback_program_lsb:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_MSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    # - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    # - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  after_oneshot_copyback_program_csb:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_MSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    # - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    # - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  after_oneshot_copyback_program_msb:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_MSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    # - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    # - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  after_cache_read:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_MSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    # - CACHE_READ
+    # - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    # - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  after_plane_cache_read:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_MSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    # - PLANE_CACHE_READ
+    # - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    # - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  on_cache_program_datain:
+    - ERASE
+    - PROGRAM_SLC
+    # - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_MSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
     - COPYBACK_READ
     - COPYBACK_PROGRAM_SLC
     - ONESHOT_COPYBACK_PROGRAM_LSB
@@ -789,7 +1186,7 @@ exclusion_groups:
     - ERASE_RESUME
     - PROGRAM_SUSPEND
     - PROGRAM_RESUME
-    # - TRAINING
+    - TRAINING
     - READID
     - SETPARA
     - GETPARA
@@ -801,22 +1198,310 @@ exclusion_groups:
     # - RESET
     # - RESET_LUN
     - TEMPSENSOR
-    # - ZQCAL
+    - ZQCAL
     - ODTDISABLE
     - ODTENABLE
-  on_plane_read:
+  after_cache_program:
+    - ERASE
+    # - PROGRAM_SLC
+    # - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_MSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  on_oneshot_cache_program_datain:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    # - ONESHOT_PROGRAM_LSB
+    # - ONESHOT_PROGRAM_CSB
+    # - ONESHOT_PROGRAM_MSB
+    # - ONESHOT_PROGRAM_EXEC_MSB
+    # - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  after_oneshot_cache_program:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    # - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_MSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  after_oneshot_program_lsb:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    # - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_MSB
+    - ONESHOT_CACHE_PROGRAM
+    # - READ
+    # - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    # - PLANE_READ
+    # - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  after_oneshot_program_csb:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    # - ONESHOT_PROGRAM_MSB
+    # - ONESHOT_PROGRAM_EXEC_MSB
+    # - ONESHOT_CACHE_PROGRAM
+    # - READ
+    # - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    # - PLANE_READ
+    # - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  after_oneshot_program_msb:
     - ERASE
     - PROGRAM_SLC
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_EXEC_LSB
-    - ONESHOT_CACHE_PROGRAM
+    # - ONESHOT_PROGRAM_EXEC_MSB
+    # - ONESHOT_CACHE_PROGRAM
     # - READ
     # - READ4K
-    # - CACHE_READ
-    # - CACHE_READ_END
+    - CACHE_READ
+    - CACHE_READ_END
+    # - PLANE_READ
+    # - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    - DOUT
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
+    - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  on_read:
+    - ERASE
+    - PROGRAM_SLC
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_EXEC_MSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
     - PLANE_READ
     - PLANE_READ4K
     - PLANE_CACHE_READ
@@ -859,7 +1544,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
     - READ4K
@@ -907,7 +1592,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
     - READ4K
@@ -955,7 +1640,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
     - READ4K
@@ -994,7 +1679,7 @@ exclusion_groups:
     # - RESET_LUN
     # - TEMPSENSOR
     # - ZQCAL
-    # - ODTDISABLE
+    - ODTDISABLE
     # - ODTENABLE
   erase_suspended:
     - ERASE
@@ -1003,7 +1688,7 @@ exclusion_groups:
     # - ONESHOT_PROGRAM_LSB
     # - ONESHOT_PROGRAM_CSB
     # - ONESHOT_PROGRAM_MSB
-    # - ONESHOT_PROGRAM_EXEC_LSB
+    # - ONESHOT_PROGRAM_EXEC_MSB
     # - ONESHOT_CACHE_PROGRAM
     # - READ
     # - READ4K
@@ -1051,7 +1736,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     # - READ
     # - READ4K
@@ -1099,7 +1784,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_EXEC_LSB
+    - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     # - READ
     # - READ4K
@@ -1140,6 +1825,87 @@ exclusion_groups:
     # - ZQCAL
     - ODTDISABLE
     - ODTENABLE
+
+exclusions_by_op_state:
+  ERASE.CORE_BUSY: ['on_erase']
+  ERASE.END: []
+  PROGRAM_SLC.CORE_BUSY: ['on_program']
+  PROGRAM_SLC.END: []
+  CACHE_PROGRAM_SLC.CORE_BUSY: ['on_program']
+  CACHE_PROGRAM_SLC.END: ['after_cache_program']
+  ONESHOT_PROGRAM_LSB.CORE_BUSY: ['on_busy'] 
+  ONESHOT_PROGRAM_LSB.END: ['after_oneshot_program_lsb']
+  ONESHOT_PROGRAM_CSB.CORE_BUSY: ['on_busy']
+  ONESHOT_PROGRAM_CSB.END: ['after_oneshot_program_csb']
+  ONESHOT_PROGRAM_MSB.CORE_BUSY: ['on_busy']
+  ONESHOT_PROGRAM_MSB.END: ['after_oneshot_program_msb']
+  ONESHOT_PROGRAM_EXEC_MSB.CORE_BUSY: ['on_program']
+  ONESHOT_PROGRAM_EXEC_MSB.END: []
+  ONESHOT_CACHE_PROGRAM.CORE_BUSY: ['on_program']
+  ONESHOT_CACHE_PROGRAM.DATA_IN: ['on_oneshot_cache_program_datain']
+  ONESHOT_CACHE_PROGRAM.END: ['after_oneshot_cache_program']
+  READ.CORE_BUSY: ['on_read']
+  READ.DATA_OUT: ['on_dout']
+  READ.END: ['after_read']
+  READ4K.CORE_BUSY: ['on_read']
+  READ4K.DATA_OUT: ['on_dout']
+  READ4K.END: ['after_read']
+  CACHE_READ.CORE_BUSY: ['on_read']
+  CACHE_READ.DATA_OUT: ['on_cache_dout']
+  CACHE_READ.END: ['after_cache_read']
+  PLANE_READ.CORE_BUSY: ['on_read']
+  PLANE_READ.DATA_OUT: ['on_plane_cache_dout']
+  PLANE_READ.END: ['after_plane_cache_read']
+  PLANE_READ4K.CORE_BUSY: ['on_read']
+  PLANE_READ4K.DATA_OUT: ['on_dout']
+  PLANE_READ4K.END: ['after_read']
+  PLANE_CACHE_READ.CORE_BUSY: ['on_read']
+  PLANE_CACHE_READ.DATA_OUT: ['on_plane_cache_dout']
+  PLANE_CACHE_READ.END: ['after_plane_cache_read']
+  COPYBACK_READ.CORE_BUSY: ['on_read']
+  COPYBACK_READ.DATA_OUT: ['on_dout']
+  COPYBACK_READ.END: ['after_read']
+  COPYBACK_PROGRAM_SLC.CORE_BUSY: ['on_program']
+  COPYBACK_PROGRAM_SLC.END: []
+  ONESHOT_COPYBACK_PROGRAM_LSB.CORE_BUSY: ['on_busy']
+  ONESHOT_COPYBACK_PROGRAM_LSB.END: ['after_oneshot_copyback_program_lsb']
+  ONESHOT_COPYBACK_PROGRAM_CSB.CORE_BUSY: ['on_busy']
+  ONESHOT_COPYBACK_PROGRAM_CSB.END: ['after_oneshot_copyback_program_csb']
+  ONESHOT_COPYBACK_PROGRAM_MSB.CORE_BUSY: ['on_busy']
+  ONESHOT_COPYBACK_PROGRAM_MSB.END: ['after_oneshot_copyback_program_msb']
+  ONESHOT_COPYBACK_PROGRAM_EXEC_MSB.CORE_BUSY: ['on_program']
+  ONESHOT_COPYBACK_PROGRAM_EXEC_MSB.END: []
+  CAMREAD.CORE_BUSY: ['on_camread']
+  CAMREAD.END: []
+  CAMREAD_LUN.CORE_BUSY: ['on_camread']
+  CAMREAD_LUN.END: []
+  ERASE_SUSPEND.CORE_BUSY: ['on_busy']
+  ERASE_RESUME.CORE_BUSY: ['on_busy']
+  PROGRAM_SUSPEND.CORE_BUSY: ['on_busy']
+  PROGRAM_RESUME.CORE_BUSY: ['on_busy']
+  RESET.CORE_BUSY: ['on_busy']
+  RESET.END: []
+  RESET_LUN.CORE_BUSY: ['on_busy']
+  RESET_LUN.END: []
+
+exclusions_by_latch_state:
+  LATCH_ON_READ: ['after_read']
+  LATCH_ON_LSB: ['after_oneshot_program_lsb']
+  LATCH_ON_CSB: ['after_oneshot_program_csb']
+  LATCH_ON_MSB: ['after_oneshot_program_msb']
+
+exclusions_by_suspend_state:
+  ERASE_SUSPEND: ['erase_suspend']
+  PROGRAM_SUSPEND: ['program_suspend']
+  RESET_SUSPEND: ['nested_suspended']
+
+exclusions_by_odt_state:
+  ODT_DISABLE: ['odt_disable']
+
+exclusions_by_cache_state:
+  ON_CACHE_READ: ['after_cache_read']
+  ON_CACHE_PROGRAM: ['after_cache_program']
+  ON_ONESHOT_CACHE_PROGRAM: ['after_oneshot_cache_program']
 
 maxplanes: 4
 seq_maxloop: 4
@@ -1636,7 +2402,7 @@ op_names:
     durations:
       ISSUE: 9.9444
   Change_Row_Address:
-    base: DEFAULT
+    base: DATAIN
     multi: false
     celltype: NONE
     durations:
@@ -3188,7 +3954,7 @@ op_names:
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 2.248
+      ISSUE: 0.125
   Read_Cache_Random_FWSLC:
     base: CACHE_READ
     multi: false

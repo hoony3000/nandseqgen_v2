@@ -35,21 +35,21 @@
 - address(die,block,page) 별 program, read 동작 수행 횟수
 - 시각화: heatmap
 
-### operation timeline
+### `operation timeline`
 - operation 의 다양성과, operation 간의 충돌이 존재하는지 확인하기 위한 데이터
 - 파일형태: csv
 - 필수 field: start,end,die,plane,block,page,op_name,op_base,source,op_uid,op_state
 - (die,block) 별 operation timeline
 - 시각화: gantt 차트
 
-### op_state timeline
+### `op_state timeline`
 - op_state 에서 허용되지 않는 operation 이 수행됐는지, plane/die level 에서 충돌은 없는지 확인하기 위한 데이터
 - 파일형태: csv
 - 필수 field: start,end,die,plane,op_state,lane,op_name,op_state,duration
 - (die,plane) 별 op_state_phase timeline
 - 시각화: gantt 차트
 
-### op_state x op_name x input_time count
+### `op_state x op_name x input_time count`
 - 다양한 op_state 에서 다양한 operation 가 다양한 시점에서 실제로 수행되는지 확인하기 위한 데이터. 실제 operation 이 propose 될 때 참조한 op_state 를 사용
 - 파일형태: csv
 - 필수 field: op_state,op_name,input_time,count
@@ -57,7 +57,7 @@
 - input_time: 0~1 사이의 소수. op_state 의 전체 duration 에서 어느 시점에서 operation 이 schedule 됐는지 나타냄.
 - 시각화: histogram
 
-## 달성 지표
+## `달성 지표`
 - `op_state x op_name x input_time count` 의 고른 분포가 실질적인 지표 -> 정량적인 지표 필요
 - sequence 평균 생성 속도 >= 2000개/초
 - operation sequence 의 validation check 모두 통과
@@ -85,8 +85,6 @@
     - scope, affect_state, sequence, states:: op_base 에서 상속
     - states['state_name'][duration]: op_names['op_name']['duraions']['state_name'] 의 값으로 대체
   - groups_by_base: base 가 동일한 op_name 들을 list 로 만들고, `Proposer`, `Validator` 에서 사용
-  - exclusions: `ResourceManager` 에서 exclusion_window 를 관리할 때 사용
-    - op_name.state_name: exclusion_groups[op_bases['op_base']['state_name']['exclusion']] 값으로 채운다.
 
 ### `Proposer`
 - op_state 에 따라 어떤 operation 을 어느 time 에 스케쥴링 제안을 할지 확률적으로 샘플링 한다.
@@ -99,20 +97,49 @@
   - sequence 의 순서는 보장되어야 하며 순차적으로 스케쥴링 된다. 하지만 validity check 를 유발하지 않는 operation 은 sequence 중간에 스케쥴링 가능하다.
   - sequence 를 제안할 때는 우선 sequence 내 모든 operation 을 가상으로 추가했을 때 validity 를 만족하는지 `Validator` 를 통해서 확인하고 나서 제안한다.
   - sequence 를 구성하는 각 operation 은 schedule 에 우선 예약되어야 하며, 각 operation 마다 끝나는 시간을 예상해서 예약 시간을 정하고, event_hook 을 그 시점에 맞춰 생성할 수 있도록 `Scheduler` 에 정보를 전달한다.
+  - sequence 중 일부가 스케쥴에서 누락되어서는 안되며, 무조건 실행되어야 한다.
 - `ResourceManager` 에 요청하여 각종 state 값을 참조하여, 특정 operation 은 제외하고, 최종적으로 operation, target address(필요 시) 를 선정한다.
-- 샘플링 순서: 현재 시각 기준 후보 time 선정 -> op_state_probs 참조 후 확률 값 0 인 후보 제외 -> `ResourceManager` 의 resource 값으로 operation 제외 -> operation 선정 -> erase/program/read 가 후보라면 target address 샘플링
+- 샘플링 단계:
+  1. 현재 시각 기준 후보 time 선정
+  2. op_state_probs 참조 후 확률 값 0 인 후보 제외
+  3. 제안하는 time 시점에서의 op_state_timeline 값을 확인 후 `CFG`['exclusions_by_state'] 를 참조하여 operation 종류 제외
+  4. cache_state 에 대한 고려: `ResourceManager` 의 cache_state 를 참조해 celltype 으로 operation 제외: cache operation 중일 경우 cache end 전까지 target plane(for cache_read), die(for cache_program) 에 대해 동일한 celltype 의 후속 cache_read/cache_program 이 동작되어야 한다.
+  5. operation 선정
+  6. erase/program/read 가 후보라면 target address 샘플링
 - attributes
   - `CFG`
   - op_state_probs
 
 ### `ResourceManager`
 - `NAND_BASICS_N_RULES.md` Resources & Rules 항목 참조
-- 관리 대상: addr_state, addr_mode, IO_bus, exclusion_window, latches, logic_states, suspend_states, odt_state, write_protect_state, etc_states
+- 관리 대상: addr_state, addr_mode, IO_bus, exclusion_windows, latches, op_state_timeline, suspend_states, odt_state, cache_state, etc_states
 - resource 현재 또는 미래 시점의 값의 상태를 관리한다.
 - `AddressManager` 의 addr_state, addr_mode 값은 현재 시점을 참조할 때 사용하고, 미래 시점의 값은 별도로 관리한다.
-- attribuets
+- state_timeline 관리 방법
+  - operation 이 스케쥴 될 때, operation 의 모든 logic_state 를 op_state_timeline 에 등록하고, 추가로 op_name.END state 를 마지막에 추가한다. end_time 은 'enf' 로 등록한다. 이렇게 하는 목적은 `달성 지표` 중 op_state x op_name x input_time 의 다양성을 확보하기 위해서이다
+  - SUSPEND->RESUME
+    - ERASE_SUSPEND/PROGRAM_SUSPEND/ERASE_RESUME/PROGRAM_SUSPEND operation 은 END state 를 추가하지 않는다
+    - resume 시에 이전에 중단됐던 operation 의 state 중 마저 진행하지 못했던 state 중 ISSUE 를 제외한, CORE_BUSY 와 END state 를 다시 추가한다.
+  - RESET/RESET_LUN 동작이 스케쥴되면, RESET 의 경우 모든 die 에 대한 동작 및 state 가 초기화 된다.
+- attributes
   - `CFG`
-  - addr_state, addr_mode, IO_bus, exclusion_window, latches, logic_states, suspend_states, odt_state, write_protect_state, etc_states
+  - addr_state: (die,block) 마다 현재 data 기록 상태 저장. e.g) -2:BAD, -1: ERASE, 0~pagesize-1: last_pgmed_page_address
+  - addr_mode: (die,block) 마다 erase 할 떄 celltype 등록
+  - IO_bus: ISSUE timeline 등록.
+  - exclusion_windows: `CFG`['op_specs']['op_name']['multi'] 참조하여 die level 에서 single x multi, multi x multi 가 overlap 될 수 없게 금지 구간 등록 관리
+  - latches
+    - read: (die, plane) target, program: die-wide target
+    - read/oneshot_program_lsb/oneshot_program_csb/oneshot_program_msb 진행 직후 특정 latch lock 및 금지되는 exclusion_group 존재
+      - read/cache_read 완료 후 cache_latch lock: `CFG`['exclusion_groups']['after_read']
+      - oneshot_program_lsb 완료 후 lsb_latch lock: `CFG`['exclusion_groups`]['after_program_lsb'] 로 operation 금지
+      - oneshot_program_csb 완료 후 csb_latch lock: `CFG`['exclusion_groups`]['after_program_csb'] 로 operation 금지
+      - oneshot_program_msb 완료 후 msb_latch lock: `CFG`['exclusion_groups`]['after_program_msb'] 로 operation 금지 
+  - op_state_timeline: (die,plane) target. logic_state timeline 등록. state 에 따른 exclusions_by_op_state 에 list
+  - suspend_states: (die) target. suspend_states on/off 등록. suspend_states 에 따른 exclusions_by_suspend_state 에 list
+  - odt_state: odt_state on/off 등록. odt_state 에 따른 exclusions_by_odt_state 에 list
+  - cache_state: (die,plane) target. cache_read, cache_program 이 진행 중인지 관리.
+  - etc_states: 현재 미사용. 추후 관리
+  - suspeded_ops: erase_suspend/program_suspend/nested_suspend 시에 중단됐던 operation 의 정보를 저장. 이후 resume 시에 재개 시 필요한 resource 들에 등록하여 복구한다. 예를 들어, logic_state timeline 의 경우 suspend 시 그 시점 이후의 operation 의 state 정보는 저장 후 삭제하고, resume 시 정보를 복구해서 등록한다
 
 ### `AddressManager`
 - `addrman.py` 에 이미 구현됨
@@ -131,17 +158,17 @@
 - `NAND_BASICS_N_RULES.md` 의 내용을 기본으로 rule 을 조건식을 만들어 미리 저장해 두고 사용한다.
 - validation 항목
   - epr_dependencies
+    - reserved_at_past_addr_state: operation 예약 시 예약된 addr_state 변화 값이 아닌 과거 값을 기반으로 예약
     - program_before_erase
     - read_before_program
     - programs_on_same_page
     - read_page_on_offset_guard
+    - different_celltypes_on_same_block
   - IO_bus_overlap
-  - exclusion_window
-  - latch_not_released
+  - exclusion_window_violation
+  - erase_program_on_latch_lock
   - logic_state_overlap
-  - operation_on_erase_suspended
-  - operation_on_program_suspended
-  - operation_on_nested_suspended
+  - erase_on_erase_suspended: 
   - operation_on_odt_disable
   - erase_program_on_write_protect
 - attributes
@@ -153,19 +180,34 @@
 - **중요**: operation 을 예약하면서 동시에 phase_hook 을 생성하여 heappush 하고 다음 턴에 heappop 으로 참조하여 동작 중인 operation 의 op_state, input_time 에 다양한 operation 이 스케쥴될 수 있게 drive 한다.
 - 이전 erase/program/read 에 사용된 address 를 저장해두고, operation sequence 생성시에 이전 address 값을 참고한다.
 - 시뮬레이션 시간을 정할 수 있으며, 시뮬레이션이 끝나면 `필수 아웃풋`, `달성 지표` 를 출력한다.
+- 여러번 반복해서 돌릴 수 있어야 한다. 한 턴이 끝날때 마다 `ResourceManager` 의 state_timeline, bus 등의 snapshot 을 파일로 저장하고, 다음 턴에서 이어 받아 재개할 수 있도록 한다.
+- attributes
+  - `ResourceManager`
+  - `Proposer`
 
-## 워크 플로우 (high-level)
+## 워크 플로우 (draft)
 - 초기화: `Proposer`, `ResourceManager`, `AddressManager`, `Validator`, `Scheduler` 인스턴스 생성
 - runtime 정의 후 scheduler runtime 실행
   - `Scheduler` 에서 초기 event_hook 생성 후 heappush
   - while loop 으로 event_hook 을 heappop 하여 `Proposer` 를 호출하고, 새로운 operation 을 스케쥴한다
 
+## 필수 Unit Test (draft)
+- suspend->resume test: suspend->resume 후에 중단됐던 erase/program 이 다시 스케쥴되고, state_timeline 이 의도대로 변경되는지 검증
+- operation exclusion 의 모든 단계가 제대로 동작하는지 검증
+  - exclusions_by_op_state: (die,plane)
+  - exclusions_by_latch_state: (die,plane)
+  - exclusions_by_suspend_state: (die)
+  - exclusions_by_odt_state: global
+  - exclusions_by_cache_state: (die,plane)
+  - exclusions_by_write_protect_state: global
+- 그 외
+
 ## Open questions
-- **중요**:예약된 operation 과 runtime 으로 제안된 operation 의 우선 순위 조정 메커니즘은 어떻게 할 것인가? 단일 rail timeline 으로 runtime 으로 제안된 operation 이 예약된 operation 들의 validity 를 깨뜨리지 않으면 스케쥴 가능하다.
-- state 별 oper
+- **중요**:예약된 operation 과 runtime 으로 제안된 operation 의 우선 순위 조정 메커니즘은 어떻게 할 것인가?
+  - 대안1: 단일 rail timeline 으로 runtime 으로 제안된 operation 이 예약된 operation 들의 validity 를 깨뜨리지 않으면 스케쥴 가능하다.
 
 ## 예상 risks
-- research 후 작성
+- operation sequenc 제안이 계속 거절될 수 있다.
 
 
 
