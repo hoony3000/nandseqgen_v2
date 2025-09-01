@@ -4112,13 +4112,17 @@ op_names:
       CORE_BUSY: *read_16k_slc_busy
       DOUT: *read_16k_dout
 
-phase_conditional:
+phase_conditional: {}
   # to be autofilled
-  READ.CORE_BUSY:
-    - Read_SLC: 0.0
-    - Read_SLC_AARV: 0.0
-  READ.DOUT:
-    - Read_SLC: 0.0
-  READ.END:
-    - Read_SLC: 0.0
-    - Read_SLC_AARV: 0.0
+  # op_state1:
+  #   op_name1: 0.01
+  #   op_name2: 0.01
+  #   ...
+  # op_state2:
+  #   op_name1: 0.01
+  #   op_name2: 0.01
+  #   ...
+phase_conditional_overrides:
+  # op_base->value
+  RESET: 0.001
+  RESET_LUN: 0.001

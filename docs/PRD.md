@@ -23,7 +23,7 @@
 - 필수 field: seq,time,op_id,op_name,payload
 - payload 는 op_name 에 따라 다르며, 이것을 사용자가 정의하고 관리할 수 있어야 한다.
 - 예시
-  - seq,time_op_id,op_name,op_uid,payload
+  - seq,time,op_id,op_name,op_uid,payload
   - 5,101.0,4,SIN_PROGRAM,"[{""die"":0,""pl"":0,""block"":0,""page"":0}]"
   - 17,301.0,3,MUL_ERASE,"[{""die"":0,""pl"":0,""block"":4,""page"":0},{""die"":0,""pl"":1,""block"":1,""page"":0}]"
   - 6,121.0,8,SR,"{""die"":0,""pl"":0,""block"":0,""page"":0}"
@@ -45,7 +45,7 @@
 ### `op_state timeline`
 - op_state 에서 허용되지 않는 operation 이 수행됐는지, plane/die level 에서 충돌은 없는지 확인하기 위한 데이터
 - 파일형태: csv
-- 필수 field: start,end,die,plane,op_state,lane,op_name,op_state,duration
+- 필수 field: start,end,die,plane,op_state,lane,op_name,duration
 - (die,plane) 별 op_state_phase timeline
 - 시각화: gantt 차트
 
@@ -74,7 +74,7 @@
   - sequence: operation 제안 시 sequence 의 형태로 제안할 경우 가능한 case 선언
     - probs: 각 case 별 확률
     - inherit: 후속 operation 의 상속 조건 명시
-- max_planes: multi-plane 동작 시 시도 가능한 최대 plane 갯수
+- maxplanes: multi-plane 동작 시 시도 가능한 최대 plane 갯수
 - seq_maxloop: sequence 생성 시 최대 길이
 - generate_seq_rules: sequence 생성 시 규칙
 - latencies: operation 별 state 의 latency 값
@@ -83,17 +83,23 @@
 - **중요**: runtime 으로 만들어야 하는 항목
   - op_specs: op_bases 의 format 을 상속하고 값은 op_names 를 참고하여 operation 별 parameter 를 생성
     - scope, affect_state, sequence, states:: op_base 에서 상속
-    - states['state_name'][duration]: op_names['op_name']['duraions']['state_name'] 의 값으로 대체
+    - states['state_name'][duration]: op_names['op_name']['durations']['state_name'] 의 값으로 대체
   - groups_by_base: base 가 동일한 op_name 들을 list 로 만들고, `Proposer`, `Validator` 에서 사용
+  - phase_conditional
+    1. op_specs 의 key 값인 op_name 과 states 를 결합하여 만든 모든 op_name.state 생성 후 이것을 phase_conditional 의 기본 key 값으로 사용.
+    2. op_name.state 의 하위 key 값은 CFG[op_names]의 모든 op_name 을 기본으로 이 중에서 CFG[exclusion_groups][CFG[exclusions_by_state[op_name.state]]] 인 op_base 의 값으로 후보들을 제외함(groups_by_base 활용).
+    3. 남은 후보들 중 특별히 가중치를 설정해야 할 operation 들은 `config.yaml` 파일에 phase_conditional_overrides 로 명시하여 override 한다(e.g RESET 등). 이 때 exclusion 으로 제외된 op_name 들은 override 에서도 제외시킨다.
+    4. override 하지 않은 후보들의 확률은 random sample 으로 전체 확률값의 합이 1 로 만든다
+    5. 이 방식으로 초기 확률값을 만들어 `op_state_probs.yaml` 파일에 저장하고, 추후 필요시 값들을 수동으로 미세조정한다.
 
 ### `Proposer`
 - op_state 에 따라 어떤 operation 을 어느 time 에 스케쥴링 제안을 할지 확률적으로 샘플링 한다.
 - time 의 샘플링은 현재 시각 기준 특정 window 안에 plane/die wide 하게 schedule 이 비어 있는 곳을 찾아 선정한다.
 - time 은 결정적, operation 은 확률적으로 샘플링.
-- op_state_probs: op_state 에 따른 operation 의 확률값은 `CFG` -> phase_conditional key 값을 읽어와서 채운다.
+- op_state_probs: op_state 에 따른 operation 의 확률값은 CFG[phase_conditional] key 값을 읽어와서 채운다.
 - **중요**: operation sequence 제안
   - 단일한 operation 을 제안할 수도 있고, operation sequence 의 형태로 제안할 수도 있다: e.g) read->dout, cache_program/cache_read, oneshot_program_lsb->oneshot_program_csb->oneshot_program_execution_msb, set_feature->get_feature, etc.
-  - sequence 의 형태로 제안하는 확률과 생성 규칙은 별도의 파일에 정의한다: `CFG` 의 op_base->sequence, generate_seq_rules
+  - sequence 의 형태로 제안하는 확률과 생성 규칙은 별도의 파일에 정의한다: CFG[op_base][sequence], CFG[generate_seq_rules]
   - sequence 의 순서는 보장되어야 하며 순차적으로 스케쥴링 된다. 하지만 validity check 를 유발하지 않는 operation 은 sequence 중간에 스케쥴링 가능하다.
   - sequence 를 제안할 때는 우선 sequence 내 모든 operation 을 가상으로 추가했을 때 validity 를 만족하는지 `Validator` 를 통해서 확인하고 나서 제안한다.
   - sequence 를 구성하는 각 operation 은 schedule 에 우선 예약되어야 하며, 각 operation 마다 끝나는 시간을 예상해서 예약 시간을 정하고, event_hook 을 그 시점에 맞춰 생성할 수 있도록 `Scheduler` 에 정보를 전달한다.
@@ -102,10 +108,10 @@
 - 샘플링 단계:
   1. 현재 시각 기준 후보 time 선정
   2. op_state_probs 참조 후 확률 값 0 인 후보 제외
-  3. 제안하는 time 시점에서의 op_state_timeline 값을 확인 후 `CFG`['exclusions_by_state'] 를 참조하여 operation 종류 제외
+  3. 제안하는 time 시점에서의 op_state_timeline 값을 확인 후 CFG[exclusion_groups][CFG[exclusions_by_state][op_state]] 를 참조하여 operation 종류 제외
   4. cache_state 에 대한 고려: `ResourceManager` 의 cache_state 를 참조해 celltype 으로 operation 제외: cache operation 중일 경우 cache end 전까지 target plane(for cache_read), die(for cache_program) 에 대해 동일한 celltype 의 후속 cache_read/cache_program 이 동작되어야 한다.
   5. operation 선정
-  6. erase/program/read 가 후보라면 target address 샘플링
+  6. erase/program/read 가 후보라면 `ResourceManager` 에 요청하여 target address 샘플링.
 - attributes
   - `CFG`
   - op_state_probs
@@ -116,7 +122,7 @@
 - resource 현재 또는 미래 시점의 값의 상태를 관리한다.
 - `AddressManager` 의 addr_state, addr_mode 값은 현재 시점을 참조할 때 사용하고, 미래 시점의 값은 별도로 관리한다.
 - state_timeline 관리 방법
-  - operation 이 스케쥴 될 때, operation 의 모든 logic_state 를 op_state_timeline 에 등록하고, 추가로 op_name.END state 를 마지막에 추가한다. end_time 은 'enf' 로 등록한다. 이렇게 하는 목적은 `달성 지표` 중 op_state x op_name x input_time 의 다양성을 확보하기 위해서이다
+  - operation 이 스케쥴 될 때, operation 의 모든 logic_state 를 op_state_timeline 에 등록하고, 추가로 op_name.END state 를 마지막에 추가한다. end_time 은 'inf' 로 등록한다. 이렇게 하는 목적은 `달성 지표` 중 op_state x op_name x input_time 의 다양성을 확보하기 위해서이다
   - SUSPEND->RESUME
     - ERASE_SUSPEND/PROGRAM_SUSPEND/ERASE_RESUME/PROGRAM_SUSPEND operation 은 END state 를 추가하지 않는다
     - resume 시에 이전에 중단됐던 operation 의 state 중 마저 진행하지 못했던 state 중 ISSUE 를 제외한, CORE_BUSY 와 END state 를 다시 추가한다.
@@ -126,20 +132,20 @@
   - addr_state: (die,block) 마다 현재 data 기록 상태 저장. e.g) -2:BAD, -1: ERASE, 0~pagesize-1: last_pgmed_page_address
   - addr_mode: (die,block) 마다 erase 할 떄 celltype 등록
   - IO_bus: ISSUE timeline 등록.
-  - exclusion_windows: `CFG`['op_specs']['op_name']['multi'] 참조하여 die level 에서 single x multi, multi x multi 가 overlap 될 수 없게 금지 구간 등록 관리
+  - exclusion_windows: CFG[op_specs][op_name][multi] 참조하여 die level 에서 single x multi, multi x multi 가 overlap 될 수 없게 금지 구간 등록 관리
   - latches
     - read: (die, plane) target, program: die-wide target
     - read/oneshot_program_lsb/oneshot_program_csb/oneshot_program_msb 진행 직후 특정 latch lock 및 금지되는 exclusion_group 존재
-      - read/cache_read 완료 후 cache_latch lock: `CFG`['exclusion_groups']['after_read']
-      - oneshot_program_lsb 완료 후 lsb_latch lock: `CFG`['exclusion_groups`]['after_program_lsb'] 로 operation 금지
-      - oneshot_program_csb 완료 후 csb_latch lock: `CFG`['exclusion_groups`]['after_program_csb'] 로 operation 금지
-      - oneshot_program_msb 완료 후 msb_latch lock: `CFG`['exclusion_groups`]['after_program_msb'] 로 operation 금지 
+      - read/cache_read 완료 후 cache_latch lock: CFG[exclusion_groups][after_read]
+      - oneshot_program_lsb 완료 후 lsb_latch lock: CFG[exclusion_groups][after_program_lsb] 로 operation 금지
+      - oneshot_program_csb 완료 후 csb_latch lock: CFG[exclusion_groups][after_program_csb] 로 operation 금지
+      - oneshot_program_msb 완료 후 msb_latch lock: CFG[exclusion_groups][after_program_msb] 로 operation 금지 
   - op_state_timeline: (die,plane) target. logic_state timeline 등록. state 에 따른 exclusions_by_op_state 에 list
   - suspend_states: (die) target. suspend_states on/off 등록. suspend_states 에 따른 exclusions_by_suspend_state 에 list
   - odt_state: odt_state on/off 등록. odt_state 에 따른 exclusions_by_odt_state 에 list
   - cache_state: (die,plane) target. cache_read, cache_program 이 진행 중인지 관리.
   - etc_states: 현재 미사용. 추후 관리
-  - suspeded_ops: erase_suspend/program_suspend/nested_suspend 시에 중단됐던 operation 의 정보를 저장. 이후 resume 시에 재개 시 필요한 resource 들에 등록하여 복구한다. 예를 들어, logic_state timeline 의 경우 suspend 시 그 시점 이후의 operation 의 state 정보는 저장 후 삭제하고, resume 시 정보를 복구해서 등록한다
+  - suspended_ops: erase_suspend/program_suspend/nested_suspend 시에 중단됐던 operation 의 정보를 저장. 이후 resume 시에 재개 시 필요한 resource 들에 등록하여 복구한다. 예를 들어, logic_state timeline 의 경우 suspend 시 그 시점 이후의 operation 의 state 정보는 저장 후 삭제하고, resume 시 정보를 복구해서 등록한다
 
 ### `AddressManager`
 - `addrman.py` 에 이미 구현됨
@@ -201,12 +207,12 @@
   - exclusions_by_cache_state: (die,plane)
 - 그 외
 
-## Open questions
+## Open questions (draft)
 - **중요**:예약된 operation 과 runtime 으로 제안된 operation 의 우선 순위 조정 메커니즘은 어떻게 할 것인가?
   - 대안1: 단일 rail timeline 으로 runtime 으로 제안된 operation 이 예약된 operation 들의 validity 를 깨뜨리지 않으면 스케쥴 가능하다.
 
-## 예상 risks
-- operation sequenc 제안이 계속 거절될 수 있다.
+## 예상 risks (draft)
+- operation sequence 제안이 계속 거절될 수 있다.
 
 
 

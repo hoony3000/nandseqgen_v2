@@ -5,6 +5,9 @@ import itertools
 TLC = "TLC"
 FWSLC = "FWSLC"
 SLC = "SLC"
+AESLC = "AESLC"
+A0SLC = "A0SLC"
+ACSLC = "ACSLC"
 TBD = "TBD"
 BAD = -3
 GOOD = -2
@@ -64,7 +67,8 @@ class AddressManager:
     AddressManager class 정의
     num_address : block address 갯수
     addrstates : address 상태를 저장하는 numpy 배열
-    addrmodes : TLC or SLC mode 를 저장하는 numpy 배열
+    addrmodes_erase : erase 시 선택된 celltype 을 저장
+    addrmodes_pgm   : program/read 시 사용할 celltype 을 저장
     pagesize : block 내 page 갯수
     offset : addrReadable 구할 때 last PGM page address 끝에서부터 제외할 page 갯수
     num_dies : die 수
@@ -98,7 +102,8 @@ class AddressManager:
         self.num_dies: int
         self.num_blocks: int
         self.addrstates: np.ndarray
-        self.addrmodes: np.ndarray
+        self.addrmodes_erase: np.ndarray
+        self.addrmodes_pgm: np.ndarray
         self.pagesize: int
         self.offset: int
         self.undo_addrs: np.ndarray = np.array([], dtype=int)
@@ -141,7 +146,11 @@ class AddressManager:
         self.num_blocks = self._blocks_per_die * self.num_dies
         if isinstance(init, int) and (init > BAD or init < pagesize):
             self.addrstates = np.full(self.num_blocks, init, dtype=int)
-            self.addrmodes = np.full(self.num_blocks, TBD, dtype=object)  # dtype=str 시 오동작
+            # Track erase/program modes separately; keep legacy alias addrmodes -> program mode
+            self.addrmodes_erase = np.full(self.num_blocks, TBD, dtype=object)
+            self.addrmodes_pgm = np.full(self.num_blocks, TBD, dtype=object)
+            # Backward-compat alias used by external scripts
+            self.addrmodes = self.addrmodes_pgm
             bad_idx = self._normalize_badlist(badlist)
             if bad_idx.size:
                 if np.any(bad_idx < 0) or np.any(bad_idx >= self.num_blocks):
@@ -199,7 +208,13 @@ class AddressManager:
         adds 배열에서 add_from 부터 add_to 까지의 index 에 val 값을 할당
         """
         self.addrstates[add_from : add_to + 1] = val
-        self.addrmodes[add_from : add_to + 1] = mode
+        if val == ERASE:
+            # Setting erase result: update erase mode, reset program mode
+            self.addrmodes_erase[add_from : add_to + 1] = mode
+            self.addrmodes_pgm[add_from : add_to + 1] = TBD
+        elif val > ERASE:
+            # Setting programmed pages: set program mode (keep existing erase mode)
+            self.addrmodes_pgm[add_from : add_to + 1] = mode
 
     def set_n_val(self, add_from: int, n: int, val: int, mode=TLC):
         """
@@ -210,7 +225,11 @@ class AddressManager:
                 f"add_from + n exceeds num_blocks: {add_from} + {n} > {self.num_blocks}"
             )
         self.addrstates[add_from : add_from + n] = val
-        self.addrmodes[add_from : add_from + n] = mode
+        if val == ERASE:
+            self.addrmodes_erase[add_from : add_from + n] = mode
+            self.addrmodes_pgm[add_from : add_from + n] = TBD
+        elif val > ERASE:
+            self.addrmodes_pgm[add_from : add_from + n] = mode
 
     def set_adds_val(self, adds: np.ndarray, val: int, mode=TLC):
         """
@@ -223,7 +242,11 @@ class AddressManager:
                 f"Some addresses in adds exceed num_blocks: {tmp_adds[tmp_adds >= self.num_blocks]}"
             )
         self.addrstates[tmp_adds] = val
-        self.addrmodes[tmp_adds] = mode
+        if val == ERASE:
+            self.addrmodes_erase[tmp_adds] = mode
+            self.addrmodes_pgm[tmp_adds] = TBD
+        elif val > ERASE:
+            self.addrmodes_pgm[tmp_adds] = mode
 
     def undo_last(self):
         """
@@ -231,7 +254,13 @@ class AddressManager:
         """
 
         self.addrstates[self.undo_addrs] = self.undo_states
-        self.addrmodes[self.undo_addrs] = self.undo_modes
+        # Restore both erase/program modes if available
+        if hasattr(self, "undo_modes_erase") and hasattr(self, "undo_modes_pgm"):
+            self.addrmodes_erase[self.undo_addrs] = self.undo_modes_erase
+            self.addrmodes_pgm[self.undo_addrs] = self.undo_modes_pgm
+        else:
+            # Backward compatibility
+            self.addrmodes[self.undo_addrs] = self.undo_modes
 
     # Note: Legacy get_*/sample_*/set_* APIs have been removed.
     # Use random_erase/random_pgm/random_read for fast direct sampling.
@@ -244,9 +273,15 @@ class AddressManager:
 
     def get_addrmodes(self) -> np.ndarray:
         """
-        addrmodes 반환
+        program 모드(addrmodes_pgm) 반환 (호환성 유지)
         """
-        return self.addrmodes
+        return self.addrmodes_pgm
+
+    def get_addrmodes_erase(self) -> np.ndarray:
+        """
+        erase 모드(addrmodes_erase) 반환
+        """
+        return self.addrmodes_erase
 
     def get_vals_adds(self, adds: np.ndarray) -> np.ndarray:
         """
@@ -296,6 +331,29 @@ class AddressManager:
     # ------------------------
     # Fast-path helpers
     # ------------------------
+
+    @staticmethod
+    def from_topology(topology: dict,
+                      init: int = GOOD,
+                      offset: int = 0,
+                      badlist=None) -> "AddressManager":
+        """
+        Convenience factory mapping config topology keys to AddressManager args.
+        Expected keys on `topology`: dies, planes, blocks_per_die, pages_per_block.
+        """
+        dies = int(topology.get("dies"))
+        planes = int(topology.get("planes"))
+        blocks_per_die = int(topology.get("blocks_per_die"))
+        pages_per_block = int(topology.get("pages_per_block"))
+        return AddressManager(
+            num_planes=planes,
+            num_blocks=blocks_per_die,  # per-die
+            pagesize=pages_per_block,
+            init=init,
+            badlist=badlist if badlist is not None else np.array([], dtype=int),
+            offset=offset,
+            num_dies=dies,
+        )
 
     def _ensure_block_groups(self):
         if self._block_groups is None:
@@ -377,11 +435,13 @@ class AddressManager:
             # Save undo
             self.undo_addrs = sel
             self.undo_states = self.addrstates[sel].copy()
-            self.undo_modes = self.addrmodes[sel].copy()
+            self.undo_modes_erase = self.addrmodes_erase[sel].copy()
+            self.undo_modes_pgm = self.addrmodes_pgm[sel].copy()
 
             # Apply
             self.addrstates[sel] = ERASE
-            self.addrmodes[sel] = mode
+            self.addrmodes_erase[sel] = mode
+            self.addrmodes_pgm[sel] = TBD
 
             return self._wrap_blocks_as_addrs(sel, pages=0)
 
@@ -411,11 +471,13 @@ class AddressManager:
         sel_blocks = chosen.reshape(-1)
         self.undo_addrs = sel_blocks
         self.undo_states = self.addrstates[sel_blocks].copy()
-        self.undo_modes = self.addrmodes[sel_blocks].copy()
+        self.undo_modes_erase = self.addrmodes_erase[sel_blocks].copy()
+        self.undo_modes_pgm = self.addrmodes_pgm[sel_blocks].copy()
 
         # Apply
         self.addrstates[sel_blocks] = ERASE
-        self.addrmodes[sel_blocks] = mode
+        self.addrmodes_erase[sel_blocks] = mode
+        self.addrmodes_pgm[sel_blocks] = TBD
 
         return self._wrap_groups_as_addrs(chosen, page=0)
 
@@ -439,7 +501,19 @@ class AddressManager:
 
         if sel_plane is None or isinstance(sel_plane, int):
             # single plane
-            mask = (self.addrstates >= ERASE) & (self.addrstates < self.pagesize - 1) & (self.addrmodes == mode)
+            states = self.addrstates
+            mask_base = (states >= ERASE) & (states < self.pagesize - 1)
+            # allowed by erase/program rule
+            erase_modes = self.addrmodes_erase
+            pgm_modes = self.addrmodes_pgm
+            fresh = states == ERASE
+            cont = states > ERASE
+            # Rule: if erased in SLC, allow A0SLC/ACSLC as program start
+            allow_on_slc = (erase_modes == SLC) & np.isin(mode, [A0SLC, ACSLC])
+            allowed = np.zeros_like(mask_base, dtype=bool)
+            allowed |= fresh & ((erase_modes == mode) | allow_on_slc)
+            allowed |= cont & (pgm_modes == mode)
+            mask = mask_base & allowed
             if isinstance(sel_plane, int):
                 mask &= (self._plane_index == sel_plane)
             if sel_die is not None:
@@ -467,10 +541,14 @@ class AddressManager:
                 # Undo
                 self.undo_addrs = np.array([blk], dtype=int)
                 self.undo_states = self.addrstates[[blk]].copy()
-                self.undo_modes = self.addrmodes[[blk]].copy()
+                self.undo_modes_erase = self.addrmodes_erase[[blk]].copy()
+                self.undo_modes_pgm = self.addrmodes_pgm[[blk]].copy()
 
                 # Apply: advance by 'size'
                 self.addrstates[blk] += size
+                # If starting from ERASE, set program mode
+                if self.undo_states[0] == ERASE:
+                    self.addrmodes_pgm[blk] = mode
 
                 blocks = np.repeat(np.array([blk], dtype=int), size)
                 return self._wrap_blocks_as_addrs(blocks, pages=pages)
@@ -483,10 +561,15 @@ class AddressManager:
             # Undo
             self.undo_addrs = sel
             self.undo_states = self.addrstates[sel].copy()
-            self.undo_modes = self.addrmodes[sel].copy()
+            self.undo_modes_erase = self.addrmodes_erase[sel].copy()
+            self.undo_modes_pgm = self.addrmodes_pgm[sel].copy()
 
             # Apply: +1 page each
             self.addrstates[sel] += 1
+            # If starting from ERASE, set program mode
+            started = (self.undo_states == ERASE)
+            if np.any(started):
+                self.addrmodes_pgm[sel[started]] = mode
 
             pages = self.addrstates[sel]  # after increment -> equals prev+1
             return self._wrap_blocks_as_addrs(sel, pages=pages)
@@ -495,12 +578,21 @@ class AddressManager:
         planes = list(sel_plane)
         groups = self._groups_for_planes(planes)
         vals = self.addrstates[groups]
-        modes = self.addrmodes[groups]
-        # equal states across planes, valid range, mode match
+        # equal states across planes, valid range
         eq = (vals == vals[:, [0]]).all(axis=1)
         rng = ((vals >= ERASE) & (vals < self.pagesize - 1)).all(axis=1)
-        mm = (modes == mode).all(axis=1)
-        ok = eq & rng & mm
+        base = vals[:, 0]
+        # per-group erase/program modes
+        erase_modes_g = self.addrmodes_erase[groups]
+        pgm_modes_g = self.addrmodes_pgm[groups]
+        # rows starting new program: state == ERASE
+        row_fresh = base == ERASE
+        allow_on_slc = (erase_modes_g == SLC) & np.isin(mode, [A0SLC, ACSLC])
+        mm_fresh = (erase_modes_g == mode) | allow_on_slc
+        mm_fresh = mm_fresh.all(axis=1)
+        # rows continuing program: state > ERASE
+        mm_cont = (pgm_modes_g == mode).all(axis=1)
+        ok = eq & rng & ( (row_fresh & mm_fresh) | ((~row_fresh) & mm_cont) )
         if sel_die is not None:
             g0 = groups[:, 0]
             die_rows = self._die_index[g0]
@@ -528,10 +620,15 @@ class AddressManager:
             sel_blocks = g
             self.undo_addrs = sel_blocks.copy()
             self.undo_states = self.addrstates[sel_blocks].copy()
-            self.undo_modes = self.addrmodes[sel_blocks].copy()
+            self.undo_modes_erase = self.addrmodes_erase[sel_blocks].copy()
+            self.undo_modes_pgm = self.addrmodes_pgm[sel_blocks].copy()
 
             # Apply: advance by 'size' for every block in group
             self.addrstates[sel_blocks] += size
+            # If starting from ERASE, set program mode for each block
+            started = (self.undo_states == ERASE)
+            if np.any(started):
+                self.addrmodes_pgm[sel_blocks[started]] = mode
 
             # Build (#, k, 2)
             arr = []
@@ -549,9 +646,14 @@ class AddressManager:
         sel_blocks = chosen.reshape(-1)
         self.undo_addrs = sel_blocks
         self.undo_states = self.addrstates[sel_blocks].copy()
-        self.undo_modes = self.addrmodes[sel_blocks].copy()
+        self.undo_modes_erase = self.addrmodes_erase[sel_blocks].copy()
+        self.undo_modes_pgm = self.addrmodes_pgm[sel_blocks].copy()
 
         self.addrstates[sel_blocks] += 1
+        # If starting from ERASE, set program mode
+        started = (self.undo_states == ERASE)
+        if np.any(started):
+            self.addrmodes_pgm[sel_blocks[started]] = mode
         pages = (self.addrstates[chosen[:, 0]]).astype(int)
         return self._wrap_groups_as_addrs(chosen, page=pages)
 
@@ -578,7 +680,7 @@ class AddressManager:
         _offset = self.offset if offset is None else int(offset)
 
         if sel_plane is None or isinstance(sel_plane, int):
-            mask = (self.addrstates >= _offset) & (self.addrmodes == mode)
+            mask = (self.addrstates >= _offset) & (self.addrmodes_pgm == mode)
             if isinstance(sel_plane, int):
                 mask &= (self._plane_index == sel_plane)
             if sel_die is not None:
@@ -629,7 +731,7 @@ class AddressManager:
         planes = list(sel_plane)
         groups = self._groups_for_planes(planes)
         st = self.addrstates[groups]
-        md = self.addrmodes[groups]
+        md = self.addrmodes_pgm[groups]
         ok = ((st > ERASE) & (st >= _offset) & (md == mode)).all(axis=1)
         if sel_die is not None:
             g0 = groups[:, 0]
@@ -901,15 +1003,14 @@ if __name__ == "__main__":
     # badlist = np.random.choice(num_blocks, num_blocks*1//100)
     badlist = []
 
-    # instance creation
-    addman = AddressManager(
-        num_planes=num_planes,
-        num_blocks=num_blocks,
-        pagesize=pagesize,
-        offset=offset,
-        init=GOOD,
-        badlist=badlist,
-    )
+    # instance creation via topology mapping
+    topology = {
+        "dies": 1,
+        "planes": num_planes,
+        "blocks_per_die": num_blocks,
+        "pages_per_block": pagesize,
+    }
+    addman = AddressManager.from_topology(topology, init=GOOD, offset=offset, badlist=badlist)
 
     # dict 초기화 : cmds, planes, modes
     dict_cmds = {i: 0 for i in ("ERASE", "PGM", "READ")}

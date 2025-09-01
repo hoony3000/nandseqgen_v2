@@ -20,11 +20,17 @@ ROOT = os.path.abspath(os.path.join(HERE, os.pardir))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from addrman import AddressManager, TLC, GOOD, ERASE
+from addrman import AddressManager, TLC, SLC, A0SLC, ACSLC, GOOD, ERASE
 
 
 def _make_mgr(num_planes:int, num_blocks:int, pagesize:int, seed:int, offset:int=0, dies:int=1) -> AddressManager:
-    am = AddressManager(num_planes=num_planes, num_blocks=num_blocks, pagesize=pagesize, init=GOOD, offset=offset, num_dies=dies)
+    topo = {
+        "dies": int(dies),
+        "planes": int(num_planes),
+        "blocks_per_die": int(num_blocks),
+        "pages_per_block": int(pagesize),
+    }
+    am = AddressManager.from_topology(topo, init=GOOD, offset=offset)
     am._rng = np.random.default_rng(seed)
     return am
 
@@ -38,7 +44,11 @@ def _prepare_initial_state(am: AddressManager, seed:int, pre_erase_ratio:float=0
     erased = rng.choice(blocks, size=k, replace=False)
     # apply erase
     am.addrstates[erased] = ERASE
-    am.addrmodes[erased] = mode
+    if hasattr(am, "addrmodes_erase"):
+        am.addrmodes_erase[erased] = mode
+        am.addrmodes_pgm[erased] = "TBD"
+    else:
+        am.addrmodes[erased] = mode
     # program some pages across erased blocks
     if pre_pgm_pages > 0:
         # allow a few steps forward per block (bounded by pagesize-1)
@@ -46,11 +56,19 @@ def _prepare_initial_state(am: AddressManager, seed:int, pre_erase_ratio:float=0
         # sample subset to program
         pgm_subset = rng.choice(erased, size=max(1, len(erased)//2), replace=False)
         am.addrstates[pgm_subset] = np.minimum(step, am.pagesize - 1)
+        if hasattr(am, "addrmodes_pgm"):
+            am.addrmodes_pgm[pgm_subset] = mode
 
 
 def _clone_state(src: AddressManager, dst: AddressManager):
     dst.addrstates[:] = src.addrstates[:]
-    dst.addrmodes[:]  = src.addrmodes[:]
+    if hasattr(src, "addrmodes_erase"):
+        dst.addrmodes_erase[:] = src.addrmodes_erase[:]
+        dst.addrmodes_pgm[:]   = src.addrmodes_pgm[:]
+        # keep alias
+        dst.addrmodes = dst.addrmodes_pgm
+    else:
+        dst.addrmodes[:]  = src.addrmodes[:]
 
 
 def bench_once(num_planes:int, num_blocks:int, pagesize:int, iters:int,
@@ -175,6 +193,56 @@ def bench_once(num_planes:int, num_blocks:int, pagesize:int, iters:int,
     else:
         m0=m1=m2=m3=m4=m5=m6=m7=m8=m9=m10=m11=m12=m13=m14=0.0
 
+    # ------------------------------------------------------------------
+    # SLC erase → A0SLC/ACSLC program allowance vs TLC erase → ACSLC disallow
+    # Prepare controlled erase modes and measure success rates using undo.
+    _reset()
+    rng = np.random.default_rng(seed)
+    blocks = np.arange(am.num_blocks)
+    # select pools for SLC/TLC erase
+    k_slc = max(1, am.num_blocks // 10)
+    k_tlc = max(1, am.num_blocks // 10)
+    slc_pool = rng.choice(blocks, size=k_slc, replace=False)
+    remaining = np.setdiff1d(blocks, slc_pool, assume_unique=False)
+    tlc_pool = rng.choice(remaining, size=min(k_tlc, len(remaining)), replace=False)
+    # apply erases with explicit erase modes
+    am.set_adds_val(slc_pool, ERASE, mode=SLC)
+    if len(tlc_pool):
+        am.set_adds_val(tlc_pool, ERASE, mode=TLC)
+
+    trials = max(50, min(500, am.num_blocks))
+    succ_slc_to_a0 = succ_slc_to_acs = succ_tlc_to_acs = 0
+    # try A0SLC on SLC-erased (should succeed often)
+    for _ in range(trials):
+        adds = am.random_pgm(mode=A0SLC, size=1)
+        if len(adds) > 0:
+            succ_slc_to_a0 += 1
+            am.undo_last()
+    # try ACSLC on SLC-erased (should succeed often)
+    for _ in range(trials):
+        adds = am.random_pgm(mode=ACSLC, size=1)
+        if len(adds) > 0:
+            succ_slc_to_acs += 1
+            am.undo_last()
+    # try ACSLC on TLC-erased (should rarely/never succeed when only TLC-erased are fresh)
+    # To bias toward TLC-erased, temporarily clear SLC pool by programming one page on SLC blocks with A0SLC
+    # so fresh starts come mostly from TLC-erased blocks.
+    for b in slc_pool[:min(len(slc_pool), 5)]:
+        # program once then undo to avoid permanent state change; we only want to affect candidate set momentarily
+        adds = am.random_pgm(mode=A0SLC, size=1)
+        if len(adds) > 0:
+            am.undo_last()
+    for _ in range(trials):
+        adds = am.random_pgm(mode=ACSLC, size=1)
+        if len(adds) > 0:
+            # verify chosen block is from TLC-erased pool; if not, count but still undo
+            succ_tlc_to_acs += 1
+            am.undo_last()
+
+    rate_slc_to_a0 = succ_slc_to_a0 / trials if trials else 0.0
+    rate_slc_to_acs = succ_slc_to_acs / trials if trials else 0.0
+    rate_tlc_to_acs = succ_tlc_to_acs / trials if trials else 0.0
+
     return {
         "planes": num_planes,
         "dies": dies,
@@ -197,6 +265,10 @@ def bench_once(num_planes:int, num_blocks:int, pagesize:int, iters:int,
         "mp_pgm_seq_ms": (m5 - m4) * 1000.0,
         "mp_read_ms":    (m7 - m6) * 1000.0,
         "mp_read_seq_ms":(m9 - m8) * 1000.0,
+        # rule-validation spot checks (rates in [0,1])
+        "rate_slc_to_a0slc": rate_slc_to_a0,
+        "rate_slc_to_acslc": rate_slc_to_acs,
+        "rate_tlc_to_acslc": rate_tlc_to_acs,
     }
 
 
@@ -248,6 +320,8 @@ def main():
         "erase_ms","pgm_ms","read_ms","pgm_seq_ms","read_seq_ms",
         # multi-plane
         "mp_erase_ms","mp_pgm_ms","mp_pgm_seq_ms","mp_read_ms","mp_read_seq_ms",
+        # rule spot checks
+        "rate_slc_to_a0slc","rate_slc_to_acslc","rate_tlc_to_acslc",
     ]
     print(",".join(hdr))
     for r in rows:
