@@ -15,10 +15,18 @@ celltypes:
   - ACSLC
   - TLC
 
+policies:
+  admission_window: 0.5
+  queue_refill_period_us: 50
+  maxplanes: 4
+  maxloop_seq: 4
+  maxtry_candidate: 4
+
 op_bases:
   DEFAULT:
     scope: "NONE"
     affect_state: false
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -26,6 +34,7 @@ op_bases:
   ERASE:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -36,6 +45,7 @@ op_bases:
   PROGRAM_SLC:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -46,6 +56,7 @@ op_bases:
   CACHE_PROGRAM_SLC:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     sequence: 
       probs:
         - NONE: 0.9
@@ -65,6 +76,7 @@ op_bases:
   ONESHOT_PROGRAM_LSB:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     sequence:
       probs:
         - ONESHOT_PROGRAM_CSB.SEQ: 0.9
@@ -82,6 +94,7 @@ op_bases:
   ONESHOT_PROGRAM_CSB:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -92,6 +105,7 @@ op_bases:
   ONESHOT_PROGRAM_MSB:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -102,6 +116,7 @@ op_bases:
   ONESHOT_PROGRAM_EXEC_MSB:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -112,6 +127,7 @@ op_bases:
   ONESHOT_CACHE_PROGRAM:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -125,6 +141,7 @@ op_bases:
   READ:
     scope: "PLANE_SET"
     affect_state: true
+    instant_resv: false
     sequence:
       probs:
         - DOUT: 0.9
@@ -145,6 +162,7 @@ op_bases:
   READ4K:
     scope: "PLANE_SET"
     affect_state: true
+    instant_resv: false
     sequence:
       probs:
         - DOUT: 1
@@ -163,6 +181,7 @@ op_bases:
   CACHE_READ:
     scope: "PLANE_SET"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -176,6 +195,7 @@ op_bases:
   CACHE_READ_END:
     scope: "PLANE_SET"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -186,6 +206,7 @@ op_bases:
   PLANE_READ:
     scope: "PLANE_SET"
     affect_state: true
+    instant_resv: false
     sequence:
       probs:
         - DOUT: 0.9
@@ -206,6 +227,7 @@ op_bases:
   PLANE_READ4K:
     scope: "PLANE_SET"
     affect_state: true
+    instant_resv: false
     sequence:
       probs:
         - DOUT: 1
@@ -224,6 +246,7 @@ op_bases:
   PLANE_CACHE_READ:
     scope: "PLANE_SET"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -237,6 +260,7 @@ op_bases:
   PLANE_CACHE_READ_END:
     scope: "PLANE_SET"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -247,6 +271,7 @@ op_bases:
   COPYBACK_READ:
     scope: "PLANE_SET"
     affect_state: true
+    instant_resv: false
     sequence:
       probs:
         - DOUT: 0.9
@@ -269,6 +294,7 @@ op_bases:
   COPYBACK_PROGRAM_SLC:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -279,6 +305,7 @@ op_bases:
   ONESHOT_COPYBACK_PROGRAM_LSB:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -289,6 +316,7 @@ op_bases:
   ONESHOT_COPYBACK_PROGRAM_CSB:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -299,6 +327,7 @@ op_bases:
   ONESHOT_COPYBACK_PROGRAM_MSB:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -309,6 +338,7 @@ op_bases:
   ONESHOT_COPYBACK_PROGRAM_EXEC_MSB:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -319,6 +349,7 @@ op_bases:
   DOUT:
     scope: "NONE"
     affect_state: false
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -326,6 +357,7 @@ op_bases:
   DATAIN:
     scope: "NONE"
     affect_state: false
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -333,6 +365,7 @@ op_bases:
   SR:
     scope: "NONE"
     affect_state: false
+    instant_resv: true
     states:
       - ISSUE:
         bus: true
@@ -340,6 +373,7 @@ op_bases:
   SR_ADD:
     scope: "NONE"
     affect_state: false
+    instant_resv: true
     states:
       - ISSUE:
         bus: true
@@ -347,6 +381,7 @@ op_bases:
   CAMREAD:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -357,6 +392,7 @@ op_bases:
   CAMREAD_LUN:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -367,6 +403,7 @@ op_bases:
   ERASE_SUSPEND:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: true
     states:
       - ISSUE:
         bus: true
@@ -377,6 +414,7 @@ op_bases:
   ERASE_RESUME:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -387,6 +425,7 @@ op_bases:
   PROGRAM_SUSPEND:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: true
     states:
       - ISSUE:
         bus: true
@@ -397,6 +436,7 @@ op_bases:
   PROGRAM_RESUME:
     scope: "DIE_WIDE"
     affect_state: true
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -407,6 +447,7 @@ op_bases:
   TRAINING:
     scope: "NONE"
     affect_state: false
+    instant_resv: true
     states:
       - ISSUE:
         bus: true
@@ -414,6 +455,7 @@ op_bases:
   READID:
     scope: "NONE"
     affect_state: false
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -421,6 +463,7 @@ op_bases:
   SETPARA:
     scope: "NONE"
     affect_state: false
+    instant_resv: false
     sequence:
       probs:
         - NONE: 0.9
@@ -434,6 +477,7 @@ op_bases:
   GETPARA:
     scope: "NONE"
     affect_state: false
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -441,6 +485,7 @@ op_bases:
   PLANE_SETPARA:
     scope: "PLANE_SET"
     affect_state: false
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -448,6 +493,7 @@ op_bases:
   SETFEATURE:
     scope: "NONE"
     affect_state: false
+    instant_resv: false
     sequence:
       probs:
         - NONE: 0.9
@@ -461,6 +507,7 @@ op_bases:
   GETFEATURE:
     scope: "NONE"
     affect_state: false
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -468,6 +515,7 @@ op_bases:
   SETFEATURE_LUN:
     scope: "NONE"
     affect_state: false
+    instant_resv: false
     sequence:
       probs:
         - NONE: 0.9
@@ -481,6 +529,7 @@ op_bases:
   GETFEATURE_LUN:
     scope: "NONE"
     affect_state: false
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -488,6 +537,7 @@ op_bases:
   RESET:
     scope: "NONE"
     affect_state: true
+    instant_resv: true
     states:
       - ISSUE:
         bus: true
@@ -495,6 +545,7 @@ op_bases:
   RESET_LUN:
     scope: "NONE"
     affect_state: true
+    instant_resv: true
     states:
       - ISSUE:
         bus: true
@@ -502,6 +553,7 @@ op_bases:
   TEMPSENSOR:
     scope: "NONE"
     affect_state: false
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -509,6 +561,7 @@ op_bases:
   ZQCAL:
     scope: "NONE"
     affect_state: false
+    instant_resv: true
     states:
       - ISSUE:
         bus: true
@@ -516,6 +569,7 @@ op_bases:
   ODTDISABLE:
     scope: "NONE"
     affect_state: false
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -523,6 +577,7 @@ op_bases:
   ODTENABLE:
     scope: "NONE"
     affect_state: false
+    instant_resv: false
     states:
       - ISSUE:
         bus: true
@@ -1858,9 +1913,6 @@ exclusions_by_cache_state:
   ON_CACHE_READ: ['after_cache_read']
   ON_CACHE_PROGRAM: ['after_cache_program']
   ON_ONESHOT_CACHE_PROGRAM: ['after_oneshot_cache_program']
-
-maxplanes: 4
-seq_maxloop: 4
 
 # gen_seq_rules inheritance conditions 설명
 # same_plane : 이전 operation 과 동일한 plane set
@@ -4126,3 +4178,5 @@ phase_conditional_overrides:
   # op_base->value
   RESET: 0.001
   RESET_LUN: 0.001
+  ERASE_SUSPEND: 0.001
+  PROGREAM_SUSPEND: 0.001

@@ -15,12 +15,12 @@
 - cell_type: TLC/SLC/A0SLC/ACSLC/AESLC/FWSLC
 - lane: gantt 차트를 그리기 위해 die/block 을 변수 하나의 형태로 표현한 값
 
-## 필수 아웃풋
+## `필수 아웃풋`
 
 ### operation sequence
 - 목적: 생성된 sequence 를 실제 device test 가능한 file 의 형태로 바꾸기 위한 궁극적인 결과물
-- 파일형태: csv
-- 필수 field: seq,time,op_id,op_name,payload
+- 파일형태: `operation_sequence_yymmdd_0000001.csv`
+- 필수 field: seq,time,op_id,op_name,op_uid,payload
 - payload 는 op_name 에 따라 다르며, 이것을 사용자가 정의하고 관리할 수 있어야 한다.
 - 예시
   - seq,time,op_id,op_name,op_uid,payload
@@ -30,32 +30,36 @@
 
 ### address touch count
 - 다양한 address 에 operation 이 수행됐는지 알아보기 위한 데이터
-- 파일형태: csv
-- 필수 field: op_base,cell_type,die/block,page,count
+- 파일형태: `address_touch_count_yymmdd_0000001.csv`
+- 필수 field: op_base,cell_type,die,block,page,count
 - address(die,block,page) 별 program, read 동작 수행 횟수
-- 시각화: heatmap
+- 시각화: heatmap. die,block 은 die/block 으로 묶어 가독성 향상
 
 ### `operation timeline`
 - operation 의 다양성과, operation 간의 충돌이 존재하는지 확인하기 위한 데이터
-- 파일형태: csv
+- 파일형태: `operation_timeline_yymmdd_0000001.csv`
 - 필수 field: start,end,die,plane,block,page,op_name,op_base,source,op_uid,op_state
 - (die,block) 별 operation timeline
 - 시각화: gantt 차트
 
 ### `op_state timeline`
 - op_state 에서 허용되지 않는 operation 이 수행됐는지, plane/die level 에서 충돌은 없는지 확인하기 위한 데이터
-- 파일형태: csv
+- 파일형태: `op_state_timeline_yymmdd_0000001.csv`
 - 필수 field: start,end,die,plane,op_state,lane,op_name,duration
 - (die,plane) 별 op_state_phase timeline
 - 시각화: gantt 차트
 
 ### `op_state x op_name x input_time count`
 - 다양한 op_state 에서 다양한 operation 가 다양한 시점에서 실제로 수행되는지 확인하기 위한 데이터. 실제 operation 이 propose 될 때 참조한 op_state 를 사용
-- 파일형태: csv
+- 파일형태: `op_state_name_input_time_count_yymmdd_0000001.csv`
 - 필수 field: op_state,op_name,input_time,count
 - 어떤 op_state 에서 operation 이 어느 time 에서 스케쥴 됐는지 나타냄.
 - input_time: 0~1 사이의 소수. op_state 의 전체 duration 에서 어느 시점에서 operation 이 schedule 됐는지 나타냄.
 - 시각화: histogram
+
+### `state_snapshot`
+- Scheduler 는 시뮬레이션을 run 을 여러번 반복할 예정. 그 때 run 과 run 사이에 state 의 snapshot 을 저장하여, 연속성을 이어나가게 함.
+- 파일형태: `state_snapshot_yymmdd_0000001.xxx` -> 논의 필요
 
 ## `달성 지표`
 - `op_state x op_name x input_time count` 의 고른 분포가 실질적인 지표 -> 정량적인 지표 필요
@@ -74,13 +78,17 @@
   - sequence: operation 제안 시 sequence 의 형태로 제안할 경우 가능한 case 선언
     - probs: 각 case 별 확률
     - inherit: 후속 operation 의 상속 조건 명시
-- maxplanes: multi-plane 동작 시 시도 가능한 최대 plane 갯수
-- seq_maxloop: sequence 생성 시 최대 길이
+- policies
+  - admission_window
+  - queue_refill_period: `Scheduler` 의 QUEUE_REFILL hook 생성 주기
+  - maxplanes: multi-plane 동작 시 시도 가능한 최대 plane 갯수
+  - maxloop_seq: sequence 생성 시 최대 길이
+  - maxtry_candidate
 - generate_seq_rules: sequence 생성 시 규칙
 - latencies: operation 별 state 의 latency 값
 - op_names: operation 별 parameter
 - phase_conditional: op_state 별 operation 샘플링 확률 정의 (autofill 필요)
-- **중요**: runtime 으로 만들어야 하는 항목
+- **중요**: runtime 으로 만들어야 하는 key 값들
   - op_specs: op_bases 의 format 을 상속하고 값은 op_names 를 참고하여 operation 별 parameter 를 생성
     - scope, affect_state, sequence, states:: op_base 에서 상속
     - states['state_name'][duration]: op_names['op_name']['durations']['state_name'] 의 값으로 대체
@@ -92,45 +100,82 @@
     4. override 하지 않은 후보들의 확률은 random sample 으로 전체 확률값의 합이 1 로 만든다
     5. 이 방식으로 초기 확률값을 만들어 `op_state_probs.yaml` 파일에 저장하고, 추후 필요시 값들을 수동으로 미세조정한다.
 
+### `Scheduler`
+- event_hook 을 생성하여 현재 시각을 변경하고, `Proposer` 를 호출하여, `Validator` 의 통과가 된 operation 은 timeline 에 schedule 한다. 이 때, `ResourceManager` 를 통해 state 값을 update 한다.
+- **중요**: operation 을 예약함과 동시에 PHASE_HOOK 을 등록하여 해당 operation 의 state 마다 다양한 timing 에 operation 이 제안될 수 있게 도와준다.
+- event_hook
+  - 데이터: time, hook_name, payload
+  - QUEUE_REFILL
+    - 목적: bootstrap, 또는 `propose` 단계에서 operation 제안이 실패할 경우를 대비해 일정한 간격 CFG[policy][queue_refill_period_us] 으로 생성.
+    - 데이터: time, 'QUEUE_REFILL', None
+  - PHASE_HOOK
+    - 목적: 스케쥴된 operation 이 timeline 에 등록되는 시점에, 해당 operation 의 모든 state 에서 다른 operation 이 input 될 수 있도록 drive 하기 위해 생성.
+    - 데이터: time, 'PHASE_HOOK', payload
+    - payload: time, hook.die, hook.plane, 그 외 operation 에 관한 정보들
+    - state duration 의 끝나기 전, 끝난 후에 각각 생성하며, 그 time 은 각각 random 하게 생성한다.
+    - ISSUE state 는 bus 제약에 의해서 모든 operation 이 거절되므로, PHASE_HOOK 은 생성하지 않는다.
+  - OP_START
+    - 목적: 스케쥴된 operation 의 시작 시간에 맞춰 hook 을 생성하여, console 에 operation 의 시작됨과 operation 정보를 출력
+    - 데이터: time, 'OP_START', operation
+  - OP_END
+    - 목적: 스케쥴된 operation 의 시작 시간에 맞춰 hook 을 생성하여, `ResourceManager` 의 값을 commit 하고, log 에 operation 의 끝났음과 operation 정보를 출력
+    - 데이터: time, 'OP_END', operation
+- `Scheduler` 의 run 이 종료되는 시점은 `run_until` 변수로 정할 수 있으며, 그 시간이 지나면 `종료 루틴` 을 실행시킨다. 
+- `종료 루틴`
+  - `run_until` 이후에도 종료되지 않은 operation 이 timeline 이 그대로 있다면 지속시키되, 그 시간동안에는 `Proposer` 가 operation 제안을 하지 않도록 flag 변수 `on_termination_routine` 을 enable 시켜 `propose` 를 금지시킨다.
+  - 모든 operation 이 종료되면, `필수 아웃풋`, `달성 지표` 를 출력한다.
+  - `ResourceManager` 의 모든 상태 값들의 snapshot 을 파일 `state_snapshot_yymmdd_0000001.csv` 와 같은 형태로 저장한다. 목적은 시뮬레이션 시간 `run_until` 을 일정한 크기로 유지하고, 이전 run 의 상태를 load 하여 연속성을 가지려고 하는 것이다. 몇 번째 run 인지 index 를 증가시키면서 snapshot 을 저장.
+- attributes
+  - `ResourceManager`
+  - `Proposer`
+  - `run_until`: run 당 시뮬레이션 시간
+  - `num_runs`: 몇 번을 run 할 지정. 대략 **10만번**까지 생성예정
+
 ### `Proposer`
-- op_state 에 따라 어떤 operation 을 어느 time 에 스케쥴링 제안을 할지 확률적으로 샘플링 한다.
-- time 의 샘플링은 현재 시각 기준 특정 window 안에 plane/die wide 하게 schedule 이 비어 있는 곳을 찾아 선정한다.
-- time 은 결정적, operation 은 확률적으로 샘플링.
-- op_state_probs: op_state 에 따른 operation 의 확률값은 CFG[phase_conditional] key 값을 읽어와서 채운다.
+- op_state 에 따라 어떤 operation 을 어느 time 에 스케쥴링 제안을 할지 확률적으로 샘플링 한다. random seed 는 고정하여 재현성을 갖춘다.
+- op_state_probs: 초기화 시 op_state 에 따른 operation 의 확률값은 CFG[phase_conditional] key 값을 읽어와서 채운다. random seed 는 global 하게 고정으로 사용
 - **중요**: operation sequence 제안
   - 단일한 operation 을 제안할 수도 있고, operation sequence 의 형태로 제안할 수도 있다: e.g) read->dout, cache_program/cache_read, oneshot_program_lsb->oneshot_program_csb->oneshot_program_execution_msb, set_feature->get_feature, etc.
-  - sequence 의 형태로 제안하는 확률과 생성 규칙은 별도의 파일에 정의한다: CFG[op_base][sequence], CFG[generate_seq_rules]
+  - sequence 의 형태로 제안하는 확률과 생성 규칙은 별도의 파일에 정의한다: CFG[op_bases][op_base][sequence], CFG[generate_seq_rules]
   - sequence 의 순서는 보장되어야 하며 순차적으로 스케쥴링 된다. 하지만 validity check 를 유발하지 않는 operation 은 sequence 중간에 스케쥴링 가능하다.
   - sequence 를 제안할 때는 우선 sequence 내 모든 operation 을 가상으로 추가했을 때 validity 를 만족하는지 `Validator` 를 통해서 확인하고 나서 제안한다.
   - sequence 를 구성하는 각 operation 은 schedule 에 우선 예약되어야 하며, 각 operation 마다 끝나는 시간을 예상해서 예약 시간을 정하고, event_hook 을 그 시점에 맞춰 생성할 수 있도록 `Scheduler` 에 정보를 전달한다.
   - sequence 중 일부가 스케쥴에서 누락되어서는 안되며, 무조건 실행되어야 한다.
 - `ResourceManager` 에 요청하여 각종 state 값을 참조하여, 특정 operation 은 제외하고, 최종적으로 operation, target address(필요 시) 를 선정한다.
-- 샘플링 단계:
-  1. 현재 시각 기준 후보 time 선정
-  2. op_state_probs 참조 후 확률 값 0 인 후보 제외
-  3. 제안하는 time 시점에서의 op_state_timeline 값을 확인 후 CFG[exclusion_groups][CFG[exclusions_by_state][op_state]] 를 참조하여 operation 종류 제외
-  4. cache_state 에 대한 고려: `ResourceManager` 의 cache_state 를 참조해 celltype 으로 operation 제외: cache operation 중일 경우 cache end 전까지 target plane(for cache_read), die(for cache_program) 에 대해 동일한 celltype 의 후속 cache_read/cache_program 이 동작되어야 한다.
-  5. operation 선정
-  6. erase/program/read 가 후보라면 `ResourceManager` 에 요청하여 target address 샘플링.
+- workflow (샘플링 단계)
+  1. `Scheduler` 가 event_hook 을 통해 `Proposer` 의 `propose` 함수가 호출되고 event_hook 의 payload 를 넘겨 받음
+  2. 현재 시각 기준 `ResourceManager` 의 op_state_timeline 을 통해 op_state 확인
+  4. op_state_probs[op_state] 로 (operation, prob) 후보 list 생성
+  5. cache_state 에 대한 고려: `ResourceManager` 의 cache_state 를 참조해 celltype 으로 operation 제외: cache operation 중일 경우 cache end 전까지 target plane(for cache_read), die(for cache_program) 에 대해 동일한 celltype 의 후속 cache_read/cache_program 이 동작되어야 한다.
+  6. 남은 (operation, prob) 후보의 확률을 정규화한 후 후보 샘플
+  7. erase/program/read 가 후보라면 `ResourceManager` 에 요청하여 target address 샘플링. CFG[op_names][op_name][multi]=true 라면 CFG[policies][maxplanes] 로 plane_set 조합을 만들어 address 를 샘플링하고, 만약 샘플링 실패한다면 plane_set 의 최소크기인 2 의 조합까지 시도해본다. 없다면 남은 후보 중 CFG[policies][maxtry_candidate] 횟수만큼 비복원 샘플링
+  8. 최종 후보에 대해 `Validator` 를 통해서 유효성 검증 통과하면 operation, time 을 `Scheduler` 에게 반환하여 예약되게 한다.
 - attributes
   - `CFG`
   - op_state_probs
 
 ### `ResourceManager`
 - `NAND_BASICS_N_RULES.md` Resources & Rules 항목 참조
-- 관리 대상: addr_state, addr_mode, IO_bus, exclusion_windows, latches, op_state_timeline, suspend_states, odt_state, cache_state, etc_states
+- 관리 대상: addr_state, addr_mode_erase, addr_mode_pgm, IO_bus, exclusion_windows, latches, op_state_timeline, suspend_states, odt_state, cache_state, etc_states, ongoing_ops, suspended_ops
 - resource 현재 또는 미래 시점의 값의 상태를 관리한다.
 - `AddressManager` 의 addr_state, addr_mode 값은 현재 시점을 참조할 때 사용하고, 미래 시점의 값은 별도로 관리한다.
 - state_timeline 관리 방법
   - operation 이 스케쥴 될 때, operation 의 모든 logic_state 를 op_state_timeline 에 등록하고, 추가로 op_name.END state 를 마지막에 추가한다. end_time 은 'inf' 로 등록한다. 이렇게 하는 목적은 `달성 지표` 중 op_state x op_name x input_time 의 다양성을 확보하기 위해서이다
-  - SUSPEND->RESUME
-    - ERASE_SUSPEND/PROGRAM_SUSPEND/ERASE_RESUME/PROGRAM_SUSPEND operation 은 END state 를 추가하지 않는다
-    - resume 시에 이전에 중단됐던 operation 의 state 중 마저 진행하지 못했던 state 중 ISSUE 를 제외한, CORE_BUSY 와 END state 를 다시 추가한다.
-  - RESET/RESET_LUN 동작이 스케쥴되면, RESET 의 경우 모든 die 에 대한 동작 및 state 가 초기화 된다.
+  - 예외 operation
+    - SUSPEND->RESUME
+      - workflow: 아래 예시는 ERASE_SUSPEND 지만, PROGRAMS_SUSPEND 에도 동일 적용
+        1. ERASE 동작이 `Scheduler` 에 의해 예약됨. 이 떄 ongoing_ops 배열에 해당 operation 을 카피하여 추가.
+        2. ERASE.CORE_BUSY 중 SUSPEND 동작이 `Scheduler` 에 의해 time_suspend 시각에 등록됨.
+        3. `ResourceManager` 를 통해 op_state_timeline 의 ERASE.CORE_BUSY 상태가 time_suspend 이후부터 제거되고, ERASE_SUSPEND 에 의한 스케쥴이 timlime 에 등록된다. 이 떄 `suspended_ops` 에 ongoing_ops 에 있던 ERASE operation 을 추가하고, ongoing_ops 에서 제거한다. suspend_states 도 'erase_suspended' 상태로 변경한다.
+           - 규칙: ERASE_SUSPEND/PROGRAM_SUSPEND/ERASE_RESUME/PROGRAM_SUSPEND operation 은 END state 를 별도로 추가하지 않는다. 따라서 예외적으로 별도의 routine 을 통해 이를 처리한다.
+        4. 이후 ERASE_RESUME 동작이 예약되면, `Scheduler` 는 이것이 RESUME 동작임을 인지하고, 기존 operation 예약이 아닌 별도의 routine 으로 다음을 처리한다.
+          - ERASE_RESUME.CORE_BUSY state 를 op_state_timeline 에 예약하고, `suspended_ops` 에 있던 operation 을 ERASE_RESUME 이 끝나는 시각 바로 뒤에 추가한다.
+    - RESET/RESET_LUN 동작이 스케쥴되면, RESET 의 경우 모든 die 에 대한 동작 및 state 가 초기화 된다.
 - attributes
   - `CFG`
   - addr_state: (die,block) 마다 현재 data 기록 상태 저장. e.g) -2:BAD, -1: ERASE, 0~pagesize-1: last_pgmed_page_address
-  - addr_mode: (die,block) 마다 erase 할 떄 celltype 등록
+  - addr_mode_erase: (die,block) 마다 erase 할 떄의 celltype 등록
+  - addr_mode_pgm: (die,block) 마다 program 할 때의 celltype 등록
   - IO_bus: ISSUE timeline 등록.
   - exclusion_windows: CFG[op_specs][op_name][multi] 참조하여 die level 에서 single x multi, multi x multi 가 overlap 될 수 없게 금지 구간 등록 관리
   - latches
@@ -140,12 +185,13 @@
       - oneshot_program_lsb 완료 후 lsb_latch lock: CFG[exclusion_groups][after_program_lsb] 로 operation 금지
       - oneshot_program_csb 완료 후 csb_latch lock: CFG[exclusion_groups][after_program_csb] 로 operation 금지
       - oneshot_program_msb 완료 후 msb_latch lock: CFG[exclusion_groups][after_program_msb] 로 operation 금지 
-  - op_state_timeline: (die,plane) target. logic_state timeline 등록. state 에 따른 exclusions_by_op_state 에 list
+  - op_state_timeline: (die,plane) target. logic_state 를 timeline 등록. state 에 따른 exclusions_by_op_state 에 list
   - suspend_states: (die) target. suspend_states on/off 등록. suspend_states 에 따른 exclusions_by_suspend_state 에 list
   - odt_state: odt_state on/off 등록. odt_state 에 따른 exclusions_by_odt_state 에 list
   - cache_state: (die,plane) target. cache_read, cache_program 이 진행 중인지 관리.
   - etc_states: 현재 미사용. 추후 관리
-  - suspended_ops: erase_suspend/program_suspend/nested_suspend 시에 중단됐던 operation 의 정보를 저장. 이후 resume 시에 재개 시 필요한 resource 들에 등록하여 복구한다. 예를 들어, logic_state timeline 의 경우 suspend 시 그 시점 이후의 operation 의 state 정보는 저장 후 삭제하고, resume 시 정보를 복구해서 등록한다
+  - ongoing_ops: (die) target. 시작된erase/program 이 시작되면 
+  - suspended_ops: (die) target. erase_suspend/program_suspend/nested_suspend 시에 중단됐던 operation 의 정보를 저장. 이후 resume 시에 재개 시 필요한 resource 들에 등록하여 복구한다. 예를 들어, logic_state timeline 의 경우 suspend 시 그 시점 이후의 operation 의 state 정보는 저장 후 삭제하고, resume 시 정보를 복구해서 등록한다
 
 ### `AddressManager`
 - `addrman.py` 에 이미 구현됨
@@ -180,16 +226,6 @@
 - attributes
   - `CFG`
   - `ResourceManager`
-
-### `Scheduler`
-- event_hook 기반으로 현재 시각을 변경하고, `Proposer` 를 호출하여, `Validator` 의 통과가 된 operation 은 timeline 에 schedule 한다. 이 때, `ResourceManager` 를 통해 state 값을 update 한다.
-- **중요**: operation 을 예약하면서 동시에 phase_hook 을 생성하여 heappush 하고 다음 턴에 heappop 으로 참조하여 동작 중인 operation 의 op_state, input_time 에 다양한 operation 이 스케쥴될 수 있게 drive 한다.
-- 이전 erase/program/read 에 사용된 address 를 저장해두고, operation sequence 생성시에 이전 address 값을 참고한다.
-- 시뮬레이션 시간을 정할 수 있으며, 시뮬레이션이 끝나면 `필수 아웃풋`, `달성 지표` 를 출력한다.
-- 여러번 반복해서 돌릴 수 있어야 한다. 한 턴이 끝날때 마다 `ResourceManager` 의 state_timeline, bus 등의 snapshot 을 파일로 저장하고, 다음 턴에서 이어 받아 재개할 수 있도록 한다.
-- attributes
-  - `ResourceManager`
-  - `Proposer`
 
 ## 워크 플로우 (draft)
 - 초기화: `Proposer`, `ResourceManager`, `AddressManager`, `Validator`, `Scheduler` 인스턴스 생성
