@@ -199,7 +199,6 @@
   - exclusions_by_suspend_state: (die)
   - exclusions_by_odt_state: global
   - exclusions_by_cache_state: (die,plane)
-  - exclusions_by_write_protect_state: global
 - 그 외
 
 ## Open questions

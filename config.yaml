@@ -577,54 +577,6 @@ exclusion_groups:
     - ZQCAL
     - ODTDISABLE
     - ODTENABLE
-  write_protect:
-    - ERASE
-    - PROGRAM_SLC
-    - CACHE_PROGRAM_SLC
-    - ONESHOT_PROGRAM_LSB
-    - ONESHOT_PROGRAM_CSB
-    - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_EXEC_MSB
-    - ONESHOT_CACHE_PROGRAM
-    # - READ
-    # - READ4K
-    # - CACHE_READ
-    # - CACHE_READ_END
-    # - PLANE_READ
-    # - PLANE_READ4K
-    # - PLANE_CACHE_READ
-    # - PLANE_CACHE_READ_END
-    - COPYBACK_READ
-    - COPYBACK_PROGRAM_SLC
-    - ONESHOT_COPYBACK_PROGRAM_LSB
-    - ONESHOT_COPYBACK_PROGRAM_CSB
-    - ONESHOT_COPYBACK_PROGRAM_MSB
-    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
-    # - DOUT
-    # - DATAIN
-    # - SR
-    # - SR_ADD
-    # - CAMREAD
-    # - CAMREAD_LUN
-    - ERASE_SUSPEND
-    - ERASE_RESUME
-    - PROGRAM_SUSPEND
-    - PROGRAM_RESUME
-    # - TRAINING
-    # - READID
-    # - SETPARA
-    # - GETPARA
-    # - PLANE_SETPARA
-    # - SETFEATURE
-    # - GETFEATURE
-    # - SETFEATURE_LUN
-    # - GETFEATURE_LUN
-    # - RESET
-    # - RESET_LUN
-    # - TEMPSENSOR
-    # - ZQCAL
-    # - ODTDISABLE
-    # - ODTENABLE
   on_camread:
     - ERASE
     - PROGRAM_SLC
@@ -1897,7 +1849,7 @@ exclusions_by_latch_state:
 exclusions_by_suspend_state:
   ERASE_SUSPEND: ['erase_suspend']
   PROGRAM_SUSPEND: ['program_suspend']
-  RESET_SUSPEND: ['nested_suspended']
+  NESTED_SUSPEND: ['nested_suspended']
 
 exclusions_by_odt_state:
   ODT_DISABLE: ['odt_disable']

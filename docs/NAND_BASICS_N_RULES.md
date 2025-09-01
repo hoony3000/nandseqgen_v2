@@ -125,7 +125,7 @@
 - operation 종류에 따라 plane-level, die-level, global-level 에서 state 가 바뀌게 된다.
 - erase/program 은 동작 시 die-wide 로 모든 plane 의 state 가 바뀌게 되고 동작 중에는 모든 plane 에서 erase/program/read 가 금지된다.
 - read 는 single-plane 동작에 한해서, 동작하지 않는 IDLE 상태의 plane 에 동시에 read 가 가능하다. 이는 multi-plane 동작과는 다른 것으로 plane_interleave_read 라고 부른다
-- read_status, reset 등의 operation 은 state 에 상관없이 동작 가능하다.
+- read_status, reset 등의 operation 은 일부 state 를 제외한 대부분의 **state** 에서 동작 가능하다.
 - single-plane x multi-plane, multi-plane x multi-plane 동작은 overlap 될 수 없다.
 - 그 외 state 별 operation 제약은 별도의 파일에 정의한다; `op_specs.yaml`
 
@@ -153,8 +153,11 @@
 - resume 동작이 수행되면, 멈춰있던 erase/program 동작이 재개된다. logic_state 는 마지막 저장된 것으로 복원된다.
 - reset 동작이 수행되면 suspend states 는 모두 없어지고 erase/proogram 동작은 reset 된다.
 
-### odt_state: 반영 완료
+### odt_state
 - 제한: ODT_disable operation 동작 시 특정 operation 의 허용이 제한되고, ODT_reenable 입력 시 그 제한이 풀린다.
 
-### etc_states: 반영 완료
+### write_protect_state: 구현 안함
+- 제한: write_protection operation 동작 시 erase, program 이 제한된다.
+
+### etc_states
 - 추후 디자인 필요하지만 현재는 필요 없음: 특정 set_parameter, set_feature operation 에 의해 상태가 변할 수 있다.
