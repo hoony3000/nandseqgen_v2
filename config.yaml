@@ -17,10 +17,11 @@ celltypes:
 
 policies:
   admission_window: 0.5
-  queue_refill_period_us: 50
+  queue_refill_period_us: 50.0
   maxplanes: 4
   maxloop_seq: 4
   maxtry_candidate: 4
+  sequence_gap: 1.0
 
 op_bases:
   DEFAULT:
@@ -147,7 +148,7 @@ op_bases:
         - DOUT: 0.9
         - CACHE_READ.SEQ: 0.1
       inherit:
-        - DOUT: ['same_page', 'same_chunk', 'multi']
+        - DOUT: ['same_page', 'multi']
         - CACHE_READ.SEQ: ['same_celltype']
     states:
       - ISSUE:
@@ -165,9 +166,9 @@ op_bases:
     instant_resv: false
     sequence:
       probs:
-        - DOUT: 1
+        - DOUT4K: 1
       inherit:
-        - DOUT: ['same_page', 'same_chunk', 'multi']
+        - DOUT4K: ['same_page', 'multi']
     states:
       - ISSUE:
         bus: true
@@ -212,7 +213,7 @@ op_bases:
         - DOUT: 0.9
         - CACHE_READ.SEQ: 0.1
       inherit:
-        - DOUT: ['same_page', 'same_chunk', 'multi']
+        - DOUT: ['same_page', 'multi']
         - CACHE_READ.SEQ: ['same_celltype']
     states:
       - ISSUE:
@@ -230,9 +231,9 @@ op_bases:
     instant_resv: false
     sequence:
       probs:
-        - DOUT: 1
+        - DOUT4K: 1
       inherit:
-        - DOUT: ['same_page', 'same_chunk', 'multi']
+        - DOUT4K: ['same_page', 'multi']
     states:
       - ISSUE:
         bus: true
@@ -278,7 +279,7 @@ op_bases:
         - COPYBACK_PROGRAM_SLC.SEQ: 0.05
         - ONESHOT_COPYBACK_PROGRAM_LSB.SEQ: 0.05
       inherit:
-        - DOUT: ['same_page', 'same_chunk', 'multi']
+        - DOUT: ['same_page', 'multi']
         - COPYBACK_PROGRAM_SLC.SEQ: ['same_celltype']
         - ONESHOT_COPYBACK_PROGRAM_LSB.SEQ: ['same_celltype']
     states:
@@ -347,6 +348,14 @@ op_bases:
         bus: false
         duration: 8.0
   DOUT:
+    scope: "NONE"
+    affect_state: false
+    instant_resv: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+  DOUT4K:
     scope: "NONE"
     affect_state: false
     instant_resv: false
@@ -608,6 +617,7 @@ exclusion_groups:
     - ONESHOT_COPYBACK_PROGRAM_MSB
     - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
     - DOUT
+    - DOUT4K
     - DATAIN
     # - SR
     # - SR_ADD
@@ -656,6 +666,7 @@ exclusion_groups:
     - ONESHOT_COPYBACK_PROGRAM_MSB
     - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
     - DOUT
+    - DOUT4K
     - DATAIN
     - SR
     - SR_ADD
@@ -1184,6 +1195,7 @@ exclusion_groups:
     - ONESHOT_COPYBACK_PROGRAM_MSB
     - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
     - DOUT
+    - DOUT4K
     - DATAIN
     # - SR
     # - SR_ADD
@@ -1232,6 +1244,7 @@ exclusion_groups:
     - ONESHOT_COPYBACK_PROGRAM_MSB
     - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
     - DOUT
+    - DOUT4K
     - DATAIN
     # - SR
     # - SR_ADD
@@ -1280,6 +1293,7 @@ exclusion_groups:
     - ONESHOT_COPYBACK_PROGRAM_MSB
     - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
     - DOUT
+    - DOUT4K
     - DATAIN
     # - SR
     # - SR_ADD
@@ -1328,6 +1342,7 @@ exclusion_groups:
     - ONESHOT_COPYBACK_PROGRAM_MSB
     - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
     - DOUT
+    - DOUT4K
     - DATAIN
     # - SR
     # - SR_ADD
@@ -1376,6 +1391,7 @@ exclusion_groups:
     - ONESHOT_COPYBACK_PROGRAM_MSB
     - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
     - DOUT
+    - DOUT4K
     - DATAIN
     # - SR
     # - SR_ADD
@@ -1424,6 +1440,7 @@ exclusion_groups:
     - ONESHOT_COPYBACK_PROGRAM_MSB
     - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
     - DOUT
+    - DOUT4K
     - DATAIN
     # - SR
     # - SR_ADD
@@ -1472,6 +1489,7 @@ exclusion_groups:
     - ONESHOT_COPYBACK_PROGRAM_MSB
     - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
     - DOUT
+    - DOUT4K
     - DATAIN
     # - SR
     # - SR_ADD
@@ -1520,6 +1538,7 @@ exclusion_groups:
     - ONESHOT_COPYBACK_PROGRAM_MSB
     - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
     - DOUT
+    - DOUT4K
     - DATAIN
     # - SR
     # - SR_ADD
@@ -1568,6 +1587,7 @@ exclusion_groups:
     - ONESHOT_COPYBACK_PROGRAM_MSB
     - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
     - DOUT
+    - DOUT4K
     - DATAIN
     # - SR
     # - SR_ADD
@@ -1616,6 +1636,7 @@ exclusion_groups:
     - ONESHOT_COPYBACK_PROGRAM_MSB
     - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
     - DOUT
+    - DOUT4K
     - DATAIN
     # - SR
     # - SR_ADD
@@ -1664,6 +1685,7 @@ exclusion_groups:
     - ONESHOT_COPYBACK_PROGRAM_MSB
     - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
     - DOUT
+    - DOUT4K
     - DATAIN
     # - SR
     # - SR_ADD
@@ -1927,10 +1949,20 @@ generate_seq_rules:
     sequences:
       - CACHE_PROGRAM_SLC: ['inc_page', 'same_celltype'] # inheritance conditions
       - PROGRAM_SLC: ['inc_page', 'same_celltype']
+    sequences_by_op_base:
+      CACHE_PROGRAM_SLC:
+        - ['inc_page', 'same_celltype']
+      PROGRAM_SLC:
+        - ['inc_page', 'same_celltype']
   ONESHOT_PROGRAM_CSB.SEQ:
     sequences:
       - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype']
       - ONESHOT_PROGRAM_EXEC_MSB: ['same_page', 'same_celltype']
+    sequences_by_op_base:
+      ONESHOT_PROGRAM_CSB:
+        - ['same_page', 'same_celltype']
+      ONESHOT_PROGRAM_EXEC_MSB:
+        - ['same_page', 'same_celltype']
   ONESHOT_PROGRAM_CSB_CACHE.SEQ:
     sequences:
       - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype']
@@ -1938,10 +1970,20 @@ generate_seq_rules:
       - ONESHOT_PROGRAM_LSB: ['inc_page', 'same_celltype']
       - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype']
       - ONESHOT_PROGRAM_EXEC_MSB: ['same_page', 'same_celltype']
+    sequences_by_op_base:
+      ONESHOT_PROGRAM_CSB:
+        - ['same_page', 'same_celltype']
+        - ['same_page', 'same_celltype']
+      ONESHOT_CACHE_PROGRAM:
+        - ['same_page', 'same_celltype']
+      ONESHOT_PROGRAM_LSB:
+        - ['inc_page', 'same_celltype']
+      ONESHOT_PROGRAM_EXEC_MSB:
+        - ['same_page', 'same_celltype']
   CACHE_READ.SEQ:
     sequences:
       - CACHE_READ: ['same_page', 'same_celltype']
-      - DOUT: ['prev_page', 'same_celltype', 'same_chunk', 'multi']
+      - DOUT: ['prev_page', 'same_celltype', 'multi']
       - CACHE_READ_END: ['inc_page', 'same_celltype']
       - DOUT: ['same_page', 'same_celltype', 'same_chunk', 'multi']
   COPYBACK_PROGRAM_SLC.SEQ:
@@ -2650,13 +2692,19 @@ op_names:
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 9.9794
+      ISSUE: 10.0144
   Enhanced_Random_Data_Output_Secondary:
     base: DOUT
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 10.0144
+      ISSUE: 9.9794
+  Enhanced_Random_Data_Output_4K_Secondary:
+    base: DOUT4K
+    multi: false
+    celltype: NONE
+    durations:
+      ISSUE: 3.8336
   Erase_Suspend_Reset:
     base: ERASE_SUSPEND
     multi: false
@@ -4165,12 +4213,12 @@ op_names:
       DOUT: *read_16k_dout
 
 phase_conditional: {}
-  # to be autofilled
-  # op_state1:
+  # to be autofilled (아래는 예시)
+  # ERASE.CORE_BUSY:
   #   op_name1: 0.01
   #   op_name2: 0.01
   #   ...
-  # op_state2:
+  # ERASE.END:
   #   op_name1: 0.01
   #   op_name2: 0.01
   #   ...

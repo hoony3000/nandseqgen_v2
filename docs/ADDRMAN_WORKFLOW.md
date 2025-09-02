@@ -15,7 +15,8 @@ flowchart TD
 
   subgraph State[상태]
     S1[addrstates]
-    S2[addrmodes]
+    S2e[addr_mode_erase]
+    S2p[addr_mode_pgm]
   end
 
   subgraph ERASE[random_erase]
@@ -39,7 +40,8 @@ flowchart TD
   M --> F2 & F3
   O --> F3
   S1 --> F1 & F2 & F3
-  S2 --> F2 & F3
+  S2e --> F2
+  S2p --> F2 & F3
   F1 --> Smp1 --> A1 --> S1
   F2 --> Smp2 --> A2 --> S1
   F3 --> Smp3
@@ -51,8 +53,10 @@ flowchart TD
   - `GOOD=-2`: 정상(미소거)
   - `ERASE=-1`: 소거 완료 상태
   - `0..pagesize-1`: 마지막으로 프로그램된 페이지 인덱스(소거 후 첫 PGM → 0)
-- 모드 배열 `addrmodes`: 블록 단위 셀 모드(SLC/FWSLC/TLC 등)를 보관 (`addrman.py:67`).
-  - 소거 시 모드를 설정하고(`set_adds_erase`) 이후 PGM 시 동일 모드만 허용
+- 모드 배열 `addr_mode_erase`/`addr_mode_pgm`: 블록 단위 셀 모드(SLC/FWSLC/TLC 등)를 분리 보관.
+  - ERASE 시 `addr_mode_erase`를 설정하고 `addr_mode_pgm`은 초기화(TBD)
+  - PGM 시작 시점: (erase==mode) 또는 (erase==SLC and mode∈{A0SLC,ACSLC}) 만 허용
+  - PGM 지속/READ: `addr_mode_pgm == mode`만 허용
 - 주소 표현: 반환 배열은 `(block, page)` 쌍을 담습니다. plane은 `block % num_planes`로 유도합니다.
 - 반환 배열 형태(Shape):
   - 단일 plane 선택: `(#, 1, 2)`
@@ -66,17 +70,17 @@ flowchart TD
 ## Random API 핵심 동작
 - random_erase
   - 조건: `addrstates != BAD` AND `addrstates != ERASE` (단일/멀티 모두 충족)
-  - 효과: 선택 블록(들) `addrstates = ERASE(-1)`, `addrmodes = mode`
+  - 효과: 선택 블록(들) `addrstates = ERASE(-1)`, `addr_mode_erase = mode`, `addr_mode_pgm = TBD`
 - random_pgm
-  - 조건: `ERASE(-1) <= addrstates < pagesize-1` AND `addrmodes == mode`
+  - 조건: `ERASE(-1) <= addrstates < pagesize-1` AND (시작: `addr_mode_erase==mode` 또는 `addr_mode_erase==SLC and mode∈{A0SLC,ACSLC}`) AND (지속: `addr_mode_pgm==mode`)
   - 연속 옵션: 동일 블록(또는 그룹)에서 `size`만큼 연속 페이지 할당, 상태는 `+size`
   - 효과: 선택 블록(들) `addrstates += 1` 또는 `+= size`
 - random_read
-  - 조건: `addrstates >= offset` AND `addrmodes == mode`
+  - 조건: `addrstates >= offset` AND `addr_mode_pgm == mode`
   - 효과: 상태 변화 없음, 가중치 기반(읽기 가능한 페이지 수) 샘플링
 
 ## 상태 전이 요약
-- ERASE 수행 시: `addrstates = ERASE(-1)`, `addrmodes = mode`
+- ERASE 수행 시: `addrstates = ERASE(-1)`, `addr_mode_erase = mode`, `addr_mode_pgm = TBD`
 - PGM 수행 시: `addrstates += 1` (연속 시 `+= size`), 모드는 유지
 - READ 수행 시: 상태/모드 변화 없음
 
@@ -84,8 +88,8 @@ flowchart TD
 - 단일 plane: `block % num_planes == sel_plane` 기준으로 내부 필터링
 - 멀티 plane: 선택된 plane 집합을 행 단위 그룹으로 묶어 조건을 일괄 평가
   - ERASE: 모든 블록 `!= BAD` AND `!= ERASE`
-  - PGM: 모든 블록의 `addrstates`가 동일하고 범위 유효, `addrmodes == mode`
-  - READ: 모든 블록이 `addrstates >= offset`이고 `> ERASE(-1)`, `addrmodes == mode`
+  - PGM: 모든 블록의 `addrstates`가 동일하고 범위 유효, 시작은 `addr_mode_erase` 규칙, 지속은 `addr_mode_pgm == mode`
+  - READ: 모든 블록이 `addrstates >= offset`이고 `> ERASE(-1)`, `addr_mode_pgm == mode`
 
 ## 상태/모드 갱신 규칙
 - 최근 동작 원복: `undo_last()`로 마지막 ERASE/PGM 이전 상태 복원

@@ -90,16 +90,16 @@
 
 ## Resources & Rules
 
-### addr_state, addr_mode: erase/program/read address dependencies: 반영 완료, `addrman.py`
+### addr_state, addr_mode_erase/addr_mode_pgm: erase/program/read address dependencies: 반영 완료, `addrman.py`
 - erase 는 cell_mode 에 상관없이 모든 block 에 대하여 수행될 수 있지만, 초기 상태가 BADBLOCK 인 경우에는 금지된다
 - erase 되지 않은 block 에 program 할 수 없다.
-- erase 가 특정 block 에 특정 cell mode 로 수행됐다면, 해당 block 에 program/read 동일한 cell mode 로 수행해야 된다.
+- erase 가 특정 block 에 특정 cell mode(=addr_mode_erase) 로 수행됐다면, 해당 block 에 program/read 는 동일한 cell mode(=addr_mode_pgm) 로 수행해야 한다.
 - program 되지 않은 page 에 read 할 수 없다.
 - 특정 block 에 program 할 때는 page 0 -> last page 의 오름차순으로만 program 해야한다.
 - 동일 page 에 두번 이상 program 할 수 없다.
 - NAND 의 특성상 block 내 마지막 program 된 page 에서 offset 을 준 아래 page 에서 read 하는 것이 권장된다.
-- erase 가 특정 block 에 특정한 celltype 으로 수행됐다면, 해당 block 에는 program/read 도 동일한 celltype 으로 동작해야한 한다. 이 때, 예외적인 규칙이 있으므로 아래에 명시한다.
-  - block 에 SLC 로 erase 됐다면, A0SLC, ACSLC program 은 허용한다. 이 때, read 는 program 과 동일한 celltype 이어야 한다.
+- erase 가 특정 block 에 특정한 celltype 으로 수행됐다면, 해당 block 에는 program/read 도 동일한 celltype 으로 동작해야 한다. 이 때, 예외적인 규칙이 있으므로 아래에 명시한다.
+  - block 이 SLC 로 erase(addr_mode_erase=SLC) 됐다면, A0SLC, ACSLC program 은 허용한다. 이 때, read 는 program(addr_mode_pgm) 과 동일한 celltype 이어야 한다.
 - multi-plane 동작을 할 때 target address 간의 group 제약이 존재한다.
     - address group 내 plane/block 순서는 오름차순이어야 한다.
     - page address 는 모두 동일해야 한다.

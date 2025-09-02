@@ -67,8 +67,8 @@ class AddressManager:
     AddressManager class 정의
     num_address : block address 갯수
     addrstates : address 상태를 저장하는 numpy 배열
-    addrmodes_erase : erase 시 선택된 celltype 을 저장
-    addrmodes_pgm   : program/read 시 사용할 celltype 을 저장
+    addrmodes_erase / addr_mode_erase : erase 시 선택된 celltype 을 저장
+    addrmodes_pgm   / addr_mode_pgm   : program/read 시 사용할 celltype 을 저장
     pagesize : block 내 page 갯수
     offset : addrReadable 구할 때 last PGM page address 끝에서부터 제외할 page 갯수
     num_dies : die 수
@@ -104,6 +104,9 @@ class AddressManager:
         self.addrstates: np.ndarray
         self.addrmodes_erase: np.ndarray
         self.addrmodes_pgm: np.ndarray
+        # Standardized aliases for external docs/specs
+        self.addr_mode_erase: np.ndarray
+        self.addr_mode_pgm: np.ndarray
         self.pagesize: int
         self.offset: int
         self.undo_addrs: np.ndarray = np.array([], dtype=int)
@@ -151,6 +154,9 @@ class AddressManager:
             self.addrmodes_pgm = np.full(self.num_blocks, TBD, dtype=object)
             # Backward-compat alias used by external scripts
             self.addrmodes = self.addrmodes_pgm
+            # Standardized aliases (PRD v2): addr_mode_*
+            self.addr_mode_erase = self.addrmodes_erase
+            self.addr_mode_pgm = self.addrmodes_pgm
             bad_idx = self._normalize_badlist(badlist)
             if bad_idx.size:
                 if np.any(bad_idx < 0) or np.any(bad_idx >= self.num_blocks):
