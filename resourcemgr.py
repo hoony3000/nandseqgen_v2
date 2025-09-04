@@ -48,7 +48,43 @@ class _StateTimeline:
             i+=1
         return False
 @dataclass
-class _Txn: now_us:float; plane_resv:Dict[Tuple[int,int],List[Tuple[float,float]]]=field(default_factory=dict); bus_resv:List[Tuple[float,float]]=field(default_factory=list); excl_global:List[ExclWindow]=field(default_factory=list); excl_die:Dict[int,List[ExclWindow]]=field(default_factory=dict); latch_locks:Dict[Tuple[int,int],_Latch]=field(default_factory=dict); st_ops:List[Tuple[int,int,str,List[Tuple[str,float]],float]]=field(default_factory=list)
+class _Txn:
+    now_us: float
+    plane_resv: Dict[Tuple[int, int], List[Tuple[float, float]]] = field(default_factory=dict)
+    bus_resv: List[Tuple[float, float]] = field(default_factory=list)
+    excl_global: List[ExclWindow] = field(default_factory=list)
+    excl_die: Dict[int, List[ExclWindow]] = field(default_factory=dict)
+    latch_locks: Dict[Tuple[int, int], _Latch] = field(default_factory=dict)
+    st_ops: List[Tuple[int, int, str, List[Tuple[str, float]], float]] = field(default_factory=list)
+    # EPR overlay: (die, block) -> overrides
+    addr_overlay: Dict[Tuple[int, int], Dict[str, Any]] = field(default_factory=dict)
+
+@dataclass
+class _CacheEntry:
+    die: int
+    plane: Optional[int]
+    kind: str  # 'ON_CACHE_READ' | 'ON_CACHE_PROGRAM' | 'ON_ONESHOT_CACHE_PROGRAM'
+    start_us: float
+    end_us: Optional[float] = None
+    celltype: Optional[str] = None
+
+@dataclass
+class _SuspState:
+    die: int
+    state: str  # 'ERASE_SUSPEND' | 'PROGRAM_SUSPEND' | 'NESTED_SUSPEND'
+    start_us: float
+    end_us: Optional[float] = None
+
+@dataclass
+class _OpMeta:
+    die: int
+    op_id: Optional[int]
+    op_name: Optional[str]
+    base: str
+    targets: List[Address]
+    start_us: float
+    end_us: float
+    remaining_us: Optional[float] = None
 class ResourceManager:
     def __init__(self, cfg: Optional[Dict[str, Any]] = None, dies: int = 1, planes: int = 1):
         self.cfg = cfg or {}
@@ -61,6 +97,18 @@ class ResourceManager:
         self._excl_die: Dict[int, List[ExclWindow]] = {}
         self._latch: Dict[Tuple[int, int], _Latch] = {}
         self._st = _StateTimeline()
+        # runtime states for Proposer/Validator (PRD §5.4/5.5)
+        self._odt_disabled: bool = False
+        self._cache_read: Dict[Tuple[int, int], _CacheEntry] = {}
+        self._cache_program: Dict[int, _CacheEntry] = {}
+        self._suspend_states: Dict[int, Optional[_SuspState]] = {d: None for d in range(self.dies)}
+        self._ongoing_ops: Dict[int, List[_OpMeta]] = {d: [] for d in range(self.dies)}
+        self._suspended_ops: Dict[int, List[_OpMeta]] = {d: [] for d in range(self.dies)}
+        # --- Validator integration (skeleton, gated by config) ---
+        # External address-dependent policy callback (e.g., AddressManager.check_epr)
+        self.addr_policy: Optional[Callable[..., Any]] = None
+        # Last validation snapshot for debugging/observability
+        self._last_validation: Optional[Dict[str, Any]] = None
         # exclusion window token semantics (die-level overlap control)
         self._EXCL_TOKEN_SINGLE = "SINGLE"
         self._EXCL_TOKEN_MULTI = "MULTI"
@@ -306,6 +354,10 @@ class ResourceManager:
             return None
         if not self._latch_ok(op, targets, t0, scope):
             return None
+        # Optional rule evaluation (no-op by default; feature-flagged)
+        ok, _reason = self._eval_rules(stage="feasible", op=op, targets=targets, scope=scope, start=t0, end=end, txn=None)
+        if not ok:
+            return None
         return t0
 
     def reserve(self, txn: _Txn, op: Any, targets: List[Address], scope: Scope, duration_us: Optional[float] = None) -> Reservation:
@@ -329,6 +381,10 @@ class ResourceManager:
             return Reservation(False, "exclusion", op, targets, None, None)
         if not self._latch_ok(op, targets, start, scope):
             return Reservation(False, "latch", op, targets, None, None)
+        # Optional rule evaluation (no-op by default; feature-flagged)
+        ok, reason = self._eval_rules(stage="reserve", op=op, targets=targets, scope=scope, start=start, end=end, txn=txn)
+        if not ok:
+            return Reservation(False, (reason or "rules"), op, targets, None, None)
         planes = list(range(self.planes)) if scope == Scope.DIE_WIDE else plane_set
         for p in planes:
             txn.plane_resv.setdefault((die, p), []).append((start, end))
@@ -352,6 +408,8 @@ class ResourceManager:
         st_list = [(getattr(s, "name", "STATE"), float(getattr(s, "dur_us", 0.0))) for s in getattr(op, "states", [])]
         for t in targets:
             txn.st_ops.append((t.die, t.plane, base, st_list, start))
+        # Update EPR overlay with effects of this reservation for subsequent ops in the same txn
+        self._update_overlay_for_reserved(txn, base, targets)
         return Reservation(True, None, op, targets, start, end)
 
     def commit(self, txn: _Txn) -> None:
@@ -369,6 +427,46 @@ class ResourceManager:
             self._latch[k] = v
         for (die, plane, base, st_list, start) in txn.st_ops:
             self._st.reserve_op(die, plane, base, st_list, start)
+            # Opportunistic minimal state hooks for ODT/CACHE/SUSPEND bookkeeping
+            end = quantize(start + sum(float(d) for (_, d) in st_list))
+            b = str(base).upper()
+            # ODT
+            if b == "ODTDISABLE":
+                self._odt_disabled = True
+            elif b == "ODTENABLE":
+                self._odt_disabled = False
+            # CACHE_READ (plane-scoped) and *_END cleanups
+            if b in ("CACHE_READ", "PLANE_CACHE_READ"):
+                self._cache_read[(die, plane)] = _CacheEntry(die=die, plane=plane, kind="ON_CACHE_READ", start_us=start)
+            elif b in ("CACHE_READ_END", "PLANE_CACHE_READ_END"):
+                ent = self._cache_read.get((die, plane))
+                if ent and ent.end_us is None:
+                    ent.end_us = end
+            # CACHE_PROGRAM (die-scoped)
+            if b == "CACHE_PROGRAM_SLC":
+                self._cache_program[die] = _CacheEntry(die=die, plane=None, kind="ON_CACHE_PROGRAM", start_us=start)
+            elif b == "ONESHOT_CACHE_PROGRAM":
+                self._cache_program[die] = _CacheEntry(die=die, plane=None, kind="ON_ONESHOT_CACHE_PROGRAM", start_us=start)
+            elif b in ("PROGRAM_SLC",):
+                # PROGRAM can end an active cache_program on this die
+                ent = self._cache_program.get(die)
+                if ent and ent.end_us is None:
+                    ent.end_us = end
+            # SUSPEND bookkeeping
+            if b == "ERASE_SUSPEND":
+                self._suspend_states[die] = _SuspState(die=die, state="ERASE_SUSPEND", start_us=start)
+            elif b == "PROGRAM_SUSPEND":
+                cur = self._suspend_states.get(die)
+                # nested when ERASE_SUSPEND then PROGRAM_SUSPEND
+                if cur and cur.state == "ERASE_SUSPEND":
+                    self._suspend_states[die] = _SuspState(die=die, state="NESTED_SUSPEND", start_us=start)
+                else:
+                    self._suspend_states[die] = _SuspState(die=die, state="PROGRAM_SUSPEND", start_us=start)
+            elif b in ("ERASE_RESUME", "PROGRAM_RESUME"):
+                st = self._suspend_states.get(die)
+                if st and st.end_us is None:
+                    st.end_us = end
+                self._suspend_states[die] = None
 
     def rollback(self, txn: _Txn) -> None:
         return
@@ -410,6 +508,188 @@ class ResourceManager:
             return []
         return list(self._excl_die.get(int(die), []))
 
+    # --- Proposer-facing state queries (PRD §5.4) ---
+    def odt_state(self) -> Optional[str]:
+        return "ODT_DISABLE" if self._odt_disabled else None
+
+    def set_odt_disable(self) -> None:
+        self._odt_disabled = True
+
+    def set_odt_enable(self) -> None:
+        self._odt_disabled = False
+
+    def cache_state(self, die: int, plane: int, at_us: Optional[float] = None) -> Optional[str]:
+        """Return active cache state per PRD semantics.
+
+        Rules:
+        - Die-level program cache has priority over plane-level read cache.
+        - "End" takes effect when the END operation completes, i.e., at END's end time.
+        - If at_us is None, treat only entries with end_us is None as active.
+        - If at_us is provided, active when start_us <= at_us < end_us (or end_us is None).
+        """
+        # die-level program cache first
+        ent_d = self._cache_program.get(die)
+        if ent_d:
+            if at_us is None:
+                if ent_d.end_us is None:
+                    return ent_d.kind
+            else:
+                t = quantize(at_us)
+                if ent_d.start_us <= t and (ent_d.end_us is None or t < ent_d.end_us):
+                    return ent_d.kind
+        # plane-level read cache
+        ent_p = self._cache_read.get((die, plane))
+        if ent_p:
+            if at_us is None:
+                if ent_p.end_us is None:
+                    return ent_p.kind
+            else:
+                t = quantize(at_us)
+                if ent_p.start_us <= t and (ent_p.end_us is None or t < ent_p.end_us):
+                    return ent_p.kind
+        return None
+
+    def begin_cache_read(self, die: int, plane: int, start_us: float, celltype: Optional[str] = None) -> None:
+        self._cache_read[(die, plane)] = _CacheEntry(die=die, plane=plane, kind="ON_CACHE_READ", start_us=quantize(start_us), celltype=celltype)
+
+    def end_cache_read(self, die: int, plane: int, end_us: float) -> None:
+        ent = self._cache_read.get((die, plane))
+        if ent and ent.end_us is None:
+            ent.end_us = quantize(end_us)
+
+    def begin_cache_program(self, die: int, start_us: float, kind: str = "ON_CACHE_PROGRAM", celltype: Optional[str] = None) -> None:
+        if kind not in ("ON_CACHE_PROGRAM", "ON_ONESHOT_CACHE_PROGRAM"):
+            kind = "ON_CACHE_PROGRAM"
+        self._cache_program[die] = _CacheEntry(die=die, plane=None, kind=kind, start_us=quantize(start_us), celltype=celltype)
+
+    def end_cache_program(self, die: int, end_us: float) -> None:
+        ent = self._cache_program.get(die)
+        if ent and ent.end_us is None:
+            ent.end_us = quantize(end_us)
+
+    def suspend_states(self, die: int, at_us: Optional[float] = None) -> Optional[str]:
+        st = self._suspend_states.get(die)
+        if not st:
+            return None
+        if at_us is None:
+            return st.state
+        t = quantize(at_us)
+        if st.start_us <= t and (st.end_us is None or t < st.end_us):
+            return st.state
+        return None
+
+    def set_suspend_state(self, die: int, state: Optional[str], now_us: float) -> None:
+        if state is None:
+            cur = self._suspend_states.get(die)
+            if cur and cur.end_us is None:
+                cur.end_us = quantize(now_us)
+            self._suspend_states[die] = None
+        else:
+            self._suspend_states[die] = _SuspState(die=die, state=str(state), start_us=quantize(now_us))
+
+    def ongoing_ops(self, die: Optional[int] = None) -> List[Dict[str, Any]]:
+        if die is None:
+            lst: List[Dict[str, Any]] = []
+            for d, ops in self._ongoing_ops.items():
+                for o in ops:
+                    lst.append({
+                        "die": d,
+                        "op_id": o.op_id,
+                        "op_name": o.op_name,
+                        "base": o.base,
+                        "targets": [Address(t.die, t.plane, t.block, t.page) for t in o.targets],
+                        "start_us": o.start_us,
+                        "end_us": o.end_us,
+                        "remaining_us": o.remaining_us,
+                    })
+            return lst
+        return [
+            {
+                "die": die,
+                "op_id": o.op_id,
+                "op_name": o.op_name,
+                "base": o.base,
+                "targets": [Address(t.die, t.plane, t.block, t.page) for t in o.targets],
+                "start_us": o.start_us,
+                "end_us": o.end_us,
+                "remaining_us": o.remaining_us,
+            }
+            for o in self._ongoing_ops.get(die, [])
+        ]
+
+    def suspended_ops(self, die: Optional[int] = None) -> List[Dict[str, Any]]:
+        if die is None:
+            lst: List[Dict[str, Any]] = []
+            for d, ops in self._suspended_ops.items():
+                for o in ops:
+                    lst.append({
+                        "die": d,
+                        "op_id": o.op_id,
+                        "op_name": o.op_name,
+                        "base": o.base,
+                        "targets": [Address(t.die, t.plane, t.block, t.page) for t in o.targets],
+                        "start_us": o.start_us,
+                        "end_us": o.end_us,
+                        "remaining_us": o.remaining_us,
+                    })
+            return lst
+        return [
+            {
+                "die": die,
+                "op_id": o.op_id,
+                "op_name": o.op_name,
+                "base": o.base,
+                "targets": [Address(t.die, t.plane, t.block, t.page) for t in o.targets],
+                "start_us": o.start_us,
+                "end_us": o.end_us,
+                "remaining_us": o.remaining_us,
+            }
+            for o in self._suspended_ops.get(die, [])
+        ]
+
+    def register_ongoing(self, die: int, op_id: Optional[int], op_name: Optional[str], base: str, targets: List[Address], start_us: float, end_us: float) -> None:
+        self._ongoing_ops.setdefault(die, []).append(
+            _OpMeta(die=die, op_id=op_id, op_name=op_name, base=str(base), targets=list(targets), start_us=quantize(start_us), end_us=quantize(end_us))
+        )
+
+    def move_to_suspended(self, die: int, op_id: Optional[int], now_us: float) -> None:
+        ops = self._ongoing_ops.get(die, [])
+        if not ops:
+            return
+        # choose the latest matching op_id; if op_id is None, take the last ongoing
+        idx = None
+        if op_id is not None:
+            for i in range(len(ops) - 1, -1, -1):
+                if ops[i].op_id == op_id:
+                    idx = i
+                    break
+        if idx is None:
+            idx = len(ops) - 1
+        if idx < 0:
+            return
+        meta = ops.pop(idx)
+        now_q = quantize(now_us)
+        rem = max(0.0, meta.end_us - now_q)
+        meta.remaining_us = rem
+        self._suspended_ops.setdefault(die, []).append(meta)
+
+    def resume_from_suspended(self, die: int, op_id: Optional[int]) -> None:
+        ops = self._suspended_ops.get(die, [])
+        if not ops:
+            return
+        idx = None
+        if op_id is not None:
+            for i in range(len(ops) - 1, -1, -1):
+                if ops[i].op_id == op_id:
+                    idx = i
+                    break
+        if idx is None:
+            idx = len(ops) - 1
+        if idx < 0:
+            return
+        meta = ops.pop(idx)
+        self._ongoing_ops.setdefault(die, []).append(meta)
+
     def snapshot(self) -> Dict[str, Any]:
         return {
             "avail": dict(self._avail),
@@ -419,6 +699,49 @@ class ResourceManager:
             "excl_die": {d: [ExclWindow(w.start, w.end, w.scope, w.die, set(w.tokens)) for w in lst] for d, lst in self._excl_die.items()},
             "latch": {k: _Latch(v.start_us, v.end_us, v.kind) for k, v in self._latch.items()},
             "timeline": [(seg.die, seg.plane, seg.op_base, seg.state, seg.start_us, seg.end_us) for lst in self._st.by_plane.values() for seg in lst],
+            # proposer-facing runtime states
+            "odt_disabled": bool(self._odt_disabled),
+            "cache_read": [
+                (d, p, e.kind, e.start_us, e.end_us, e.celltype)
+                for ((d, p), e) in self._cache_read.items()
+            ],
+            "cache_program": [
+                (d, e.kind, e.start_us, e.end_us, e.celltype)
+                for (d, e) in self._cache_program.items()
+            ],
+            "suspend_states": {
+                d: (s.state, s.start_us, s.end_us) if s else None for d, s in self._suspend_states.items()
+            },
+            "ongoing_ops": {
+                d: [
+                    {
+                        "op_id": m.op_id,
+                        "op_name": m.op_name,
+                        "base": m.base,
+                        "targets": [(t.die, t.plane, t.block, t.page) for t in m.targets],
+                        "start_us": m.start_us,
+                        "end_us": m.end_us,
+                        "remaining_us": m.remaining_us,
+                    }
+                    for m in lst
+                ]
+                for d, lst in self._ongoing_ops.items()
+            },
+            "suspended_ops": {
+                d: [
+                    {
+                        "op_id": m.op_id,
+                        "op_name": m.op_name,
+                        "base": m.base,
+                        "targets": [(t.die, t.plane, t.block, t.page) for t in m.targets],
+                        "start_us": m.start_us,
+                        "end_us": m.end_us,
+                        "remaining_us": m.remaining_us,
+                    }
+                    for m in lst
+                ]
+                for d, lst in self._suspended_ops.items()
+            },
         }
 
     def restore(self, snap: Dict[str, Any]) -> None:
@@ -431,6 +754,54 @@ class ResourceManager:
         self._st = _StateTimeline()
         for (die, plane, op_base, state, s0, s1) in snap.get("timeline", []):
             self._st._insert_plane((die, plane), _StateInterval(die, plane, op_base, state, s0, s1))
+        # proposer-facing runtime states
+        self._odt_disabled = bool(snap.get("odt_disabled", False))
+        self._cache_read = {}
+        for (d, p, kind, s0, s1, cell) in snap.get("cache_read", []):
+            self._cache_read[(int(d), int(p))] = _CacheEntry(die=int(d), plane=int(p), kind=str(kind), start_us=float(s0), end_us=(None if s1 is None else float(s1)), celltype=(None if cell in (None, "None") else cell))
+        self._cache_program = {}
+        for (d, kind, s0, s1, cell) in snap.get("cache_program", []):
+            self._cache_program[int(d)] = _CacheEntry(die=int(d), plane=None, kind=str(kind), start_us=float(s0), end_us=(None if s1 is None else float(s1)), celltype=(None if cell in (None, "None") else cell))
+        self._suspend_states = {d: None for d in range(self.dies)}
+        for k, v in (snap.get("suspend_states", {}) or {}).items():
+            d = int(k)
+            if v is None:
+                self._suspend_states[d] = None
+            else:
+                st, s0, s1 = v
+                self._suspend_states[d] = _SuspState(die=d, state=str(st), start_us=float(s0), end_us=(None if s1 is None else float(s1)))
+        self._ongoing_ops = {d: [] for d in range(self.dies)}
+        for k, lst in (snap.get("ongoing_ops", {}) or {}).items():
+            d = int(k)
+            acc: List[_OpMeta] = []
+            for m in lst:
+                acc.append(_OpMeta(
+                    die=d,
+                    op_id=m.get("op_id"),
+                    op_name=m.get("op_name"),
+                    base=str(m.get("base")),
+                    targets=[Address(int(t[0]), int(t[1]), int(t[2]), (None if t[3] in (None, "None") else int(t[3]))) for t in m.get("targets", [])],
+                    start_us=float(m.get("start_us", 0.0)),
+                    end_us=float(m.get("end_us", 0.0)),
+                    remaining_us=(None if m.get("remaining_us") in (None, "None") else float(m.get("remaining_us"))),
+                ))
+            self._ongoing_ops[d] = acc
+        self._suspended_ops = {d: [] for d in range(self.dies)}
+        for k, lst in (snap.get("suspended_ops", {}) or {}).items():
+            d = int(k)
+            acc: List[_OpMeta] = []
+            for m in lst:
+                acc.append(_OpMeta(
+                    die=d,
+                    op_id=m.get("op_id"),
+                    op_name=m.get("op_name"),
+                    base=str(m.get("base")),
+                    targets=[Address(int(t[0]), int(t[1]), int(t[2]), (None if t[3] in (None, "None") else int(t[3]))) for t in m.get("targets", [])],
+                    start_us=float(m.get("start_us", 0.0)),
+                    end_us=float(m.get("end_us", 0.0)),
+                    remaining_us=(None if m.get("remaining_us") in (None, "None") else float(m.get("remaining_us"))),
+                ))
+            self._suspended_ops[d] = acc
     # minimal exclusion window derivation from cfg
     def _derive_excl(self, op: Any, start: float, die: int) -> List[ExclWindow]:
         rules=(self.cfg or {}).get("constraints",{}).get("exclusions",[])
@@ -459,4 +830,220 @@ class ResourceManager:
             return "LATCH_ON_CSB"
         if base == "ONESHOT_PROGRAM_MSB":
             return "LATCH_ON_MSB"
+        return None
+
+    # Overlay updates to reflect address effects of reserved ops in current txn
+    def _update_overlay_for_reserved(self, txn: _Txn, base: str, targets: List[Address]) -> None:
+        b = str(base).upper()
+        # ERASE resets addr_state to -1
+        if b == "ERASE":
+            for t in targets:
+                key = (int(t.die), int(t.block))
+                ov = txn.addr_overlay.setdefault(key, {})
+                ov["addr_state"] = -1
+        # PROGRAM-like ops set addr_state to the programmed page
+        if b in ("PROGRAM_SLC", "COPYBACK_PROGRAM_SLC"):
+            for t in targets:
+                if t.page is None:
+                    continue
+                key = (int(t.die), int(t.block))
+                ov = txn.addr_overlay.setdefault(key, {})
+                prev = ov.get("addr_state", None)
+                pg = int(t.page)
+                ov["addr_state"] = max(prev, pg) if isinstance(prev, int) else pg
+
+    # -------------------------------
+    # Validator integration — skeleton
+    # -------------------------------
+    def register_addr_policy(self, fn: Optional[Callable[..., Any]]) -> None:
+        """Register address-dependent policy callback (e.g., AddressManager.check_epr).
+
+        Phase 0 skeleton: stored for later EPR evaluation; unused unless enabled by config.
+        """
+        self.addr_policy = fn
+
+    def last_validation(self) -> Optional[Dict[str, Any]]:
+        """Return last validation snapshot for observability/debugging."""
+        return self._last_validation
+
+    def _rules_cfg(self) -> Dict[str, Any]:
+        cfg = (self.cfg or {}).get("constraints", {}) or {}
+        enabled_rules = set()
+        try:
+            for r in (cfg.get("enabled_rules") or []):
+                if isinstance(r, str):
+                    enabled_rules.add(r.strip())
+        except Exception:
+            pass
+        return {
+            "enabled_rules": enabled_rules,
+            "enable_epr": bool(cfg.get("enable_epr", False)),
+            "epr": dict(cfg.get("epr", {}) or {}),
+        }
+
+    def _eval_rules(
+        self,
+        stage: str,
+        op: Any,
+        targets: List[Address],
+        scope: Scope,
+        start: float,
+        end: float,
+        txn: Optional[_Txn] = None,
+    ) -> Tuple[bool, Optional[str]]:
+        """Evaluate enabled rules and return (ok, reason_code).
+
+        Phase 0: skeleton — feature-flagged no-op to ensure zero behavior change
+        when not explicitly enabled. Always returns (True, None).
+        """
+        rcfg = self._rules_cfg()
+        self._last_validation = {
+            "stage": stage,
+            "op_name": self._op_name(op),
+            "base": self._op_base(op),
+            "targets": [(t.die, t.plane, t.block, t.page) for t in targets],
+            "scope": str(scope.name),
+            "start": start,
+            "end": end,
+            "enabled_rules": sorted(list(rcfg.get("enabled_rules", set()))),
+            "enable_epr": bool(rcfg.get("enable_epr", False)),
+        }
+        # Evaluate state_forbid rules if enabled
+        enabled = rcfg.get("enabled_rules", set())
+        base = self._op_base(op)
+        die = targets[0].die
+        plane_set = [t.plane for t in targets]
+
+        def _enabled(name: str, category: Optional[str] = None) -> bool:
+            if name in enabled:
+                return True
+            if category and category in enabled:
+                return True
+            return False
+
+        # Suspend
+        if _enabled("state_forbid_suspend", category="state_forbid"):
+            reason = self._rule_forbid_on_suspend(base, die, start)
+            if reason is not None:
+                self._last_validation.update({"failed_rule": reason})  # type: ignore[union-attr]
+                return False, reason
+
+        # ODT
+        if _enabled("state_forbid_odt", category="state_forbid"):
+            reason = self._rule_forbid_on_odt(base, start)
+            if reason is not None:
+                self._last_validation.update({"failed_rule": reason})  # type: ignore[union-attr]
+                return False, reason
+
+        # Cache (die-level and plane-level)
+        if _enabled("state_forbid_cache", category="state_forbid"):
+            reason = self._rule_forbid_on_cache(base, die, plane_set, start)
+            if reason is not None:
+                self._last_validation.update({"failed_rule": reason})  # type: ignore[union-attr]
+                return False, reason
+
+        # Address-dependent EPR via injected policy (if enabled)
+        if rcfg.get("enable_epr", False) and _enabled("addr_dep"):
+            if self.addr_policy is not None:
+                try:
+                    pending = None
+                    if txn is not None and txn.addr_overlay:
+                        pending = dict(txn.addr_overlay)
+                    simple_targets = [
+                        (int(t.die), int(t.block), (None if t.page is None else int(t.page)))
+                        for t in targets
+                    ]
+                    epr_cfg = rcfg.get("epr", {}) or {}
+                    offset_guard = epr_cfg.get("offset_guard")
+                    res = self.addr_policy(
+                        base=self._op_base(op),
+                        targets=simple_targets,
+                        op_name=self._op_name(op),
+                        op_celltype=None,
+                        as_of_us=start,
+                        pending=pending,
+                        offset_guard=offset_guard,
+                    )
+                    ok = getattr(res, "ok", None)
+                    if ok is None and isinstance(res, dict):
+                        ok = bool(res.get("ok", False))
+                    if not ok:
+                        failures = getattr(res, "failures", None)
+                        if failures is None and isinstance(res, dict):
+                            failures = res.get("failures", [])
+                        self._last_validation.update({  # type: ignore[union-attr]
+                            "failed_rule": "epr_dep",
+                            "epr_failures": [
+                                getattr(f, "code", None) if not isinstance(f, dict) else f.get("code")
+                                for f in (failures or [])
+                            ],
+                        })
+                        return False, "epr_dep"
+                except Exception as e:
+                    # Defensive: treat as allow but record
+                    self._last_validation.update({  # type: ignore[union-attr]
+                        "epr_error": str(e)[:200],
+                    })
+        return True, None
+
+    # --- Rule helpers: state_forbid family ---
+    def _blocked_by_groups(self, base: str, groups: List[str]) -> bool:
+        group_defs: Dict[str, List[str]] = (self.cfg.get("exclusion_groups") or {})
+        for g in groups:
+            bases = group_defs.get(g, [])
+            if base in bases:
+                return True
+        return False
+
+    def _rule_forbid_on_suspend(self, base: str, die: int, at_us: float) -> Optional[str]:
+        """Block operations when die-level suspend state is active per config mapping.
+
+        Config keys: exclusions_by_suspend_state -> [group]
+        Groups map to blocked bases via exclusion_groups.
+        """
+        state = self.suspend_states(die, at_us=at_us)
+        if not state:
+            return None
+        groups_by_state: Dict[str, List[str]] = (self.cfg.get("exclusions_by_suspend_state") or {})
+        groups = groups_by_state.get(state, [])
+        if self._blocked_by_groups(base, groups):
+            return "state_forbid_suspend"
+        return None
+
+    def _rule_forbid_on_odt(self, base: str, at_us: float) -> Optional[str]:
+        """Block operations when ODT_DISABLE is active per config mapping.
+
+        Config keys: exclusions_by_odt_state -> [group]
+        """
+        # odt_state does not need time to evaluate; it's global boolean. Keep at_us for symmetry.
+        odt = self.odt_state()
+        if not odt:
+            return None
+        groups_by_state: Dict[str, List[str]] = (self.cfg.get("exclusions_by_odt_state") or {})
+        groups = groups_by_state.get(odt, [])
+        if self._blocked_by_groups(base, groups):
+            return "state_forbid_odt"
+        return None
+
+    def _rule_forbid_on_cache(self, base: str, die: int, plane_set: List[int], at_us: float) -> Optional[str]:
+        """Block operations when cache state is active per config mapping.
+
+        Checks die-level program cache first, then per-target plane read cache.
+        Config keys: exclusions_by_cache_state -> [group]
+        """
+        groups_by_state: Dict[str, List[str]] = (self.cfg.get("exclusions_by_cache_state") or {})
+        # die-level cache program has priority
+        st_die = self.cache_state(die, plane=0, at_us=at_us)
+        if st_die in ("ON_CACHE_PROGRAM", "ON_ONESHOT_CACHE_PROGRAM"):
+            groups = groups_by_state.get(str(st_die), [])
+            if self._blocked_by_groups(base, groups):
+                return "state_forbid_cache"
+        # plane-level cache read on any target plane
+        for p in plane_set:
+            st_plane = self.cache_state(die, plane=p, at_us=at_us)
+            if not st_plane:
+                continue
+            groups = groups_by_state.get(str(st_plane), [])
+            if self._blocked_by_groups(base, groups):
+                return "state_forbid_cache"
         return None

@@ -272,6 +272,7 @@ class Operation:
           - 'pgm_same_page': 직전 program operation의 page address와 동일
           - 'same_celltype': 직전 operation의 celltype 동일
           - 'multi': 직전 operation이 multi-plane read였다면 해당 plane_set 모두에 DOUT 추가
+          - 'same_page_from_program_suspend': RECOVERY_READ 시에 직전에 입력됐던 ResourceManager.suspended_ops 의 target address 를 그대로 상속
           - sequence 내 operation 간 time 간격: `CFG[policies][sequence_gap]`
        2. 선택된 `sequence[probs]`의 key를 '.'로 split 후 두 번째 원소가 'SEQ'라면, `CFG[generate_seq_rules][key][sequences]` 원소들을 모두 합쳐 operation sequence 생성. 각 operation 별 생성 규칙은 `CFG[generate_seq_rules][key][op_base]`의 "inherit 생성 규칙" 사용
   8) 사전 검증과 재시도: 동일 슬롯(윈도우) 내 가안 배치를 구성해 `Validator` 체크(epr_dependencies, IO_bus_overlap, exclusion_window_violation, 래치 락, ODT/피처 상태)를 수행한다. 실패 시 `CFG[policies][maxtry_candidate]` 한도 내에서 대안 op_name/주소 조합을 재시도한다. 동일 틱 내 부분 스케줄은 금지한다.
@@ -315,7 +316,7 @@ class Operation:
       - PROGRAM 계열(ONESHOT): LSB/CSB/MSB 완료 시 해당 die의 모든 plane에 각각 `LATCH_ON_LSB`/`LATCH_ON_CSB`/`LATCH_ON_MSB` 설정
     - 해제 조건(API)
       - READ 계열: DOUT 종료 시 대상 plane 해제 → `ResourceManager.release_on_dout_end(targets, now)`
-      - PROGRAM 계열: EXEC_MSB 종료 시 해당 die 전체 해제 → `ResourceManager.release_on_exec_msb_end(die, now)`
+      - PROGRAM 계열: ONESHOT_PROGRAM_MSB_23h 또는 ONESHOT_PROGRAM_EXEC_MSB 종료 시 해당 die 전체 해제 → `ResourceManager.release_on_exec_msb_end(die, now)`
   - `op_state_timeline`: (die,plane) target. logic_state timeline 등록. state에 따른 `exclusions_by_op_state` list
   - `suspend_states`: (die) target. suspend_states on/off 등록. state에 따른 `exclusions_by_suspend_state` list
   - `odt_state`: on/off 등록. state에 따른 `exclusions_by_odt_state` list
@@ -352,18 +353,19 @@ class Operation:
 - validation 항목
   - epr_dependencies
     - reserved_at_past_addr_state: 예약된 addr_state 변화 값이 아닌 과거 값 기반 예약 금지
-    - program_before_erase
-    - read_before_program
-    - programs_on_same_page
-    - read_page_on_offset_guard
+    - program_before_erase: addr_state(die,block)=-1 이 아닌 block 에 program 금지
+    - read_before_program_with_offset_guard: 동일 (die,block) 내 (addr_state-offset_guard) 보다 같거나 작은 page 에만 read 할 수 있다.
+    - programs_on_same_page: 동일한 page 에 두 번 이상 program 금지
     - different_celltypes_on_same_block
-  - IO_bus_overlap
-  - exclusion_window_violation
-  - erase_program_on_latch_lock
-  - logic_state_overlap
-  - erase_on_erase_suspended
-  - operation_on_odt_disable
-  - erase_program_on_write_protect
+      - 동일 (die,block) 내에는 동일한 celltype 으로 program/read 해야한다
+      - 동일 (die,block) 내에 program 할 때는 TLC, AESLC, FWSLC erase 된 곳에는 동일하게, SLC erase 된 곳은 SLC, A0SLC, ACSLC 로만 program 해야한다.
+  - IO_bus_overlap: (AddressManager 에 기능 구현)
+  - exclusion_window_violation (AddressManager 에 기능 구현)
+  - forbidden_operations_on_latch_lock: latch lock 의 종류에 따라 CFG[exclusions_by_latch_state[latch_state]] 에 명시된 op_base 금지
+  - logic_state_overlap: (AddressManger 에 기능 구현)
+  - forbidden_operations_on_suspend_state: suspend_state 의 종류에 따라 CFG[exclusions_by_suspend_state[suspend_state]] 에 명시된 op_base 금지
+  - operation_on_odt_disable: odt_state 에 따라 CFG[exclusions_by_odt_state][odt_state] 에 명시된 op_base 금지
+  - forbidden_operations_on_cache_state: cache_state 의 종류에 따라 CFG[exclusions_by_cache_state[cache_state]] 에 명시된 op_base 금지
 - attributes
   - `CFG`
   - `ResourceManager`

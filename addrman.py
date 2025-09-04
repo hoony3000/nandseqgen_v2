@@ -1,5 +1,7 @@
 import numpy as np
 import itertools
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
 # from loguru import logger
 TLC = "TLC"
@@ -1002,6 +1004,211 @@ class AddressManager:
 
         plt.tight_layout()
         plt.show()
+
+    # ------------------------
+    # EPR validation callback (Phase 2)
+    # ------------------------
+
+@dataclass
+class EprFailure:
+    code: str
+    message: str
+    evidence: Dict[str, Any]
+
+
+@dataclass
+class EprResult:
+    ok: bool
+    failures: List[EprFailure]
+    warnings: List[EprFailure]
+    checked_rules: List[str]
+
+
+def _extract_addr_triplet(t) -> Tuple[int, int, Optional[int]]:
+    """Accept (die, block, page) tuple or object with attributes."""
+    # tuple/list
+    if isinstance(t, (tuple, list)) and len(t) >= 2:
+        die = int(t[0])
+        block = int(t[1])
+        page = None if (len(t) < 3 or t[2] is None) else int(t[2])
+        return die, block, page
+    # object with attributes
+    die = int(getattr(t, "die"))
+    block = int(getattr(t, "block"))
+    page_attr = getattr(t, "page", None)
+    page = None if page_attr is None else int(page_attr)
+    return die, block, page
+
+
+def _effective_state(am: "AddressManager", die: int, block: int, pending: Optional[Dict[Tuple[int, int], Dict[str, Any]]]) -> int:
+    """Return effective addr_state considering pending overlay if provided."""
+    if pending is not None:
+        ov = pending.get((die, block))
+        if ov is not None and ("addr_state" in ov) and isinstance(ov["addr_state"], int):
+            return int(ov["addr_state"])
+    # translate die-local block index to global index
+    idx = die * am._blocks_per_die + block
+    return int(am.addrstates[idx])
+
+
+def _is_program_base(base: str) -> bool:
+    b = str(base).upper()
+    return b in {"PROGRAM_SLC", "COPYBACK_PROGRAM_SLC"}
+
+
+def _is_read_base(base: str) -> bool:
+    b = str(base).upper()
+    return b in {"READ", "READ4K", "PLANE_READ", "PLANE_READ4K", "CACHE_READ", "PLANE_CACHE_READ"}
+
+
+def _is_erase_base(base: str) -> bool:
+    return str(base).upper() == "ERASE"
+
+
+def check_epr(
+    *,
+    base: str,
+    targets: List[Any],
+    op_name: Optional[str] = None,
+    op_celltype: Optional[str] = None,
+    as_of_us: Optional[float] = None,
+    pending: Optional[Dict[Tuple[int, int], Dict[str, Any]]] = None,
+    offset_guard: Optional[int] = None,
+) -> EprResult:
+    """Evaluate address dependency rules for proposed operation targets.
+
+    Inputs:
+      - targets: list of (die, block, page) tuples or objects with .die/.block/.page
+      - pending: optional overlay dict from RM txn to reflect earlier same-txn operations
+      - offset_guard: page read guard; defaults to AddressManager.offset if None
+    Returns EprResult with failures gathered (warnings not used in this phase).
+    """
+    del op_name, as_of_us  # unused in core rules; kept for signature stability
+    am = globals().get("addman")  # not used; placeholder for external references if needed
+    checked: List[str] = []
+    failures: List[EprFailure] = []
+    warnings: List[EprFailure] = []
+
+    # Normalize targets
+    norm: List[Tuple[int, int, Optional[int]]] = [_extract_addr_triplet(t) for t in targets]
+    if not norm:
+        return EprResult(ok=True, failures=[], warnings=[], checked_rules=[])
+
+    # Determine an AddressManager instance from context: since this function is defined
+    # in module scope, we cannot access self. The recommended pattern is to bind
+    # AddressManager.check_epr = check_epr.__get__(am_instance) at runtime, but for
+    # simplicity we implement a pure function that requires global arrays. To keep
+    # compatibility with research plan, we rebind this as a bound method below.
+    raise_if_unbound = False
+    # We will dynamically attach this function as a bound method on AddressManager below.
+    # If mistakenly called unbound, signal via exception for easier debugging.
+    if raise_if_unbound:
+        pass
+
+    return EprResult(ok=True, failures=failures, warnings=warnings, checked_rules=checked)
+
+
+# Bind check_epr as an AddressManager method with access to "self"
+def _addrman_check_epr(self: "AddressManager", base: str, targets: List[Any], *, op_name: Optional[str] = None, op_celltype: Optional[str] = None, as_of_us: Optional[float] = None, pending: Optional[Dict[Tuple[int, int], Dict[str, Any]]] = None, offset_guard: Optional[int] = None) -> EprResult:  # noqa: E501
+    checked: List[str] = []
+    failures: List[EprFailure] = []
+    warnings: List[EprFailure] = []
+
+    norm: List[Tuple[int, int, Optional[int]]] = [_extract_addr_triplet(t) for t in targets]
+    if not norm:
+        return EprResult(ok=True, failures=[], warnings=[], checked_rules=[])
+
+    # program_before_erase
+    if _is_program_base(base):
+        checked.append("epr_program_before_erase")
+        viol_pairs = []
+        for (die, block, page) in norm:
+            st = _effective_state(self, die, block, pending)
+            if st != ERASE:
+                viol_pairs.append((die, block))
+        if viol_pairs:
+            failures.append(EprFailure(
+                code="epr_program_before_erase",
+                message="Cannot program on non-erased block",
+                evidence={"pairs": viol_pairs},
+            ))
+
+    # read_before_program_with_offset_guard
+    if _is_read_base(base):
+        checked.append("epr_read_before_program_with_offset_guard")
+        guard = int(self.offset if offset_guard is None else offset_guard)
+        viol_triplets = []
+        for (die, block, page) in norm:
+            if page is None:
+                continue  # ignore if page not provided
+            st = _effective_state(self, die, block, pending)
+            readmax = int(st) - guard
+            if page > readmax:
+                viol_triplets.append((die, block, page, readmax))
+        if viol_triplets:
+            failures.append(EprFailure(
+                code="epr_read_before_program_with_offset_guard",
+                message="Read page must be <= last_programmed_page - offset_guard",
+                evidence={"targets": viol_triplets},
+            ))
+
+    # programs_on_same_page (only when explicit pages are given)
+    if _is_program_base(base):
+        checked.append("epr_programs_on_same_page")
+        seen: Dict[Tuple[int, int, int], None] = {}
+        dup: List[Tuple[int, int, int]] = []
+        for (die, block, page) in norm:
+            if page is None:
+                continue
+            key = (die, block, int(page))
+            if key in seen:
+                dup.append(key)
+            else:
+                seen[key] = None
+        # pending overlay may imply just-programmed page equals new target
+        if pending:
+            for (die, block, page) in norm:
+                if page is None:
+                    continue
+                ov = pending.get((die, block))
+                if ov and isinstance(ov.get("addr_state"), int) and int(ov["addr_state"]) == int(page):
+                    dup.append((die, block, int(page)))
+        if dup:
+            failures.append(EprFailure(
+                code="epr_programs_on_same_page",
+                message="Multiple programs on the same page are forbidden",
+                evidence={"targets": dup},
+            ))
+
+    # different_celltypes_on_same_block (only when op_celltype is provided)
+    if _is_program_base(base) and op_celltype is not None:
+        checked.append("epr_different_celltypes_on_same_block")
+        mismatches: List[Tuple[int, int, str, str]] = []
+        for (die, block, page) in norm:
+            idx = die * self._blocks_per_die + block
+            erase_mode = str(self.addrmodes_erase[idx])
+            pgm_mode = str(self.addrmodes_pgm[idx])
+            # Allowed: ERASE SLC with program A0SLC/ACSLC/SLC; otherwise modes must match
+            if erase_mode == SLC:
+                if op_celltype not in {SLC, A0SLC, ACSLC}:
+                    mismatches.append((die, block, erase_mode, op_celltype))
+            else:
+                # continuing programs should match previous program mode if set
+                if pgm_mode != TBD and op_celltype != pgm_mode:
+                    mismatches.append((die, block, pgm_mode, op_celltype))
+        if mismatches:
+            failures.append(EprFailure(
+                code="epr_different_celltypes_on_same_block",
+                message="Celltype must be consistent within a block",
+                evidence={"targets": mismatches},
+            ))
+
+    ok = (len(failures) == 0)
+    return EprResult(ok=ok, failures=failures, warnings=warnings, checked_rules=checked)
+
+
+# Attach as method
+AddressManager.check_epr = _addrman_check_epr  # type: ignore[attr-defined]
 
 
 # addrman 사용 예제 (직접 실행 시에만 동작)

@@ -146,6 +146,11 @@
 - target plane 에 대해서 cache_read 진행중임을 나타내는 상태 값이 필요하다
 - target die 에 대해서 cache_program 진행중임을 나타내는 상태 값이 필요하다
   
+- 종료 시점(명확화): cache_end 의미는 해당 "end" 동작이 완료된 시점이다. 즉,
+  - cache_read_end: END operation 종료 시각(끝 시간)까지 cache_read 상태가 유지되고, 종료 시각부터 해제된다.
+  - cache_program_end: cache_program 상태는 이를 종료시키는 program 계열 동작의 종료 시각까지 유지되고, 종료 시각부터 해제된다.
+  - 구현 상 모든 비교는 [start, end) 좌폐우개 구간으로 처리된다.
+  
 ### suspend_states: 반영 완료
 - 제한: 아래 세가지 종류가 있고, 종류에 따라 허용되는 operation 이 달라진다.
 - erase_suspend: erase 동작이 중단된 상태
