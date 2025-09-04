@@ -18,6 +18,9 @@ share/
 Scripts/
 var/
 
+# unittest
+tests/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
@@ -44,3 +47,6 @@ commands.yaml
 states.yaml
 metrics*.csv
 bench*.csv
+
+# not to be included in context window
+nandsim_demo.py

@@ -114,6 +114,17 @@ op_bases:
       - CORE_BUSY:
         bus: false
         duration: 8.0
+  ONESHOT_PROGRAM_MSB_23h:
+    scope: "DIE_WIDE"
+    affect_state: true
+    instant_resv: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        duration: 8.0
   ONESHOT_PROGRAM_EXEC_MSB:
     scope: "DIE_WIDE"
     affect_state: true
@@ -600,6 +611,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -649,6 +661,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -698,6 +711,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -746,6 +760,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -794,6 +809,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -842,6 +858,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -890,6 +907,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -938,6 +956,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -986,6 +1005,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -1034,6 +1054,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -1082,6 +1103,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -1130,6 +1152,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -1178,6 +1201,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -1227,6 +1251,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -1276,6 +1301,7 @@ exclusion_groups:
     # - ONESHOT_PROGRAM_LSB
     # - ONESHOT_PROGRAM_CSB
     # - ONESHOT_PROGRAM_MSB
+    # - ONESHOT_PROGRAM_MSB_23h
     # - ONESHOT_PROGRAM_EXEC_MSB
     # - ONESHOT_CACHE_PROGRAM
     - READ
@@ -1325,6 +1351,7 @@ exclusion_groups:
     # - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -1374,6 +1401,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     # - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     # - READ
@@ -1423,6 +1451,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     # - ONESHOT_PROGRAM_MSB
+    # - ONESHOT_PROGRAM_MSB_23h
     # - ONESHOT_PROGRAM_EXEC_MSB
     # - ONESHOT_CACHE_PROGRAM
     # - READ
@@ -1472,6 +1501,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     # - ONESHOT_PROGRAM_EXEC_MSB
     # - ONESHOT_CACHE_PROGRAM
     # - READ
@@ -1521,6 +1551,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -1570,6 +1601,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -1619,6 +1651,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -1668,6 +1701,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
@@ -1717,6 +1751,7 @@ exclusion_groups:
     # - ONESHOT_PROGRAM_LSB
     # - ONESHOT_PROGRAM_CSB
     # - ONESHOT_PROGRAM_MSB
+    # - ONESHOT_PROGRAM_MSB_23h
     # - ONESHOT_PROGRAM_EXEC_MSB
     # - ONESHOT_CACHE_PROGRAM
     # - READ
@@ -1765,6 +1800,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     # - READ
@@ -1813,6 +1849,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     # - READ
@@ -1868,6 +1905,8 @@ exclusions_by_op_state:
   ONESHOT_PROGRAM_CSB.END: ['after_oneshot_program_csb']
   ONESHOT_PROGRAM_MSB.CORE_BUSY: ['on_busy']
   ONESHOT_PROGRAM_MSB.END: ['after_oneshot_program_msb']
+  ONESHOT_PROGRAM_MSB_23h.CORE_BUSY: ['on_busy']
+  ONESHOT_PROGRAM_MSB_23h.END: ['on_program']
   ONESHOT_PROGRAM_EXEC_MSB.CORE_BUSY: ['on_program']
   ONESHOT_PROGRAM_EXEC_MSB.END: []
   ONESHOT_CACHE_PROGRAM.CORE_BUSY: ['on_program']
@@ -1949,37 +1988,17 @@ generate_seq_rules:
     sequences:
       - CACHE_PROGRAM_SLC: ['inc_page', 'same_celltype'] # inheritance conditions
       - PROGRAM_SLC: ['inc_page', 'same_celltype']
-    sequences_by_op_base:
-      CACHE_PROGRAM_SLC:
-        - ['inc_page', 'same_celltype']
-      PROGRAM_SLC:
-        - ['inc_page', 'same_celltype']
   ONESHOT_PROGRAM_CSB.SEQ:
     sequences:
       - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype']
-      - ONESHOT_PROGRAM_EXEC_MSB: ['same_page', 'same_celltype']
-    sequences_by_op_base:
-      ONESHOT_PROGRAM_CSB:
-        - ['same_page', 'same_celltype']
-      ONESHOT_PROGRAM_EXEC_MSB:
-        - ['same_page', 'same_celltype']
+      - ONESHOT_PROGRAM_MSB_23h: ['same_page', 'same_celltype']
   ONESHOT_PROGRAM_CSB_CACHE.SEQ:
     sequences:
       - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype']
       - ONESHOT_CACHE_PROGRAM: ['same_page', 'same_celltype']
       - ONESHOT_PROGRAM_LSB: ['inc_page', 'same_celltype']
       - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype']
-      - ONESHOT_PROGRAM_EXEC_MSB: ['same_page', 'same_celltype']
-    sequences_by_op_base:
-      ONESHOT_PROGRAM_CSB:
-        - ['same_page', 'same_celltype']
-        - ['same_page', 'same_celltype']
-      ONESHOT_CACHE_PROGRAM:
-        - ['same_page', 'same_celltype']
-      ONESHOT_PROGRAM_LSB:
-        - ['inc_page', 'same_celltype']
-      ONESHOT_PROGRAM_EXEC_MSB:
-        - ['same_page', 'same_celltype']
+      - ONESHOT_PROGRAM_MSB_23h: ['same_page', 'same_celltype']
   CACHE_READ.SEQ:
     sequences:
       - CACHE_READ: ['same_page', 'same_celltype']
@@ -2655,7 +2674,7 @@ op_names:
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 0.07
+      ISSUE: 2.2508
   Delay:
     base: DEFAULT
     multi: false
@@ -2667,7 +2686,7 @@ op_names:
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 0.07
+      ISSUE: 100.4104
   Disable_Cache_PGM_Flag:
     base: DEFAULT
     multi: false
@@ -2717,7 +2736,7 @@ op_names:
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 0.4036
+      ISSUE: 1.1922
   LUN_Status_Read_for_LUN1:
     base: SR
     multi: false
@@ -2735,7 +2754,7 @@ op_names:
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 0.025
+      ISSUE: 0.125
   One_Shot_Copyback_Program_LSB:
     base: ONESHOT_COPYBACK_PROGRAM_LSB
     multi: false
@@ -2755,7 +2774,7 @@ op_names:
     multi: false
     celltype: TLC
     durations:
-      ISSUE: 0.095
+      ISSUE: 0.12
       CORE_BUSY: *oneshot_program_tlc_busy
   One_Shot_PGM_Multi_Plane_CSB:
     base: ONESHOT_PROGRAM_CSB
@@ -2780,6 +2799,13 @@ op_names:
       CORE_BUSY: *oneshot_program_trans_busy
   One_Shot_PGM_Multi_Plane_MSB:
     base: ONESHOT_PROGRAM_MSB
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 39.2976
+      CORE_BUSY: *oneshot_program_tlc_busy
+  One_Shot_PGM_Multi_Plane_MSB_23h:
+    base: ONESHOT_PROGRAM_MSB_23h
     multi: true
     celltype: TLC
     durations:
@@ -2884,6 +2910,13 @@ op_names:
     durations:
       ISSUE: 9.8244
       CORE_BUSY: *oneshot_program_trans_busy
+  One_Shot_PGM_MSB_23h:
+    base: ONESHOT_PROGRAM_MSB_23h
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *oneshot_program_trans_busy
   One_Shot_PGM_Multi_Plane_Execution_MSB:
     base: ONESHOT_PROGRAM_EXEC_MSB
     multi: true
@@ -2906,6 +2939,13 @@ op_names:
       ISSUE: 39.2976
       CORE_BUSY: *oneshot_program_trans_busy
   One_Shot_PGM_Multi_Plane_MSB_Legacy:
+    base: ONESHOT_PROGRAM_MSB
+    multi: true
+    celltype: TLC
+    durations:
+      ISSUE: 39.2976
+      CORE_BUSY: *oneshot_program_trans_busy
+  One_Shot_PGM_Multi_Plane_MSB_23h_Legacy:
     base: ONESHOT_PROGRAM_MSB
     multi: true
     celltype: TLC
@@ -3062,7 +3102,7 @@ op_names:
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 0.4886
+      ISSUE: 1.2772
   Soft_Read_AESLC:
     base: READ
     multi: false
@@ -3162,13 +3202,13 @@ op_names:
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 0.025
+      ISSUE: 20.4436
   Temperature_Sensor_Slow_mode:
     base: TEMPSENSOR
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 0.025
+      ISSUE: 400.4436
   VPP_Parameter_Read_Target_Level:
     base: CAMREAD
     multi: false
@@ -3198,13 +3238,13 @@ op_names:
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 0.05
+      ISSUE: 2.07
   ZQ_Calibration_Short:
     base: ZQCAL
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 0.05
+      ISSUE: 1.07
   Plane_Level_Page_Read_MSB_AARV:
     base: PLANE_READ
     multi: false
@@ -3227,13 +3267,6 @@ op_names:
     celltype: NONE
     durations:
       ISSUE: 9.9944
-  Program_Execution_Multi_Plane_MSB:
-    base: ONESHOT_PROGRAM_EXEC_MSB
-    multi: true
-    celltype: TLC
-    durations:
-      ISSUE: 0.38
-      CORE_BUSY: *oneshot_program_tlc_busy
   Progressive_Suspend:
     base: PROGRAM_SUSPEND
     multi: false
@@ -3642,12 +3675,6 @@ op_names:
     celltype: NONE
     durations:
       ISSUE: 0.5586
-  Program_Execution_MSB:
-    base: ONESHOT_PROGRAM_EXEC_MSB
-    multi: false
-    celltype: TLC
-    durations:
-      ISSUE: 0.095
   Program_Resume:
     base: PROGRAM_RESUME
     multi: false
@@ -3778,7 +3805,7 @@ op_names:
     multi: false
     celltype: TLC
     durations:
-      ISSUE: 0.145
+      ISSUE: 0.185
       CORE_BUSY: *read_16k_fast_csb_busy
       DOUT: *read_16k_dout
   Read_FWSLC:
@@ -3840,7 +3867,7 @@ op_names:
     multi: true
     celltype: AESLC
     durations:
-      ISSUE: 3.545
+      ISSUE: 3.505
       CORE_BUSY: *read_16k_slc_busy
       DOUT: *read_16k_dout
   Read_Multi_Plane_ONFI_FWSLC:
@@ -3864,7 +3891,7 @@ op_names:
     multi: true
     celltype: SLC
     durations:
-      ISSUE: 3.545
+      ISSUE: 3.505
       CORE_BUSY: *read_16k_slc_busy
       DOUT: *read_16k_dout
   Read_Multi_Plane_ONFI_CSB:
@@ -4006,7 +4033,7 @@ op_names:
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 0.125
+      ISSUE: 2.3458
   Read_Cache_Random_FWSLC:
     base: CACHE_READ
     multi: false

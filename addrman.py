@@ -400,27 +400,29 @@ class AddressManager:
 
     # Legacy candidate expansion and sampling APIs were removed to
     # eliminate redundant allocations and complexity. Multi/single‑plane
-    # fast paths are provided by random_erase/random_pgm/random_read.
+    # fast paths were provided by random_erase/random_pgm/random_read.
+    #
+    # New split APIs:
+    #  - sample_*: pure address selection (no state mutation)
+    #  - apply_* : explicit state mutation based on provided addresses
+    #  - random_*: backward‑compatible convenience = sample_* + apply_*
 
-    def random_erase(
+    def sample_erase(
         self,
         sel_plane: int | list = None,
         mode=TLC,
         size: int = 1,
         sel_die: int | list = None,
-    ):
+    ) -> np.ndarray:
         """
-        Fast-path erase sampling + apply.
-        - Single-plane: sample blocks with (state != BAD) & (state != ERASE)
-        - Multi-plane: sample groups where all selected planes satisfy the above.
+        Pure address sampling for ERASE without mutating internal state.
         Returns addresses with page=0 as (die, block, page).
+        Shape: (#, 1, 3) for single‑plane; (#, k, 3) for multi‑plane (k=|planes|).
         """
-        # Normalize sel_plane
         if isinstance(sel_plane, list) and len(sel_plane) == 1:
             sel_plane = sel_plane[0]
 
         if sel_plane is None or isinstance(sel_plane, int):
-            # single plane
             mask = (self.addrstates != BAD) & (self.addrstates != ERASE)
             if isinstance(sel_plane, int):
                 mask &= (self._plane_index == sel_plane)
@@ -432,26 +434,15 @@ class AddressManager:
                     mask &= np.isin(self._die_index, sel_die_arr)
             cand = np.flatnonzero(mask)
             if len(cand) == 0:
+                self.oversample = (size > 0)
                 return empty_arr()
 
             k = min(size, len(cand))
             self.oversample = (size > len(cand))
             sel = self._rng.choice(cand, size=k, replace=False)
-
-            # Save undo
-            self.undo_addrs = sel
-            self.undo_states = self.addrstates[sel].copy()
-            self.undo_modes_erase = self.addrmodes_erase[sel].copy()
-            self.undo_modes_pgm = self.addrmodes_pgm[sel].copy()
-
-            # Apply
-            self.addrstates[sel] = ERASE
-            self.addrmodes_erase[sel] = mode
-            self.addrmodes_pgm[sel] = TBD
-
             return self._wrap_blocks_as_addrs(sel, pages=0)
 
-        # multi-plane
+        # multi‑plane
         planes = list(sel_plane)
         groups = self._groups_for_planes(planes)
         sub = self.addrstates[groups]
@@ -466,55 +457,59 @@ class AddressManager:
                 ok &= np.isin(die_rows, sel_die_arr)
         cand_rows = np.flatnonzero(ok)
         if len(cand_rows) == 0:
+            self.oversample = (size > 0)
             return empty_arr()
 
         k = min(size, len(cand_rows))
         self.oversample = (size > len(cand_rows))
         rows = self._rng.choice(cand_rows, size=k, replace=False)
         chosen = groups[rows]
-
-        # Save undo
-        sel_blocks = chosen.reshape(-1)
-        self.undo_addrs = sel_blocks
-        self.undo_states = self.addrstates[sel_blocks].copy()
-        self.undo_modes_erase = self.addrmodes_erase[sel_blocks].copy()
-        self.undo_modes_pgm = self.addrmodes_pgm[sel_blocks].copy()
-
-        # Apply
-        self.addrstates[sel_blocks] = ERASE
-        self.addrmodes_erase[sel_blocks] = mode
-        self.addrmodes_pgm[sel_blocks] = TBD
-
         return self._wrap_groups_as_addrs(chosen, page=0)
 
-    def random_pgm(
+    def apply_erase(self, addrs: np.ndarray, mode=TLC) -> None:
+        """
+        Apply ERASE to the provided addresses.
+        Expects addresses shaped (#, *, 3) with fields (die, block, page).
+        """
+        if addrs is None or len(addrs) == 0:
+            return
+        blocks = addrs[..., 1].astype(int).reshape(-1)
+        if blocks.size == 0:
+            return
+        uniq, _counts = np.unique(blocks, return_counts=True)
+        # Save undo
+        self.undo_addrs = uniq
+        self.undo_states = self.addrstates[uniq].copy()
+        self.undo_modes_erase = self.addrmodes_erase[uniq].copy()
+        self.undo_modes_pgm = self.addrmodes_pgm[uniq].copy()
+        # Apply
+        self.addrstates[uniq] = ERASE
+        self.addrmodes_erase[uniq] = mode
+        self.addrmodes_pgm[uniq] = TBD
+
+    def sample_pgm(
         self,
         sel_plane: int | list = None,
         mode=TLC,
         size: int = 1,
         sequential: bool = False,
         sel_die: int | list = None,
-    ):
+    ) -> np.ndarray:
         """
-        Fast-path program sampling + apply.
-        - Single-plane: candidates have ERASE<=state<pagesize-1 and mode match.
-        - Multi-plane: candidates also require equal states across selected planes.
-        - sequential=True: allocate consecutive pages on the same block/group.
-        Returns addresses of shape (#, 1, 3) or (#, k, 3).
+        Pure address sampling for PROGRAM without mutating internal state.
+        Pages reflect the next programmed page(s): current_state+1, or ranges for sequential.
+        Shape: (#, 1, 3) or (#, k, 3).
         """
         if isinstance(sel_plane, list) and len(sel_plane) == 1:
             sel_plane = sel_plane[0]
 
         if sel_plane is None or isinstance(sel_plane, int):
-            # single plane
             states = self.addrstates
             mask_base = (states >= ERASE) & (states < self.pagesize - 1)
-            # allowed by erase/program rule
             erase_modes = self.addrmodes_erase
             pgm_modes = self.addrmodes_pgm
             fresh = states == ERASE
             cont = states > ERASE
-            # Rule: if erased in SLC, allow A0SLC/ACSLC as program start
             allow_on_slc = (erase_modes == SLC) & np.isin(mode, [A0SLC, ACSLC])
             allowed = np.zeros_like(mask_base, dtype=bool)
             allowed |= fresh & ((erase_modes == mode) | allow_on_slc)
@@ -530,75 +525,44 @@ class AddressManager:
                     mask &= np.isin(self._die_index, sel_die_arr)
             cand = np.flatnonzero(mask)
             if len(cand) == 0:
+                self.oversample = (size > 0)
                 return empty_arr()
 
             if sequential:
-                # need room for 'size' pages
                 st = self.addrstates[cand]
                 ok = st + size <= (self.pagesize - 1)
                 cand2 = cand[ok]
                 if len(cand2) == 0:
+                    self.oversample = (size > 0)
                     return empty_arr()
-                # pick one block
                 blk = int(self._rng.choice(cand2, size=1, replace=False))
                 start = int(self.addrstates[blk] + 1)
                 pages = np.arange(start, start + size, dtype=int)
-
-                # Undo
-                self.undo_addrs = np.array([blk], dtype=int)
-                self.undo_states = self.addrstates[[blk]].copy()
-                self.undo_modes_erase = self.addrmodes_erase[[blk]].copy()
-                self.undo_modes_pgm = self.addrmodes_pgm[[blk]].copy()
-
-                # Apply: advance by 'size'
-                self.addrstates[blk] += size
-                # If starting from ERASE, set program mode
-                if self.undo_states[0] == ERASE:
-                    self.addrmodes_pgm[blk] = mode
-
                 blocks = np.repeat(np.array([blk], dtype=int), size)
+                self.oversample = False
                 return self._wrap_blocks_as_addrs(blocks, pages=pages)
 
-            # non-sequential: choose distinct blocks
+            # non‑sequential
             k = min(size, len(cand))
             self.oversample = (size > len(cand))
             sel = self._rng.choice(cand, size=k, replace=False)
-
-            # Undo
-            self.undo_addrs = sel
-            self.undo_states = self.addrstates[sel].copy()
-            self.undo_modes_erase = self.addrmodes_erase[sel].copy()
-            self.undo_modes_pgm = self.addrmodes_pgm[sel].copy()
-
-            # Apply: +1 page each
-            self.addrstates[sel] += 1
-            # If starting from ERASE, set program mode
-            started = (self.undo_states == ERASE)
-            if np.any(started):
-                self.addrmodes_pgm[sel[started]] = mode
-
-            pages = self.addrstates[sel]  # after increment -> equals prev+1
+            pages = (self.addrstates[sel] + 1).astype(int)
             return self._wrap_blocks_as_addrs(sel, pages=pages)
 
-        # multi-plane
+        # multi‑plane
         planes = list(sel_plane)
         groups = self._groups_for_planes(planes)
         vals = self.addrstates[groups]
-        # equal states across planes, valid range
         eq = (vals == vals[:, [0]]).all(axis=1)
         rng = ((vals >= ERASE) & (vals < self.pagesize - 1)).all(axis=1)
-        base = vals[:, 0]
-        # per-group erase/program modes
         erase_modes_g = self.addrmodes_erase[groups]
         pgm_modes_g = self.addrmodes_pgm[groups]
-        # rows starting new program: state == ERASE
+        base = vals[:, 0]
         row_fresh = base == ERASE
         allow_on_slc = (erase_modes_g == SLC) & np.isin(mode, [A0SLC, ACSLC])
-        mm_fresh = (erase_modes_g == mode) | allow_on_slc
-        mm_fresh = mm_fresh.all(axis=1)
-        # rows continuing program: state > ERASE
+        mm_fresh = ((erase_modes_g == mode) | allow_on_slc).all(axis=1)
         mm_cont = (pgm_modes_g == mode).all(axis=1)
-        ok = eq & rng & ( (row_fresh & mm_fresh) | ((~row_fresh) & mm_cont) )
+        ok = eq & rng & ((row_fresh & mm_fresh) | ((~row_fresh) & mm_cont))
         if sel_die is not None:
             g0 = groups[:, 0]
             die_rows = self._die_index[g0]
@@ -609,6 +573,7 @@ class AddressManager:
                 ok &= np.isin(die_rows, sel_die_arr)
         ok_rows = np.flatnonzero(ok)
         if len(ok_rows) == 0:
+            self.oversample = (size > 0)
             return empty_arr()
 
         if sequential:
@@ -616,54 +581,51 @@ class AddressManager:
             ok2 = st + size <= (self.pagesize - 1)
             rows = ok_rows[ok2]
             if len(rows) == 0:
+                self.oversample = (size > 0)
                 return empty_arr()
             r = int(self._rng.choice(rows, size=1, replace=False))
             g = groups[r]
             start = int(self.addrstates[g[0]] + 1)
             pages = np.arange(start, start + size, dtype=int)
-
-            # Undo
-            sel_blocks = g
-            self.undo_addrs = sel_blocks.copy()
-            self.undo_states = self.addrstates[sel_blocks].copy()
-            self.undo_modes_erase = self.addrmodes_erase[sel_blocks].copy()
-            self.undo_modes_pgm = self.addrmodes_pgm[sel_blocks].copy()
-
-            # Apply: advance by 'size' for every block in group
-            self.addrstates[sel_blocks] += size
-            # If starting from ERASE, set program mode for each block
-            started = (self.undo_states == ERASE)
-            if np.any(started):
-                self.addrmodes_pgm[sel_blocks[started]] = mode
-
-            # Build (#, k, 2)
             arr = []
             for p in pages:
                 arr.append(self._wrap_groups_as_addrs(g.reshape(1, -1), page=p))
+            self.oversample = False
             return np.vstack(arr)
 
-        # non-sequential: choose rows, advance by 1
+        # non‑sequential multi‑plane
         k = min(size, len(ok_rows))
         self.oversample = (size > len(ok_rows))
         rows = self._rng.choice(ok_rows, size=k, replace=False)
         chosen = groups[rows]
-
-        # Undo
-        sel_blocks = chosen.reshape(-1)
-        self.undo_addrs = sel_blocks
-        self.undo_states = self.addrstates[sel_blocks].copy()
-        self.undo_modes_erase = self.addrmodes_erase[sel_blocks].copy()
-        self.undo_modes_pgm = self.addrmodes_pgm[sel_blocks].copy()
-
-        self.addrstates[sel_blocks] += 1
-        # If starting from ERASE, set program mode
-        started = (self.undo_states == ERASE)
-        if np.any(started):
-            self.addrmodes_pgm[sel_blocks[started]] = mode
-        pages = (self.addrstates[chosen[:, 0]]).astype(int)
+        pages = (self.addrstates[chosen[:, 0]] + 1).astype(int)
         return self._wrap_groups_as_addrs(chosen, page=pages)
 
-    def random_read(
+    def apply_pgm(self, addrs: np.ndarray, mode=TLC) -> None:
+        """
+        Apply PROGRAM to the provided addresses.
+        Increments per‑block programmed pages by the number of occurrences of the block in addrs.
+        Sets program mode when starting from ERASE.
+        """
+        if addrs is None or len(addrs) == 0:
+            return
+        blocks = addrs[..., 1].astype(int).reshape(-1)
+        if blocks.size == 0:
+            return
+        uniq, counts = np.unique(blocks, return_counts=True)
+        # Save undo
+        self.undo_addrs = uniq
+        self.undo_states = self.addrstates[uniq].copy()
+        self.undo_modes_erase = self.addrmodes_erase[uniq].copy()
+        self.undo_modes_pgm = self.addrmodes_pgm[uniq].copy()
+        # Apply increments
+        self.addrstates[uniq] += counts
+        # If any started from ERASE, set program mode
+        started = (self.undo_states == ERASE)
+        if np.any(started):
+            self.addrmodes_pgm[uniq[started]] = mode
+
+    def sample_read(
         self,
         sel_plane: int | list = None,
         mode=TLC,
@@ -671,18 +633,14 @@ class AddressManager:
         offset: int = None,
         sequential: bool = False,
         sel_die: int | list = None,
-    ):
+    ) -> np.ndarray:
         """
-        Fast-path read address sampling (no state change).
-        - Single-plane: weight by (addrstates - offset + 1)
-        - Multi-plane: weight by min per-group readable count.
-        Sequential=True samples consecutive pages within a block/group.
-        Returns addresses of shape (#, 1, 3) or (#, k, 3).
+        Pure address sampling for READ without mutating internal state.
+        Mirrors random_read selection and shapes.
         """
         if isinstance(sel_plane, list) and len(sel_plane) == 1:
             sel_plane = sel_plane[0]
 
-        # choose offset
         _offset = self.offset if offset is None else int(offset)
 
         if sel_plane is None or isinstance(sel_plane, int):
@@ -697,6 +655,7 @@ class AddressManager:
                     mask &= np.isin(self._die_index, sel_die_arr)
             cand = np.flatnonzero(mask)
             if len(cand) == 0:
+                self.oversample = (size > 0)
                 return empty_arr()
 
             st = self.addrstates[cand]
@@ -704,6 +663,7 @@ class AddressManager:
             counts[counts < 0] = 0
             total = int(counts.sum())
             if total <= 0:
+                self.oversample = (size > 0)
                 return empty_arr()
 
             if not sequential:
@@ -722,6 +682,7 @@ class AddressManager:
             start_cap[start_cap < 0] = 0
             total_starts = int(start_cap.sum())
             if total_starts <= 0:
+                self.oversample = (size > 0)
                 return empty_arr()
             r = int(self._rng.choice(total_starts, size=1, replace=False))
             cum = np.cumsum(start_cap)
@@ -731,9 +692,10 @@ class AddressManager:
             blk = int(cand[i])
             pages = np.arange(start, start + size, dtype=int)
             blocks = np.repeat(np.array([blk], dtype=int), size)
+            self.oversample = False
             return self._wrap_blocks_as_addrs(blocks, pages=pages)
 
-        # multi-plane
+        # multi‑plane
         planes = list(sel_plane)
         groups = self._groups_for_planes(planes)
         st = self.addrstates[groups]
@@ -748,6 +710,7 @@ class AddressManager:
                 sel_die_arr = np.array(list(sel_die), dtype=int)
                 ok &= np.isin(die_rows, sel_die_arr)
         if not np.any(ok):
+            self.oversample = (size > 0)
             return empty_arr()
         rows = np.flatnonzero(ok)
         readmax = st[rows].min(axis=1) - _offset
@@ -755,6 +718,7 @@ class AddressManager:
         counts[counts < 0] = 0
         total = int(counts.sum())
         if total <= 0:
+            self.oversample = (size > 0)
             return empty_arr()
 
         if not sequential:
@@ -768,11 +732,12 @@ class AddressManager:
             chosen = groups[rows[ridx]]
             return self._wrap_groups_as_addrs(chosen, page=page)
 
-        # sequential multi-plane
+        # sequential multi‑plane
         start_cap = counts - (size - 1)
         start_cap[start_cap < 0] = 0
         total_starts = int(start_cap.sum())
         if total_starts <= 0:
+            self.oversample = (size > 0)
             return empty_arr()
         r = int(self._rng.choice(total_starts, size=1, replace=False))
         cum = np.cumsum(start_cap)
@@ -784,7 +749,55 @@ class AddressManager:
         arr = []
         for p in pages:
             arr.append(self._wrap_groups_as_addrs(g.reshape(1, -1), page=p))
+        self.oversample = False
         return np.vstack(arr)
+
+    def random_erase(
+        self,
+        sel_plane: int | list = None,
+        mode=TLC,
+        size: int = 1,
+        sel_die: int | list = None,
+    ):
+        """
+        Backward‑compatible convenience: sample_erase + apply_erase.
+        """
+        adds = self.sample_erase(sel_plane=sel_plane, mode=mode, size=size, sel_die=sel_die)
+        if adds is None or len(adds) == 0:
+            return empty_arr()
+        self.apply_erase(adds, mode=mode)
+        return adds
+
+    def random_pgm(
+        self,
+        sel_plane: int | list = None,
+        mode=TLC,
+        size: int = 1,
+        sequential: bool = False,
+        sel_die: int | list = None,
+    ):
+        """
+        Backward‑compatible convenience: sample_pgm + apply_pgm.
+        """
+        adds = self.sample_pgm(sel_plane=sel_plane, mode=mode, size=size, sequential=sequential, sel_die=sel_die)
+        if adds is None or len(adds) == 0:
+            return empty_arr()
+        self.apply_pgm(adds, mode=mode)
+        return adds
+
+    def random_read(
+        self,
+        sel_plane: int | list = None,
+        mode=TLC,
+        size: int = 1,
+        offset: int = None,
+        sequential: bool = False,
+        sel_die: int | list = None,
+    ):
+        """
+        Backward‑compatible convenience: identical to sample_read (no mutation).
+        """
+        return self.sample_read(sel_plane=sel_plane, mode=mode, size=size, offset=offset, sequential=sequential, sel_die=sel_die)
 
     def visual_seq_3d(self, seq: list, title="NAND Access Trajectory"):
         """

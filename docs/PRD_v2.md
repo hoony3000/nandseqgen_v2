@@ -96,10 +96,47 @@ seq,time,op_id,op_name,op_uid,payload
 
 ## 5. Architecture & Components (draft)
 
-### 5.1 Address
+### 5.1 Data classes
+
+#### 5.1.0 Address class
 - 대상: ERASE/PROGRAM/READ/DOUT/DATAIN/SR_ADD/RESET_LUN/SETFEATURE_LUN/GETFEATURE_LUN은 target address 필요
 - 주소 체계: (die, planes, blocks, page)
-  - multi-plane의 경우 planes, blocks는 `CFG[topology][planes]` 최대갯수까지 가짐
+  - multi-plane의 경우 planes, blocks는 `CFG[topology][planes]` 최대갯수까지 가질 수 있음
+```python
+@dataclass(frozen=True)
+class Address:
+    die:int;
+    plane:int;
+    block:int;
+    page:Optional[int]=None
+```
+
+#### 5.1.1 State class
+```python
+@dataclass
+class StateSeg:
+    name:str
+    dur_us: float
+    bus: bool = False
+```
+
+#### 5.1.0 Operation class
+```python
+from dataclasses import dataclass
+from typing import Protocol, Optional, List, Tuple, Any
+
+@dataclass
+class Operation:
+    op_id: int
+    op_name: str
+    op_base: str
+    payload: dict
+    target: List[Address]  # (die,plane,block,page)
+    states: List[StateSeg]
+    source: str
+    meta: Dict[str,Any] = field(default_factory=dict)
+```
+
 
 ### 5.2 CFG
 - 생성: `config.yaml` 파일을 읽어 구성
@@ -238,7 +275,7 @@ seq,time,op_id,op_name,op_uid,payload
           - sequence 내 operation 간 time 간격: `CFG[policies][sequence_gap]`
        2. 선택된 `sequence[probs]`의 key를 '.'로 split 후 두 번째 원소가 'SEQ'라면, `CFG[generate_seq_rules][key][sequences]` 원소들을 모두 합쳐 operation sequence 생성. 각 operation 별 생성 규칙은 `CFG[generate_seq_rules][key][op_base]`의 "inherit 생성 규칙" 사용
   8) 사전 검증과 재시도: 동일 슬롯(윈도우) 내 가안 배치를 구성해 `Validator` 체크(epr_dependencies, IO_bus_overlap, exclusion_window_violation, 래치 락, ODT/피처 상태)를 수행한다. 실패 시 `CFG[policies][maxtry_candidate]` 한도 내에서 대안 op_name/주소 조합을 재시도한다. 동일 틱 내 부분 스케줄은 금지한다.
-  9) 검증 통과 시 operation/time을 `Scheduler`에 반환하여 예약
+  9)  검증 통과 시 operation/time을 `Scheduler`에 반환하여 예약
 - attributes
   - `CFG`
   - `op_state_probs`
@@ -267,14 +304,18 @@ seq,time,op_id,op_name,op_uid,payload
   - `addr_mode_erase`: (die,block) 별 erase 시 celltype
   - `addr_mode_pgm`: (die,block) 별 program 시 celltype
   - `IO_bus`: ISSUE timeline 등록
-  - `exclusion_windows`: `CFG[op_specs][op_name][multi]`를 참조, die level에서 single×multi, multi×multi overlap 금지 구간 관리
+  - `exclusion_windows`: `CFG[op_specs][op_name][multi]`를 참조.
+    -  die level에서 single×multi, multi×multi overlap 금지 구간 관리.
+    -  singlexsingle 이 허용되는 op_base 는 PLANE_READ/PLANE_READ4K/PLANE_CACHE_READ 이다.
   - `latches`
-    - read: (die, plane) target, program: die-wide target
-    - read/oneshot_program_lsb/oneshot_program_csb/oneshot_program_msb 직후 특정 latch lock 및 금지되는 exclusion_group 존재
-      - read/cache_read 완료 후 cache_latch lock: `CFG[exclusion_groups][after_read]`
-      - oneshot_program_lsb 완료 후 lsb_latch lock: `CFG[exclusion_groups][after_program_lsb]`
-      - oneshot_program_csb 완료 후 csb_latch lock: `CFG[exclusion_groups][after_program_csb]`
-      - oneshot_program_msb 완료 후 msb_latch lock: `CFG[exclusion_groups][after_program_msb]`
+    - 집행 원칙: `ResourceManager`는 활성 래치를 `CFG[exclusions_by_latch_state]` → `CFG[exclusion_groups]`로 해석해 금지 op를 판단한다. 하드코딩 예외(DOUT/SR 허용 등)는 사용하지 않으며, 허용/금지는 전적으로 config 그룹 정의에 따른다.
+    - 스코프: 래치는 plane 단위로 관리한다(READ/PROGRAM 모두 plane-target 단위). 프로그램 계열 래치는 die-wide 대상이더라도 동일 die의 모든 plane에 plane 단위로 등록하여 집행한다.
+    - 생성 트리거
+      - READ 계열: READ/READ4K/PLANE_READ/PLANE_READ4K/CACHE_READ/PLANE_CACHE_READ/COPYBACK_READ 완료 시 대상 plane에 `LATCH_ON_READ` 설정 → `exclusion_groups.after_read` 집행
+      - PROGRAM 계열(ONESHOT): LSB/CSB/MSB 완료 시 해당 die의 모든 plane에 각각 `LATCH_ON_LSB`/`LATCH_ON_CSB`/`LATCH_ON_MSB` 설정
+    - 해제 조건(API)
+      - READ 계열: DOUT 종료 시 대상 plane 해제 → `ResourceManager.release_on_dout_end(targets, now)`
+      - PROGRAM 계열: EXEC_MSB 종료 시 해당 die 전체 해제 → `ResourceManager.release_on_exec_msb_end(die, now)`
   - `op_state_timeline`: (die,plane) target. logic_state timeline 등록. state에 따른 `exclusions_by_op_state` list
   - `suspend_states`: (die) target. suspend_states on/off 등록. state에 따른 `exclusions_by_suspend_state` list
   - `odt_state`: on/off 등록. state에 따른 `exclusions_by_odt_state` list
