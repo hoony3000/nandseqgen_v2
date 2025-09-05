@@ -241,11 +241,23 @@ class Operation:
   - `run_until` 이후에도 종료되지 않은 operation은 지속시키되, 그 시간 동안 `Proposer`는 propose 금지(`on_termination_routine` flag enable)
   - 모든 operation 종료 후 `Required Outputs`, `Success Metrics` 출력
   - `ResourceManager` 상태 값 snapshot을 `state_snapshot_yymmdd_0000001.csv`와 유사한 형태로 저장. 목적: `run_until`을 일정 크기로 유지, 이전 run 상태 load로 연속성 확보. run index 증가시키며 snapshot 저장
+- bootsrap
+  - 초기 program/read 기아 및 특정 block 에 program/read 가 몰리는 현상을 방지하기 위해 erase/program/read 를 최우선순위로 미리 예약되게끔 하는 기능
+  - 조건
+    - erase/program/read/dout 는 모두 multi-plane 동작으로, multi-plane 동작 초기 기아 방지. dout 은 read 된 target 에 대한 모든 plane_set 에 대해 진행
+    - erase 를 전체 die 의 모든 block 중 몇 퍼센트의 비율로 erase 해둘 것인지, 어떤 celltype 으로 할 것인지 설정
+    - program 을 erase 된 block 중 모든 page 에서 몇 퍼센트의 비율로 program 해둘 것인지, 어떤 celltype 으로 할 것인지 설정
+    - read 를 program 된 page 중 몇 퍼센트의 비율로 read 해둘 것인지, 어떤 celltype 으로 할 것인지 설정
+  - bootstrap 은 num_runs 이 2 보다 큰 상황에서 첫 번째 run 에서만 적용한다
+  - bootstrap 이 시작되면 runtime 으로 propose 불허하고, bootstrap 으로 예약된 operation 이 모두 종료되면 bootstrap 을 disable 시켜 runtime propose 를 허용한다.
+
 - attributes
   - `ResourceManager`
   - `Proposer`
   - `run_until`: run 당 시뮬레이션 시간
   - `num_runs`: 실행 횟수 (대략 10만 번까지 생성 예정)
+  - enable_bootstrap: bootstrap 적용할지 여부
+  
 
 ### 5.4 Proposer
 - 역할: op_state에 따라 어떤 operation을 어느 time에 schedule 제안할지 확률적으로 샘플링 (random seed 고정으로 재현성)
