@@ -972,57 +972,57 @@ exclusion_groups:
     - ZQCAL
     - ODTDISABLE
     - ODTENABLE
-  after_read:
-    - ERASE
-    - PROGRAM_SLC
-    - ALLWL_PROGRAM
-    - CACHE_PROGRAM_SLC
-    - ONESHOT_PROGRAM_LSB
-    - ONESHOT_PROGRAM_CSB
-    - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
-    - ONESHOT_PROGRAM_EXEC_MSB
-    - ONESHOT_CACHE_PROGRAM
-    - READ
-    - RECOVERY_READ
-    - READ4K
-    - CACHE_READ
-    - CACHE_READ_END
-    - PLANE_READ
-    - PLANE_READ4K
-    - PLANE_CACHE_READ
-    - PLANE_CACHE_READ_END
-    - COPYBACK_READ
-    - COPYBACK_PROGRAM_SLC
-    - ONESHOT_COPYBACK_PROGRAM_LSB
-    - ONESHOT_COPYBACK_PROGRAM_CSB
-    - ONESHOT_COPYBACK_PROGRAM_MSB
-    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+  after_read: []
+    # - ERASE
+    # - PROGRAM_SLC
+    # - ALLWL_PROGRAM
+    # - CACHE_PROGRAM_SLC
+    # - ONESHOT_PROGRAM_LSB
+    # - ONESHOT_PROGRAM_CSB
+    # - ONESHOT_PROGRAM_MSB
+    # - ONESHOT_PROGRAM_MSB_23h
+    # - ONESHOT_PROGRAM_EXEC_MSB
+    # - ONESHOT_CACHE_PROGRAM
+    # - READ
+    # - RECOVERY_READ
+    # - READ4K
+    # - CACHE_READ
+    # - CACHE_READ_END
+    # - PLANE_READ
+    # - PLANE_READ4K
+    # - PLANE_CACHE_READ
+    # - PLANE_CACHE_READ_END
+    # - COPYBACK_READ
+    # - COPYBACK_PROGRAM_SLC
+    # - ONESHOT_COPYBACK_PROGRAM_LSB
+    # - ONESHOT_COPYBACK_PROGRAM_CSB
+    # - ONESHOT_COPYBACK_PROGRAM_MSB
+    # - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
     # - DOUT
-    - DATAIN
+    # - DATAIN
     # - SR
     # - SR_ADD
-    - CAMREAD
-    - CAMREAD_LUN
-    - ERASE_SUSPEND
-    - ERASE_RESUME
-    - PROGRAM_SUSPEND
-    - PROGRAM_RESUME
-    - TRAINING
-    - READID
-    - SETPARA
-    - GETPARA
-    - PLANE_SETPARA
-    - SETFEATURE
-    - GETFEATURE
-    - SETFEATURE_LUN
-    - GETFEATURE_LUN
+    # - CAMREAD
+    # - CAMREAD_LUN
+    # - ERASE_SUSPEND
+    # - ERASE_RESUME
+    # - PROGRAM_SUSPEND
+    # - PROGRAM_RESUME
+    # - TRAINING
+    # - READID
+    # - SETPARA
+    # - GETPARA
+    # - PLANE_SETPARA
+    # - SETFEATURE
+    # - GETFEATURE
+    # - SETFEATURE_LUN
+    # - GETFEATURE_LUN
     # - RESET
     # - RESET_LUN
-    - TEMPSENSOR
-    - ZQCAL
-    - ODTDISABLE
-    - ODTENABLE
+    # - TEMPSENSOR
+    # - ZQCAL
+    # - ODTDISABLE
+    # - ODTENABLE
   after_copyback_read:
     - ERASE
     - PROGRAM_SLC
@@ -2052,7 +2052,10 @@ exclusions_by_op_state:
   ERASE.END: []
   PROGRAM_SLC.CORE_BUSY: ['on_program']
   PROGRAM_SLC.END: []
+  ALLWL_PROGRAM.CORE_BUSY: ['on_busy']
+  ALLWL_PROGRAM.END: []
   CACHE_PROGRAM_SLC.CORE_BUSY: ['on_program']
+  CACHE_PROGRAM_SLC.DATA_IN: ['on_cache_program_datain']
   CACHE_PROGRAM_SLC.END: ['after_cache_program']
   ONESHOT_PROGRAM_LSB.CORE_BUSY: ['on_busy'] 
   ONESHOT_PROGRAM_LSB.END: ['after_oneshot_program_lsb']
@@ -2076,6 +2079,8 @@ exclusions_by_op_state:
   CACHE_READ.CORE_BUSY: ['on_read']
   CACHE_READ.DATA_OUT: ['on_cache_dout']
   CACHE_READ.END: ['after_cache_read']
+  CACHE_READ_END.CORE_BUSY: ['on_busy']
+  CACHE_READ_END.END: ['after_read']
   PLANE_READ.CORE_BUSY: ['on_read']
   PLANE_READ.DATA_OUT: ['on_plane_cache_dout']
   PLANE_READ.END: ['after_plane_cache_read']
@@ -2085,6 +2090,8 @@ exclusions_by_op_state:
   PLANE_CACHE_READ.CORE_BUSY: ['on_read']
   PLANE_CACHE_READ.DATA_OUT: ['on_plane_cache_dout']
   PLANE_CACHE_READ.END: ['after_plane_cache_read']
+  PLANE_CACHE_READ_END.CORE_BUSY: ['on_busy']
+  PLANE_CACHE_READ_END.END: ['after_read']
   COPYBACK_READ.CORE_BUSY: ['on_read']
   COPYBACK_READ.DATA_OUT: ['on_dout']
   COPYBACK_READ.END: ['after_read']
@@ -4409,11 +4416,17 @@ phase_conditional: {}
   #   op_name2: 0.01
   #   ...
 phase_conditional_overrides:
-  # op_base->value
-  RESET: 0.001
-  RESET_LUN: 0.001
-  ERASE_SUSPEND: 0.001
-  PROGRAM_SUSPEND: 0.001
+  # op_base->value overrides for all op_states
+  global:
+    RESET: 0.001
+    RESET_LUN: 0.001
+    ERASE_SUSPEND: 0.001
+    PROGRAM_SUSPEND: 0.001
+  # op_base->value overrides for specific op_states
+  # ERASE.CORE_BUSY:
+  #   op_name1: 0.01
+  #   op_name2: 0.01
+  #   ...
 
 # -----------------------------
 # Validator Constraints & Rules

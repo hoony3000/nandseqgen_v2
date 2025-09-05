@@ -173,8 +173,15 @@ class Operation:
     - 초기화 가이드
       1) `op_state_probs.yaml` 파일이 있으면 로드하여 사용한다. 없으면 아래 단계로 생성한다.
       2) `op_specs`의 key(op_name)와 각 `states`를 결합해 모든 `op_name.state`를 만들고, 이를 phase_conditional의 기본 key로 사용한다.
+        - .ISSUE state 는 제외하고, .END state 는 모든 op_name 에 대해서 추가한다.
+        - 단 예외적으로 DEFAULT op_base.state 형태가 아닌 DEFAULT 그 자체로 key 에 추가한다.
       3) 각 `op_name.state`의 후보는 기본적으로 `CFG[op_names]`의 모든 `op_name`이며, `CFG[exclusion_groups][CFG[exclusions_by_op_state[op_name.state]]]`에 속한 base에 해당하는 후보는 제외한다(`groups_by_base` 활용).
       4) 남은 후보 중 특별 가중치가 필요한 항목은 `config.yaml`의 `phase_conditional_overrides`로 명시적으로 override한다(예: RESET 등). 이때 3)에서 제외된 후보는 override에서도 제외한다.
+        - override 규칙
+          - CFG[phase_conditional_overrides] 의 key 값을 순회하여 key 값에 따라 override 항목 정한다
+            - global: 모든 op_state 에 적용한다.
+            - 특정 op_state: 특정 op_state 에만 적용한다. e.g) ERASE.END, READ.CORE_BUSY
+            - overrides 순서는 global->특정 opstate 순
       5) override하지 않은 후보들의 확률은 랜덤 샘플로 채운 뒤 양수 항목의 합이 1이 되도록 정규화한다.
       6) 이렇게 생성한 초기 확률을 `op_state_probs.yaml`로 저장하고, 필요 시 사용자가 값을 수동으로 미세 조정한다.
     - 템플릿(YAML 예시)

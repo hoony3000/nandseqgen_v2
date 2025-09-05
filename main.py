@@ -475,80 +475,8 @@ def _ensure_min_cfg(cfg: Dict[str, Any]) -> Dict[str, Any]:
     pol.setdefault("sequence_gap", 1.0)
     c["policies"] = pol
 
-    # op_bases/op_names minimal entries
-    op_bases = dict(c.get("op_bases", {}) or {})
-    if "ERASE" not in op_bases:
-        op_bases["ERASE"] = {
-            "scope": "DIE_WIDE",
-            "affect_state": True,
-            "instant_resv": False,
-            "states": [
-                {"name": "ISSUE", "bus": True, "duration": 0.4},
-                {"name": "CORE_BUSY", "bus": False, "duration": 8.0},
-            ],
-        }
-    # Minimal PROGRAM (SLC) base: ISSUE -> DATA_IN -> CORE_BUSY
-    if "PROGRAM_SLC" not in op_bases:
-        op_bases["PROGRAM_SLC"] = {
-            "scope": "PLANE_SET",
-            "affect_state": True,
-            "instant_resv": False,
-            "states": [
-                {"name": "ISSUE", "bus": True, "duration": 0.2},
-                {"name": "DATA_IN", "bus": True, "duration": 0.4},
-                {"name": "CORE_BUSY", "bus": False, "duration": 6.0},
-            ],
-        }
-    # Minimal READ4K base: ISSUE -> CORE_BUSY -> DATA_OUT (aliased to DOUT4K duration)
-    if "READ4K" not in op_bases:
-        op_bases["READ4K"] = {
-            "scope": "PLANE_SET",
-            "affect_state": True,
-            "instant_resv": False,
-            "states": [
-                {"name": "ISSUE", "bus": True, "duration": 0.1},
-                {"name": "CORE_BUSY", "bus": False, "duration": 2.0},
-                {"name": "DATA_OUT", "bus": True, "duration": 0.4},
-            ],
-        }
-    c["op_bases"] = op_bases
-
-    op_names = dict(c.get("op_names", {}) or {})
-    if "Block_Erase_SLC" not in op_names:
-        op_names["Block_Erase_SLC"] = {
-            "base": "ERASE",
-            "multi": False,
-            "celltype": "SLC",
-            "durations": {"ISSUE": 0.4, "CORE_BUSY": 8.0},
-        }
-    # Minimal concrete PROGRAM op
-    if "All_WL_Dummy_Program" not in op_names:
-        op_names["All_WL_Dummy_Program"] = {
-            "base": "PROGRAM_SLC",
-            "multi": False,
-            "celltype": "SLC",
-            "durations": {"ISSUE": 0.2, "DATAIN": 0.4, "CORE_BUSY": 6.0},
-        }
-    # Minimal concrete READ op
-    if "4KB_Page_Read_confirm_LSB" not in op_names:
-        op_names["4KB_Page_Read_confirm_LSB"] = {
-            "base": "READ4K",
-            "multi": False,
-            "celltype": "SLC",
-            "durations": {"ISSUE": 0.1, "CORE_BUSY": 2.0, "DOUT4K": 0.4},
-        }
-    c["op_names"] = op_names
-
     # phase_conditional: ensure DEFAULT has at least one candidate
     pc = dict(c.get("phase_conditional", {}) or {})
-    if not pc.get("DEFAULT"):
-        # Provide a more interesting default mix so demos populate outputs
-        # Choose common names present in many configs
-        pc["DEFAULT"] = {
-            "Block_Erase_SLC": 0.5,
-            "All_WL_Dummy_Program": 0.25,
-            "4KB_Page_Read_confirm_LSB": 0.25,
-        }
     c["phase_conditional"] = pc
 
     # payload mapping minimal default for ERASE
@@ -594,7 +522,7 @@ def run_once(cfg: Dict[str, Any], rm: ResourceManager, am: Any, *, run_until_us:
 def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser(description="Run NAND scheduler and export PRD outputs")
     p.add_argument("--config", default="config.yaml", help="Path to YAML config")
-    p.add_argument("--run-until", "-t", type=float, default=10000.0, help="Simulation time per run (us)")
+    p.add_argument("--run-until", "-t", type=float, default=50000.0, help="Simulation time per run (us)")
     p.add_argument("--num-runs", "-n", type=int, default=1, help="Number of runs")
     p.add_argument("--bootstrap", dest="bootstrap", action="store_true", help="Enable bootstrap (first run only if num_runs>1)")
     p.add_argument("--no-bootstrap", dest="bootstrap", action="store_false", help="Disable bootstrap")
@@ -605,6 +533,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--pc-demo", choices=["erase-only","mix","pgm-read"], default=None,
                    help="Override phase_conditional DEFAULT to a preset: erase-only | mix | pgm-read")
     p.add_argument("--autofill-pc", action="store_true", help="Autofill phase_conditional from CFG (PRD policy)")
+    p.add_argument(
+        "--refresh-op-state-probs",
+        action="store_true",
+        help="Force rebuild and overwrite op_state_probs.yaml from CFG (ignores existing file)",
+    )
     p.add_argument("--op-state-probs", dest="op_state_probs", default=None,
                    help="Path to op_state_probs.yaml (load if present; write when auto-filled)")
     p.add_argument("--validate-pc", action="store_true", help="Validate CFG.phase_conditional and log summary")
@@ -623,7 +556,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             if not cfg_dir:
                 cfg_dir = "."
             probs_path = _os.path.join(cfg_dir, "op_state_probs.yaml")
-        cfg = _pc.ensure_from_file_or_build(cfg, path=probs_path, seed=int(args.seed), force=bool(args.autofill_pc))
+        force_rebuild = bool(getattr(args, "autofill_pc", False)) or bool(getattr(args, "refresh_op_state_probs", False))
+        cfg = _pc.ensure_from_file_or_build(cfg, path=probs_path, seed=int(args.seed), force=force_rebuild)
     except Exception:
         pass
     topo = cfg.get("topology", {}) or {}
