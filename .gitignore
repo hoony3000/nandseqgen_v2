@@ -47,6 +47,7 @@ commands.yaml
 states.yaml
 metrics*.csv
 bench*.csv
+out*/
 
 # not to be included in context window
 nandsim_demo.py

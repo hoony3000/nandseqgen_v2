@@ -181,31 +181,47 @@ def _candidate_blocked_by_states(
 
 
 def _build_states_from_cfg(cfg: Dict[str, Any], op_name: str, base: str) -> List[_StateSeg]:
-    # Use op_bases[base].states for order+bus, override duration with op_names[op_name].durations
+    # Use op_bases[base].states for order+bus only.
+    # Duration must come exclusively from op_names[op_name].durations[state_name].
     bases = (cfg.get("op_bases", {}) or {})
     names = (cfg.get("op_names", {}) or {})
     base_spec = (bases.get(base, {}) or {})
     states_meta = list(base_spec.get("states", []) or [])
     durations = ((names.get(op_name, {}) or {}).get("durations", {}) or {})
+
+    # Map base state names to possible duration keys used in op_names.
+    # Prefer exact match; otherwise try these alternatives in order.
+    alias: Dict[str, List[str]] = {
+        "DATA_OUT": ["DOUT", "DOUT4K"],
+        "DATA_IN": ["DATAIN"],
+    }
+
     out: List[_StateSeg] = []
     for st in states_meta:
         # st may be mapping like { 'ISSUE': {bus: true, duration: 0.4} } or { 'name': 'ISSUE', 'bus': true, 'duration': 0.4 }
         if isinstance(st, dict) and "name" in st:
             name = str(st.get("name"))
             bus = bool(st.get("bus", False))
-            dur_default = float(st.get("duration", 0.0))
         else:
             # YAML as key -> nested mapping form
-            # but config seems to use list of mappings with 'name'
             items = list(st.items()) if isinstance(st, dict) else []
             if items:
                 name = str(items[0][0])
                 v = items[0][1] or {}
                 bus = bool(v.get("bus", False))
-                dur_default = float(v.get("duration", 0.0))
             else:
                 continue
-        dur = float(durations.get(name, dur_default))
+        # Duration strictly from op_names[op_name].durations
+        if name in durations:
+            dur = float(durations[name])
+        else:
+            keys = alias.get(name, [])
+            val = None
+            for k in keys:
+                if k in durations:
+                    val = durations[k]
+                    break
+            dur = float(val) if val is not None else 0.0
         out.append(_StateSeg(name=name, dur_us=dur, bus=bus))
     return out
 
