@@ -228,30 +228,51 @@ def _op_celltype(cfg: Dict[str, Any], op_name: str) -> Optional[str]:
 
 
 def _to_targets(addrs_nd: Any) -> List[Address]:
-    # Expects ndarray shape (#, k, 3) or (#, 1, 3)
+    """
+    Accepts nested sequences or numpy arrays with shape (#, k, 3) or (#, 1, 3).
+    If numpy is unavailable, falls back to parsing Python sequences.
+    """
+    if addrs_nd is None:
+        return []
+    # Try numpy path first for performance
     try:
-        import numpy as np  # local import to keep proposer pure if numpy missing in some contexts
-        arr = addrs_nd
-        if arr is None:
-            return []
-        a = np.array(arr)
+        import numpy as np  # optional dependency
+        a = np.array(addrs_nd)
         if a.size == 0:
             return []
         if a.ndim == 2 and a.shape[1] == 3:
             a = a.reshape(-1, 1, 3)
-        vec = a[0]  # first group
+        vec = a[0]
         out: List[Address] = []
         for v in vec:
             d, b, p = int(v[0]), int(v[1]), int(v[2])
-            # plane is derived from block modulo planes only in AddressManager's context.
-            # Here we cannot derive plane deterministically without topology; assume plane is (block % planes) later by caller.
-            # However Address dataclass requires plane. We approximate plane using (block % planes)=0 unless provided externally.
-            # Better: infer plane via hook or by reusing AddressManager's plane index (not exposed). As a compromise, set plane=0 here;
-            # Scheduler/adapter can rebind plane if needed.
             out.append(Address(die=d, plane=0, block=b, page=p))
         return out
     except Exception:
-        return []
+        # Pure-Python fallback: expect list[list[tuple|list[int,int,int]]]
+        try:
+            # Normalize to first group
+            g0 = None
+            if isinstance(addrs_nd, (list, tuple)) and addrs_nd and isinstance(addrs_nd[0], (list, tuple)) and addrs_nd and len(addrs_nd[0]) and isinstance(addrs_nd[0][0], (list, tuple)):
+                # shape like (#, k, 3)
+                g0 = addrs_nd[0]
+            elif isinstance(addrs_nd, (list, tuple)) and addrs_nd and isinstance(addrs_nd[0], (int,)):
+                # shape like (3,) -> wrap
+                g0 = [addrs_nd]
+            elif isinstance(addrs_nd, (list, tuple)) and addrs_nd and isinstance(addrs_nd[0], (list, tuple)) and len(addrs_nd[0]) == 3:
+                # shape like (#, 3) -> treat first as single
+                g0 = [addrs_nd[0]]
+            else:
+                return []
+            out: List[Address] = []
+            for v in g0:
+                if not isinstance(v, (list, tuple)) or len(v) < 3:
+                    continue
+                d, b, p = int(v[0]), int(v[1]), int(v[2])
+                out.append(Address(die=d, plane=0, block=b, page=p))
+            return out
+        except Exception:
+            return []
 
 
 def _guess_plane_from_block(block: int, planes: int) -> int:

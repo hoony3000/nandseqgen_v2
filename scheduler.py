@@ -1,0 +1,293 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, TypedDict, Tuple
+
+# Core collaborators
+from resourcemgr import ResourceManager, Scope, Address, SIM_RES_US, quantize
+import proposer as _proposer
+from bootstrap import BootstrapController
+from event_queue import EventQueue
+
+
+class SchedulerResult(TypedDict):
+    success: bool
+    hooks_executed: int
+    ops_committed: int
+    bootstrap_completed: bool
+    metrics: Dict[str, Any]
+
+
+class TickResult(TypedDict):
+    committed: int
+    rolled_back: bool
+    reason: Optional[str]
+
+
+@dataclass
+class _Deps:
+    cfg: Dict[str, Any]
+    rm: ResourceManager
+    addrman: Any
+    validator: Optional[Any]
+    rng: Any
+    logger: Optional[Any]
+
+
+class Scheduler:
+
+    def __init__(
+        self,
+        cfg: Dict[str, Any],
+        rm: ResourceManager,
+        addrman: Any,
+        *,
+        validator: Optional[Any] = None,
+        rng: Optional[Any] = None,
+        logger: Optional[Any] = None,
+    ) -> None:
+        # Deterministic RNG (no system time)
+        if rng is None:
+            import random as _r
+            rng = _r.Random(0)
+        self._deps = _Deps(cfg=cfg, rm=rm, addrman=addrman, validator=validator, rng=rng, logger=logger)
+        self.now_us: float = 0.0
+        self._hooks: int = 0
+        self._ops_committed: int = 0
+        # metrics (expand in milestones 3-5)
+        self.metrics: Dict[str, Any] = {
+            "ckpt_success_batches": 0,
+            "ckpt_rollback_batches": 0,
+            "ckpt_ops_committed": 0,
+            "propose_calls": 0,
+            "propose_success": 0,
+            "last_reason": None,
+            # window stats
+            "window_us": float(((cfg.get("policies", {}) or {}).get("admission_window", 0.0))),
+            "window_attempts": 0,
+            "window_exceeds": 0,
+            # latencies (logical)
+            "sum_wait_us": 0.0,   # sum(start_us - now)
+            "sum_exec_us": 0.0,   # sum(end_us - start_us)
+            # per-base commits
+            "committed_by_base": {},
+            # bootstrap
+            "bootstrap_active": False,
+            "bootstrap_stage": 0,
+            # helpful debug
+            "last_commit_bases": [],
+        }
+        # Bootstrap controller (inactive by default unless cfg['bootstrap']['enabled'] is true)
+        self._boot = BootstrapController(cfg)
+        self.metrics["bootstrap_active"] = self._boot.active()
+        self.metrics["bootstrap_stage"] = self._boot.stage()
+        # Internal bootstrap stats for thresholds
+        self._boot_read_blocks: set[Tuple[int, int]] = set()
+        self._boot_erase_blocks: set[Tuple[int, int]] = set()
+        self._boot_program_blocks: set[Tuple[int, int]] = set()
+        # Event queue (time-ordered)
+        self._eq = EventQueue()
+        # seed initial queue_refill event
+        self._eq.push(self.now_us, "QUEUE_REFILL", payload={})
+
+    # -----------------
+    # Public API
+    # -----------------
+    def run(self, run_until_us: Optional[int] = None, max_hooks: Optional[int] = None) -> SchedulerResult:
+        hooks_budget = float("inf") if max_hooks is None else int(max_hooks)
+        while True:
+            if self._hooks >= hooks_budget:
+                break
+            if run_until_us is not None and self.now_us >= float(run_until_us):
+                break
+            tr = self.tick()
+            self._hooks += 1
+        return SchedulerResult(
+            success=True,
+            hooks_executed=self._hooks,
+            ops_committed=self._ops_committed,
+            bootstrap_completed=False,  # wired in milestone 5
+            metrics=dict(self.metrics),
+        )
+
+    def tick(self) -> TickResult:
+        """Single scheduling window: propose -> feasible-at -> commit/rollback.
+        Keeps determinism by avoiding system clock.
+        """
+        # Process the next time-slice worth of events with deterministic ordering
+        if self._eq.is_empty():
+            # Ensure at least a refill hook exists to drive proposal
+            self._eq.push(self.now_us, "QUEUE_REFILL", payload={})
+        t, batch = self._eq.pop_time_batch()
+        self._advance_time_to(t)
+        committed_total = 0
+        rolled_back_any = False
+        reason: Optional[str] = None
+        # OP_END -> PHASE_HOOK -> QUEUE_REFILL -> OP_START
+        for (_t, _prio, _seq, kind, payload) in batch:
+            if kind == "OP_END":
+                self._handle_op_end(payload)
+        for (_t, _prio, _seq, kind, payload) in batch:
+            if kind == "PHASE_HOOK":
+                c, rb, rsn = self._propose_and_schedule(self.now_us, payload.get("hook", {"label": "DEFAULT"}))
+                committed_total += c
+                rolled_back_any = rolled_back_any or rb
+                reason = reason or rsn
+        for (_t, _prio, _seq, kind, payload) in batch:
+            if kind == "QUEUE_REFILL":
+                c, rb, rsn = self._propose_and_schedule(self.now_us, {"label": "DEFAULT"})
+                # schedule next periodic refill
+                self._eq.push(self.now_us + self._queue_period(), "QUEUE_REFILL", payload={})
+                committed_total += c
+                rolled_back_any = rolled_back_any or rb
+                reason = reason or rsn
+        # OP_START: no-op for now (placeholder for logging)
+        return TickResult(committed=committed_total, rolled_back=rolled_back_any, reason=reason)
+
+    def close(self) -> None:
+        return
+
+    # -----------------
+    # Internals
+    # -----------------
+    def _advance_time_to(self, t: float) -> None:
+        self.now_us = float(t)
+
+    # bootstrap progress helpers moved to bootstrap.py
+
+    # -----------------
+    # Event queue helpers
+    # -----------------
+    def _queue_period(self) -> float:
+        return float(((self._deps.cfg.get("policies", {}) or {}).get("queue_refill_period_us", 50.0)))
+
+    # -----------------
+    # Event handlers
+    # -----------------
+    def _handle_op_end(self, payload: Dict[str, Any]) -> None:
+        base = str(payload.get("base"))
+        targets = payload.get("targets") or []
+        # Release policies
+        if base in ("DOUT", "DOUT4K", "CACHE_READ_END", "PLANE_CACHE_READ_END"):
+            self._deps.rm.release_on_dout_end(targets, now_us=self.now_us)
+        if base in ("ONESHOT_PROGRAM_MSB_23h", "ONESHOT_PROGRAM_EXEC_MSB"):
+            if targets:
+                die = int(getattr(targets[0], "die", 0))
+            else:
+                die = int(payload.get("die", 0))
+            self._deps.rm.release_on_exec_msb_end(die, now_us=self.now_us)
+
+    # -----------------
+    # Propose and schedule
+    # -----------------
+    def _propose_and_schedule(self, now: float, hook: Dict[str, Any]) -> Tuple[int, bool, Optional[str]]:
+        d = self._deps
+        self.metrics["propose_calls"] += 1
+        cfg_used = d.cfg
+        if self._boot.active():
+            cfg_used = self._boot.overlay_cfg(d.cfg)
+            self.metrics["bootstrap_stage"] = self._boot.stage()
+            self.metrics["bootstrap_active"] = True
+        batch = _proposer.propose(now, hook=hook, cfg=cfg_used, res_view=d.rm, addr_sampler=d.addrman, rng=d.rng)
+        if not batch:
+            self.metrics["last_reason"] = "no_candidate"
+            return (0, False, "no_candidate")
+
+        # Admission window and atomic reservation
+        W = float((d.cfg.get("policies", {}) or {}).get("admission_window", 0.0))
+        txn = d.rm.begin(now)
+        ok_all = True
+        reserved_any = False
+        resv_records: List[Dict[str, Any]] = []
+        self.metrics["window_attempts"] += 1
+        for p in batch.ops:
+            op = _proposer._build_op(d.cfg, p.op_name, p.targets)
+            instant = _is_instant_base(d.cfg, p.base)
+            if (not instant) and W > 0 and p.start_us >= (now + W):
+                ok_all = False
+                self.metrics["last_reason"] = "window_exceed"
+                self.metrics["window_exceeds"] += 1
+                break
+            r = d.rm.reserve(txn, op, p.targets, p.scope)
+            if not r.ok:
+                ok_all = False
+                self.metrics["last_reason"] = f"reserve_fail:{r.reason}"
+                break
+            reserved_any = True
+            resv_records.append({
+                "base": p.base,
+                "op_name": p.op_name,
+                "targets": list(p.targets),
+                "scope": p.scope,
+                "start_us": float(r.start_us or p.start_us),
+                "end_us": float(r.end_us or (p.start_us)),
+                "op": op,
+            })
+            # accumulate logical latencies
+            self.metrics["sum_wait_us"] += max(0.0, float(p.start_us) - now)
+            self.metrics["sum_exec_us"] += max(0.0, float((r.end_us or p.start_us)) - float(p.start_us))
+
+        if ok_all and reserved_any:
+            d.rm.commit(txn)
+            nops = len(resv_records)
+            self.metrics["ckpt_success_batches"] += 1
+            self.metrics["propose_success"] += 1
+            self.metrics["ckpt_ops_committed"] += nops
+            self._ops_committed += nops
+            bases = []
+            for rec in resv_records:
+                b = str(rec["base"])
+                bases.append(b)
+                self.metrics["committed_by_base"][b] = int(self.metrics["committed_by_base"].get(b, 0)) + 1
+                # emit OP_START/OP_END and state PHASE_HOOKs
+                self._emit_op_events(rec)
+            self.metrics["last_commit_bases"] = list(bases)
+            # Bootstrap progress + possible stage advancement
+            self._boot.record_committed(bases, batch)
+            topo = (d.cfg.get("topology", {}) or {})
+            self._boot.maybe_advance(self._boot.progress_snapshot(topo))
+            self.metrics["bootstrap_active"] = self._boot.active()
+            self.metrics["bootstrap_stage"] = self._boot.stage()
+            return (nops, False, None)
+        else:
+            d.rm.rollback(txn)
+            self.metrics["ckpt_rollback_batches"] += 1
+            return (0, True, str(self.metrics.get("last_reason")))
+
+    def _emit_op_events(self, rec: Dict[str, Any]) -> None:
+        start = float(rec["start_us"]) 
+        end = float(rec["end_us"]) 
+        base = str(rec["base"]) 
+        op = rec["op"]
+        targets = rec["targets"]
+        # OP_START and OP_END
+        self._eq.push(start, "OP_START", payload={"base": base, "op_name": rec["op_name"], "targets": targets})
+        self._eq.push(end, "OP_END", payload={"base": base, "op_name": rec["op_name"], "targets": targets})
+        # State-driven PHASE_HOOKs (skip ISSUE)
+        t = float(start)
+        for seg in getattr(op, "states", []) or []:
+            name = getattr(seg, "name", "")
+            dur = float(getattr(seg, "dur_us", 0.0))
+            if dur <= 0:
+                continue
+            t_end = t + dur
+            if str(name).upper() != "ISSUE":
+                pre_t = max(t, t_end - max(SIM_RES_US, 0.1 * dur))
+                pre_t = quantize(pre_t)
+                # one PHASE_HOOK per target plane
+                for tgt in targets:
+                    hook = {"die": int(tgt.die), "plane": int(tgt.plane), "label": f"{base}.{name}"}
+                    self._eq.push(pre_t, "PHASE_HOOK", payload={"hook": hook})
+                # also immediately after state end to drive next-stage proposals
+                post_t = quantize(t_end)
+                for tgt in targets:
+                    hook = {"die": int(tgt.die), "plane": int(tgt.plane), "label": f"{base}.{name}"}
+                    self._eq.push(post_t, "PHASE_HOOK", payload={"hook": hook})
+            t = t_end
+
+
+def _is_instant_base(cfg: Dict[str, Any], base: str) -> bool:
+    try:
+        return bool(((cfg.get("op_bases", {}) or {}).get(base, {}) or {}).get("instant_resv", False))
+    except Exception:
+        return False

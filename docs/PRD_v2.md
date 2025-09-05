@@ -21,7 +21,7 @@
 - 목적: 생성된 sequence를 실제 device test 가능한 파일로 변환하기 위한 궁극적 결과물
 - 파일형태: `operation_sequence_yymmdd_0000001.csv`
 - 필수 필드: `seq,time,op_id,op_name,op_uid,payload`
-- payload는 op_name에 따라 다르며, 사용자가 정의/관리 가능해야 함
+- payload는 op_name에 따라 다르며, CFG[payload_by_op_base] 에 명시
 - 예시:
 ```
 seq,time,op_id,op_name,op_uid,payload
@@ -148,6 +148,7 @@ class Operation:
   - sequence: operation을 sequence 형태로 제안할 경우 가능한 case 선언
     - probs: 각 case 별 확률
     - inherit: 후속 operation의 상속 조건 명시
+- payload_by_op_base: op_base 별 payload 명시.
 - policies
   - admission_window
   - queue_refill_period_us: `Scheduler`의 QUEUE_REFILL hook 생성 주기

@@ -25,6 +25,23 @@ policies:
   maxtry_candidate: 4
   sequence_gap: 1.0
 
+bootstrap:
+  enabled: false
+  thresholds:
+    # Advance to PROGRAM stage after this many unique (die,block) erases
+    erase_volume: 100
+    # Advance to READ stage after this many unique (die,block) programs
+    program_volume: 100
+    # Complete bootstrap when read coverage across blocks reaches this fraction
+    read_coverage: 0.10
+  minimums:
+    # Minimum number of unique (die,block) reads required alongside coverage
+    read_volume: 100
+  # Optional weighting when sampling during bootstrap stages (not enforced by code yet)
+  celltype_weights:
+    SLC: 0.2
+    TLC: 0.8
+
 op_bases:
   DEFAULT:
     scope: "NONE"
@@ -161,7 +178,7 @@ op_bases:
         - DOUT: 0.9
         - CACHE_READ.SEQ: 0.1
       inherit:
-        - DOUT: ['same_page', 'multi']
+        - DOUT: ['same_page', 'multi', 'same_celltype']
         - CACHE_READ.SEQ: ['same_celltype']
     states:
       - ISSUE:
@@ -182,7 +199,7 @@ op_bases:
         - DOUT: 0.9
         - CACHE_READ.SEQ: 0.1
       inherit:
-        - DOUT: ['same_page', 'multi']
+        - DOUT: ['same_page', 'multi', 'same_celltype']
         - CACHE_READ.SEQ: ['same_celltype']
     states:
       - ISSUE:
@@ -202,7 +219,7 @@ op_bases:
       probs:
         - DOUT4K: 1
       inherit:
-        - DOUT4K: ['same_page', 'multi']
+        - DOUT4K: ['same_page', 'multi', 'same_celltype']
     states:
       - ISSUE:
         bus: true
@@ -247,7 +264,7 @@ op_bases:
         - DOUT: 0.9
         - CACHE_READ.SEQ: 0.1
       inherit:
-        - DOUT: ['same_page', 'multi']
+        - DOUT: ['same_page', 'multi', 'same_celltype']
         - CACHE_READ.SEQ: ['same_celltype']
     states:
       - ISSUE:
@@ -267,7 +284,7 @@ op_bases:
       probs:
         - DOUT4K: 1
       inherit:
-        - DOUT4K: ['same_page', 'multi']
+        - DOUT4K: ['same_page', 'multi', 'same_celltype']
     states:
       - ISSUE:
         bus: true
@@ -313,7 +330,7 @@ op_bases:
         - COPYBACK_PROGRAM_SLC.SEQ: 0.05
         - ONESHOT_COPYBACK_PROGRAM_LSB.SEQ: 0.05
       inherit:
-        - DOUT: ['same_page', 'multi']
+        - DOUT: ['same_page', 'multi', 'same_celltype']
         - COPYBACK_PROGRAM_SLC.SEQ: ['same_celltype']
         - ONESHOT_COPYBACK_PROGRAM_LSB.SEQ: ['same_celltype']
     states:
@@ -631,6 +648,59 @@ op_bases:
       - ISSUE:
         bus: true
         duration: 0.4
+
+payload_by_op_base:
+  ERASE: [die,plane,block,page,celltype]
+  PROGRAM_SLC: [die,plane,block,page,celltype]
+  CACHE_PROGRAM_SLC: [die,plane,block,page,celltype]
+  ONESHOT_PROGRAM_LSB: [die,plane,block,page,celltype]
+  ONESHOT_PROGRAM_CSB: [die,plane,block,page,celltype]
+  ONESHOT_PROGRAM_MSB: [die,plane,block,page,celltype]
+  ONESHOT_PROGRAM_MSB_23h: [die,plane,block,page,celltype]
+  ONESHOT_PROGRAM_EXEC_MSB: [die,plane,block,page,celltype]
+  ONESHOT_CACHE_PROGRAM: [die,plane,block,page,celltype]
+  READ: [die,plane,block,page,celltype]
+  RECOVERY_READ: [die,plane,block,page,celltype]
+  READ4K: [die,plane,block,page,celltype]
+  CACHE_READ: [die,plane,block,page,celltype]
+  CACHE_READ_END: [die,plane,block,page,celltype]
+  PLANE_READ: [die,plane,block,page,celltype]
+  PLANE_READ4K: [die,plane,block,page,celltype]
+  PLANE_CACHE_READ: [die,plane,block,page,celltype]
+  PLANE_CACHE_READ_END: [die,plane,block,page,celltype]
+  COPYBACK_READ: [die,plane,block,page,celltype]
+  COPYBACK_PROGRAM_SLC: [die,plane,block,page,celltype]
+  ONESHOT_COPYBACK_PROGRAM_LSB: [die,plane,block,page,celltype]
+  ONESHOT_COPYBACK_PROGRAM_CSB: [die,plane,block,page,celltype]
+  ONESHOT_COPYBACK_PROGRAM_MSB: [die,plane,block,page,celltype]
+  ONESHOT_COPYBACK_PROGRAM_EXEC_MSB: [die,plane,block,page,celltype]
+  DOUT: [die,plane,block,page,celltype]
+  DOUT4K: [die,plane,block,page,celltype]
+  DATAIN: [die,plane,block,page,celltype]
+  SR: [die,plane]
+  SR_ADD: [die,plane]
+  CAMREAD: []
+  CAMREAD_LUN: [die]
+  ERASE_SUSPEND: [die]
+  ERASE_RESUME: [die]
+  PROGRAM_SUSPEND: [die]
+  PROGRAM_RESUME: [die]
+  TRAINING: []
+  READID: []
+  SETPARA: [die]
+  GETPARA: [die]
+  PLANE_SETPARA: [die,plane]
+  SETFEATURE: []
+  GETFEATURE: []
+  SETFEATURE_LUN: [die]
+  GETFEATURE_LUN: [die]
+  RESET: []
+  RESET_LUN: [die]
+  TEMPSENSOR: []
+  ZQCAL: []
+  ODTDISABLE: []
+  ODTENABLE: []
+
 
 exclusion_groups:
   on_busy:
@@ -2051,9 +2121,9 @@ generate_seq_rules:
   CACHE_READ.SEQ:
     sequences:
       - CACHE_READ: ['same_page', 'same_celltype']
-      - DOUT: ['prev_page', 'multi']
+      - DOUT: ['prev_page', 'multi', 'same_celltype']
       - CACHE_READ_END: ['inc_page', 'same_celltype']
-      - DOUT: ['same_page', 'same_celltype', 'multi']
+      - DOUT: ['same_page', 'multi', 'same_celltype']
   COPYBACK_PROGRAM_SLC.SEQ:
     sequences:
       - COPYBACK_PROGRAM_SLC: ['none', 'same_celltype']
@@ -2067,7 +2137,7 @@ generate_seq_rules:
   RECOVERY_READ.SEQ:
     sequences:
       - COPYBACK_READ: ['same_page_from_program_suspend']
-      - DOUT: ['prev_page', 'multi']
+      - DOUT: ['prev_page', 'multi', 'same_celltype']
 
 latencies:
   erase.slc.busy: &erase_slc_busy 7000.0
@@ -2782,14 +2852,14 @@ op_names:
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 0.025
+      ISSUE: 0.185
       CORE_BUSY: *erase_suspend_busy
   Get_Parameter:
     base: GETPARA
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 1.1922
+      ISSUE: 1.3522
   LUN_Status_Read_for_LUN1:
     base: SR
     multi: false
@@ -2889,7 +2959,7 @@ op_names:
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 0.025
+      ISSUE: 0.185
       CORE_BUSY: *erase_resume_busy
   Get_Features:
     base: GETFEATURE
@@ -3155,7 +3225,7 @@ op_names:
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 1.2772
+      ISSUE: 1.4372
   Soft_Read_AESLC:
     base: READ
     multi: false
@@ -3325,7 +3395,7 @@ op_names:
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 0.05
+      ISSUE: 0.210
       CORE_BUSY: *program_suspend_busy
   Read_AESLC:
     base: READ
@@ -3733,14 +3803,14 @@ op_names:
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 0.025
+      ISSUE: 0.185
       CORE_BUSY: *program_resume_busy
   Program_Suspend_Reset:
     base: PROGRAM_SUSPEND
     multi: false
     celltype: NONE
     durations:
-      ISSUE: 0.025
+      ISSUE: 0.185
       CORE_BUSY: *program_suspend_busy
   Read_AESLC_AARV:
     base: READ
