@@ -13,7 +13,7 @@
 - source: operation 생성과정의 출처
 - op_state_phase: 어떤 operation 동작 중 어떤 state의 timeline에서 operation이 schedule 됐는지의 정보 (가능/불가능 CMD에 영향)
 - cell_type: TLC/SLC/A0SLC/ACSLC/AESLC/FWSLC
-- lane: die/block을 하나의 변수로 표현한 값 (gantt 시각화용)
+- lane: die-block을 하나의 변수로 표현한 값 (gantt 시각화용)
 
 ## 3. Required Outputs
 
@@ -50,6 +50,7 @@ seq,time,op_id,op_name,op_uid,payload
 - 필수 필드: `op_base,cell_type,die,block,page,count`
 - 의미: address(die,block,page) 별 program/read 수행 횟수
 - 시각화: heatmap (die,block은 묶어 가독성 향상)
+  - x: lane, y: page
 
 ### 3.3 Operation Timeline
 - 목적: operation 다양성 및 operation 간 충돌 확인
@@ -57,6 +58,7 @@ seq,time,op_id,op_name,op_uid,payload
 - 필수 필드: `start,end,die,plane,block,page,op_name,op_base,source,op_uid,op_state`
 - 범위: (die,block) 별 operation timeline
 - 시각화: gantt 차트
+  - x: time, y: lane, 점유: op_name
 
 ### 3.4 op_state Timeline
 - 목적: op_state에서 허용되지 않는 operation 수행 여부 및 plane/die level 충돌 확인
@@ -64,6 +66,7 @@ seq,time,op_id,op_name,op_uid,payload
 - 필수 필드: `start,end,die,plane,op_state,lane,op_name,duration`
 - 범위: (die,plane) 별 op_state_phase timeline
 - 시각화: gantt 차트
+  - x: time, y: plane, 점유: op_state
 
 ### 3.5 op_state x op_name x input_time Count
 - 목적: 다양한 op_state에서 다양한 operation이 다양한 시점에서 실제로 수행되는지 확인 (실제 propose 시 참조한 op_state 사용)
@@ -72,6 +75,7 @@ seq,time,op_id,op_name,op_uid,payload
 - 의미: 어떤 op_state에서 operation이 어느 time에 schedule 됐는지
 - input_time: 0~1 사이 소수 (op_state 전체 duration 대비 시점)
 - 시각화: histogram
+  - x: op_state-op_name-input_time, y: count
 
 ### 3.6 State Snapshot
 - 목적: run 간 state를 안전·결정적으로 스냅샷/재개해 연속성 유지

@@ -61,36 +61,41 @@ def plot_operation_gantt(csv_path: str, *, save_path: Optional[str] = None, max_
     if df.empty:
         print("[operation_gantt] empty CSV"); return
     d = df.copy()
-    # lanes: die/block
-    d["lane"] = d["die"].astype("Int64").astype(str) + "/" + d["block"].astype("Int64").astype(str)
-    lanes = d[["lane"]].drop_duplicates().reset_index(drop=True)
-    # limit lanes for readability if huge
+    # lanes: die/block → use numeric y-index for robust ordering and inversion
+    d["die"] = d["die"].astype("Int64")
+    d["block"] = d["block"].astype("Int64")
+    d["lane"] = d["die"].astype(str) + "/" + d["block"].astype(str)
+    lanes = d[["die", "block", "lane"]].drop_duplicates()
+    lanes = lanes.sort_values(["die", "block"]).reset_index(drop=True)
     if len(lanes) > max_lanes:
-        keep = set(lanes["lane"].iloc[:max_lanes].tolist())
-        d = d[d["lane"].isin(keep)]
+        lanes = lanes.iloc[:max_lanes].copy()
+        d = d.merge(lanes[["die","block"]].assign(_keep=1), on=["die","block"], how="inner")
         print(f"[operation_gantt] truncated lanes to first {max_lanes}")
-    lanes = d[["lane"]].drop_duplicates().reset_index(drop=True)
+    lanes = lanes.reset_index(drop=True)
     lanes["yidx"] = lanes.index
-    d = d.merge(lanes, on="lane", how="left")
+    d = d.merge(lanes[["lane","yidx"]], on="lane", how="left")
 
-    # color by op_base (fallback to op_name)
-    kinds = sorted(d.get("op_base", d.get("op_name")).astype(str).unique())
+    # PRD §3.3 점유: op_name
+    kinds = sorted(d.get("op_name", d.get("op_base")).astype(str).unique())
     palette = sns.color_palette("tab20", max(len(kinds), 3))
     cmap = {k: palette[i % len(palette)] for i, k in enumerate(kinds)}
 
     plt.figure(figsize=(12, max(4, 0.3 * max(len(lanes), 1))))
     for _, r in d.iterrows():
-        k = str(r.get("op_base", r.get("op_name", "OP")))
-        plt.hlines(r["lane"], float(r["start"]), float(r["end"]), colors=[cmap.get(k, (0.5,0.5,0.5))], linewidth=6.0)
+        k = str(r.get("op_name", r.get("op_base", "OP")))
+        plt.hlines(float(r["yidx"]), float(r["start"]), float(r["end"]), colors=[cmap.get(k, (0.5,0.5,0.5))], linewidth=6.0)
+    # y as numeric with labels
+    plt.yticks(lanes["yidx"], lanes["lane"].astype(str))
     plt.gca().invert_yaxis()  # top-most lane first
     plt.xlabel("time (us)")
-    plt.ylabel("die/block")
+    # PRD §3.3 y label
+    plt.ylabel("die-block")
     plt.title("Operation Timeline (Gantt)")
     # legend
     from matplotlib.patches import Patch
     handles = [Patch(color=cmap[k], label=k) for k in kinds][:10]
     if handles:
-        plt.legend(handles=handles, title="op_base", loc="upper right", frameon=False)
+        plt.legend(handles=handles, title="op_name", loc="upper right", frameon=False)
     plt.grid(axis="x", linestyle="--", alpha=0.35)
     plt.tight_layout()
     if save_path:
@@ -111,17 +116,17 @@ def plot_op_state_gantt(csv_path: str, *, save_path: Optional[str] = None, max_l
     if df.empty:
         print("[op_state_gantt] empty CSV"); return
     d = df.copy()
-    # lanes as provided
-    if "lane" not in d.columns:
-        d["lane"] = "d" + d["die"].astype("Int64").astype(str) + "-p" + d["plane"].astype("Int64").astype(str)
-    lanes = d[["lane"]].drop_duplicates().reset_index(drop=True)
+    # Per-(die,plane) lanes → numeric y-index; consistent inverted ordering
+    d["die"] = d["die"].astype("Int64")
+    d["plane"] = d["plane"].astype("Int64")
+    lanes = d[["die", "plane"]].drop_duplicates()
+    lanes = lanes.sort_values(["die", "plane"]).reset_index(drop=True)
+    # Tick label format: die/plane (e.g., "0/3")
+    lanes["lane_label"] = lanes["die"].astype(str) + "/" + lanes["plane"].astype(str)
     if len(lanes) > max_lanes:
-        keep = set(lanes["lane"].iloc[:max_lanes].tolist())
-        d = d[d["lane"].isin(keep)]
+        lanes = lanes.iloc[:max_lanes].copy()
+        d = d.merge(lanes[["die","plane"]].assign(_keep=1), on=["die","plane"], how="inner")
         print(f"[op_state_gantt] truncated lanes to first {max_lanes}")
-    lanes = d[["lane"]].drop_duplicates().reset_index(drop=True)
-    lanes["yidx"] = lanes.index
-    d = d.merge(lanes, on="lane", how="left")
 
     # color by op_state label
     labels = sorted(d["op_state"].astype(str).unique())
@@ -129,12 +134,18 @@ def plot_op_state_gantt(csv_path: str, *, save_path: Optional[str] = None, max_l
     cmap = {k: palette[i % len(palette)] for i, k in enumerate(labels)}
 
     plt.figure(figsize=(12, max(4, 0.3 * max(len(lanes), 1))))
+    # attach y indices
+    lanes = lanes.reset_index(drop=True)
+    lanes["yidx"] = lanes.index
+    d = d.merge(lanes[["die","plane","yidx","lane_label"]], on=["die","plane"], how="left")
     for _, r in d.iterrows():
         k = str(r.get("op_state", "STATE"))
-        plt.hlines(r["lane"], float(r["start"]), float(r["end"]), colors=[cmap.get(k, (0.5,0.5,0.5))], linewidth=6.0)
+        plt.hlines(float(r["yidx"]), float(r["start"]), float(r["end"]), colors=[cmap.get(k, (0.5,0.5,0.5))], linewidth=6.0)
+    plt.yticks(lanes["yidx"], lanes["lane_label"].astype(str))
     plt.gca().invert_yaxis()
     plt.xlabel("time (us)")
-    plt.ylabel("die/plane")
+    # y label per request
+    plt.ylabel("die-plane")
     plt.title("op_state Timeline (Gantt)")
     from matplotlib.patches import Patch
     handles = [Patch(color=cmap[k], label=k) for k in labels][:12]
@@ -167,15 +178,16 @@ def plot_address_touch_heatmap(csv_path: str, *, save_path: Optional[str] = None
     if d.empty:
         print("[address_heatmap] no rows after filter"); return
     d["lane"] = d["die"].astype("Int64").astype(str) + "/" + d["block"].astype("Int64").astype(str)
-    # pivot: index=page, columns=lane, values=sum(count)
+    # PRD §3.2 heatmap axes: x=lane, y=page
+    # pivot: index=page (rows), columns=lane (cols), values=sum(count)
     pvt = d.groupby(["page","lane"], dropna=False)["count"].sum().unstack(fill_value=0)
     # order lanes numerically by die/block
     cols = sorted(pvt.columns, key=lambda s: tuple(map(int, str(s).split("/"))))
     pvt = pvt[cols]
     plt.figure(figsize=(14, 6))
-    sns.heatmap(pvt.T, cmap="Reds", cbar_kws={"label": "hits"})
-    plt.xlabel("page")
-    plt.ylabel("die/block")
+    sns.heatmap(pvt, cmap="Reds", cbar_kws={"label": "hits"})
+    plt.xlabel("die-block")
+    plt.ylabel("page")
     plt.title("Address Touch Heatmap" + (" (" + ",".join(kinds) + ")" if kinds else ""))
     plt.tight_layout()
     if save_path:
@@ -212,29 +224,24 @@ def plot_state_name_input_time_hist(csv_path: str, *, save_path: Optional[str] =
     if d2.empty:
         print("[state_input_hist] nothing to plot after filtering"); return
 
-    # grid of subplots
-    n = len(st_order)
-    cols = min(3, max(1, n))
-    rows = int(np.ceil(n / cols))
-    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 3.5 * rows), squeeze=False)
-    for i, st in enumerate(st_order):
-        ax = axes[i // cols][i % cols]
-        dd = d2[d2["op_state"] == st].copy()
-        if dd.empty:
-            ax.axis("off"); continue
-        # pivot: x=input_time(sorted), hue=op_name
-        dd = dd.sort_values(["input_time", "op_name"])  # ensure stable order
-        for op, grp in dd.groupby("op_name"):
-            ax.bar(grp["input_time"].astype(float), grp["count"].astype(float), width=0.02, alpha=0.8, label=str(op))
-        ax.set_title(st)
-        ax.set_xlabel("input_time (0..1)")
-        ax.set_ylabel("count")
-        ax.set_xlim(0.0, 1.0)
-        ax.grid(axis="y", linestyle="--", alpha=0.3)
-        ax.legend(fontsize=8, loc="upper right", frameon=False)
-    # clean unused axes
-    for j in range(i + 1, rows * cols):
-        axes[j // cols][j % cols].axis("off")
+    # PRD §3.5: x = op_state-op_name-input_time, y = count
+    # Build combined categorical x; keep top-k filtering applied above
+    d2 = d2.copy()
+    d2["input_time"] = d2["input_time"].astype(float)
+    d2["xcat"] = (
+        d2["op_state"].astype(str)
+        + " | "
+        + d2["op_name"].astype(str)
+        + " | t="
+        + d2["input_time"].map(lambda v: f"{v:.2f}")
+    )
+    d2 = d2.sort_values(["op_state", "op_name", "input_time"])  # stable order
+    plt.figure(figsize=(max(8, 0.5 * len(d2)), 4))
+    plt.bar(d2["xcat"], d2["count"].astype(float))
+    plt.xticks(rotation=80, ha="right", fontsize=8)
+    plt.xlabel("op_state | op_name | input_time")
+    plt.ylabel("count")
+    plt.title("State × Operation × Input-time Count")
     plt.tight_layout()
     if save_path:
         _save_fig(save_path)
@@ -308,4 +315,3 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -336,7 +336,7 @@ def _sample_targets_for_op(cfg: Dict[str, Any], addr: AddressSampler, op_name: s
 
     dies, planes = _cfg_topology(cfg)
 
-    if base.startswith("ERASE") or base == "ERASE":
+    if "ERASE" in base:
         if multi:
             # choose plane set up to maxplanes; try shrinking until >=2
             maxk = min(_pol_maxplanes(cfg), planes)
@@ -357,7 +357,8 @@ def _sample_targets_for_op(cfg: Dict[str, Any], addr: AddressSampler, op_name: s
                 return [Address(die=ti.die, plane=_guess_plane_from_block(ti.block, planes), block=ti.block, page=0)]
             return []
 
-    if base.startswith("PROGRAM") or base == "PROGRAM" or base.endswith("PROGRAM_SLC") or base.startswith("COPYBACK_PROGRAM"):
+    # Treat any PROGRAM variants (e.g., PROGRAM_SLC) as PROGRAM
+    if "PROGRAM" in base:
         if multi:
             maxk = min(_pol_maxplanes(cfg), planes)
             for k in range(maxk, 1, -1):
@@ -377,7 +378,7 @@ def _sample_targets_for_op(cfg: Dict[str, Any], addr: AddressSampler, op_name: s
             return []
 
     # READ-like families
-    if base.startswith("READ") or base == "READ" or base.endswith("READ4K") or base.startswith("CACHE_READ") or base.startswith("COPYBACK_READ") or base.startswith("PLANE_READ"):
+    if "READ" in base:
         if multi:
             maxk = min(_pol_maxplanes(cfg), planes)
             for k in range(maxk, 1, -1):
@@ -613,6 +614,56 @@ def _sorted_candidates(dist: Dict[str, float], eps: float) -> List[Tuple[str, fl
     return items
 
 
+def _weighted_sample_candidates(dist: Dict[str, float], k: int, rng: Any) -> List[Tuple[str, float]]:
+    """Sample up to k unique candidates from dist by weight.
+
+    - Interprets values in `dist` as non‑negative weights (no need to be normalized)
+    - Samples without replacement; each selected key's weight is zeroed before next draw
+    - Uses `rng.random()` if available; otherwise falls back to `random.random()`
+    Returns list of (name, original_weight) preserving the original weights for logging/tie‑breaks.
+    """
+    # Filter positive weights and keep original mapping
+    keys: List[str] = []
+    weights: List[float] = []
+    for n, p in dist.items():
+        try:
+            w = float(p)
+        except Exception:
+            w = 0.0
+        if w > 0.0:
+            keys.append(str(n))
+            weights.append(w)
+    if not keys:
+        return []
+    k = max(0, min(int(k), len(keys)))
+    if k == 0:
+        return []
+    # Iterative weighted draws without replacement
+    out: List[Tuple[str, float]] = []
+    for _ in range(k):
+        tot = sum(weights)
+        if tot <= 0.0:
+            break
+        try:
+            r = (rng.random() if hasattr(rng, "random") else __import__("random").random()) * tot
+        except Exception:
+            from random import random as _r
+            r = _r() * tot
+        acc = 0.0
+        idx = len(keys) - 1
+        for i, w in enumerate(weights):
+            acc += w
+            if r <= acc:
+                idx = i
+                break
+        name = keys[idx]
+        # Record original weight from dist
+        out.append((name, float(dist.get(name, 0.0))))
+        # Zero out to avoid reselection
+        weights[idx] = 0.0
+    return out
+
+
 def validate_phase_conditional(cfg: Dict[str, Any]) -> Dict[str, Any]:
     """Validate cfg['phase_conditional'] contents.
 
@@ -709,8 +760,11 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
     except Exception:
         pass
 
-    cands = _sorted_candidates(dist, eps)
-    cands = cands[:topN]
+    # Candidate selection: weighted sampling by phase_conditional values
+    cands = _weighted_sample_candidates(dist, topN, rng)
+    # Fallback to deterministic topN if sampling yields none
+    if not cands:
+        cands = _sorted_candidates(dist, eps)[:topN]
     if not cands:
         return None
 

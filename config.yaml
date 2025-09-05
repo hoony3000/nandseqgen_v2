@@ -1,7 +1,7 @@
 # op_specs.yaml
 
 topology:
-  dies: 2
+  dies: 1
   planes: 4
   blocks_per_die: 1000
   pages_per_block: 2564
@@ -201,7 +201,7 @@ op_bases:
       - DATA_OUT:
         bus: false
         duration: 2.0
-  RECOVERY_READ:
+  RECOVERY_RD:
     scope: "PLANE_SET"
     affect_state: true
     instant_resv: false
@@ -500,9 +500,9 @@ op_bases:
     sequence:
       probs:
         - NONE: 0.99
-        - RECOVERY_READ.SEQ: 0.01
+        - RECOVERY_RD.SEQ: 0.01
       inherit:
-        - RECOVERY_READ.SEQ: ['same_page_from_program_suspend']
+        - RECOVERY_RD.SEQ: ['same_page_from_program_suspend']
     states:
       - ISSUE:
         bus: true
@@ -672,7 +672,7 @@ payload_by_op_base:
   ONESHOT_PROGRAM_EXEC_MSB: [die,plane,block,page,celltype]
   ONESHOT_CACHE_PROGRAM: [die,plane,block,page,celltype]
   READ: [die,plane,block,page,celltype]
-  RECOVERY_READ: [die,plane,block,page,celltype]
+  RECOVERY_RD: [die,plane,block,page,celltype]
   READ4K: [die,plane,block,page,celltype]
   CACHE_READ: [die,plane,block,page,celltype]
   CACHE_READ_END: [die,plane,block,page,celltype]
@@ -727,7 +727,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -779,7 +779,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -831,7 +831,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -882,7 +882,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     # - CACHE_READ
     # - CACHE_READ_END
@@ -933,7 +933,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -984,7 +984,7 @@ exclusion_groups:
     # - ONESHOT_PROGRAM_EXEC_MSB
     # - ONESHOT_CACHE_PROGRAM
     # - READ
-    # - RECOVERY_READ
+    # - RECOVERY_RD
     # - READ4K
     # - CACHE_READ
     # - CACHE_READ_END
@@ -1035,7 +1035,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -1086,7 +1086,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -1137,7 +1137,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -1188,7 +1188,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -1239,7 +1239,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     # - CACHE_READ
     # - CACHE_READ_END
@@ -1290,7 +1290,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -1341,7 +1341,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -1392,7 +1392,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -1444,7 +1444,7 @@ exclusion_groups:
     # - ONESHOT_PROGRAM_EXEC_MSB
     # - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -1496,7 +1496,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -1701,7 +1701,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -1753,7 +1753,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -1805,7 +1805,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -1857,7 +1857,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - READ
-    - RECOVERY_READ
+    - RECOVERY_RD
     - READ4K
     - CACHE_READ
     - CACHE_READ_END
@@ -2177,7 +2177,7 @@ generate_seq_rules:
       - ONESHOT_COPYBACK_PROGRAM_CSB: ['pgm_same_page']
       - COPYBACK_READ: ['none']
       - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB: ['pgm_same_page']
-  RECOVERY_READ.SEQ:
+  RECOVERY_RD.SEQ:
     sequences:
       - COPYBACK_READ: ['same_page_from_program_suspend']
       - DOUT: ['prev_page', 'multi', 'same_celltype']
@@ -2411,14 +2411,14 @@ op_names:
   All_WL_Dummy_Program:
     base: ALLWL_PROGRAM
     multi: false
-    celltype: NONE
+    celltype: SLC
     durations:
       ISSUE: 0.085
       CORE_BUSY: *program_slc_busy
   All_WL_Dummy_Program_Multi_Plane:
     base: ALLWL_PROGRAM
     multi: true
-    celltype: NONE
+    celltype: SLC
     durations:
       ISSUE: 0.34
       CORE_BUSY: *program_slc_busy
@@ -3161,56 +3161,56 @@ op_names:
       ISSUE: 9.8244
       CORE_BUSY: *program_slc_busy
   Read_write_conflict_Fire_N_Forget_CSB_AARV:
-    base: RECOVERY_READ
+    base: RECOVERY_RD
     multi: false
     celltype: TLC
     durations:
       ISSUE: 129.6582
       CORE_BUSY: *read_16k_csb_busy
   Read_write_conflict_Fire_N_Forget_CSB:
-    base: RECOVERY_READ
+    base: RECOVERY_RD
     multi: false
     celltype: TLC
     durations:
       ISSUE: 129.5482
       CORE_BUSY: *read_16k_csb_busy
   Read_write_conflict_Fire_N_Forget_LSB_AARV:
-    base: RECOVERY_READ
+    base: RECOVERY_RD
     multi: false
     celltype: TLC
     durations:
       ISSUE: 129.6582
       CORE_BUSY: *read_16k_lsb_busy
   Read_write_conflict_Fire_N_Forget_LSB:
-    base: RECOVERY_READ
+    base: RECOVERY_RD
     multi: false
     celltype: TLC
     durations:
       ISSUE: 129.6582
       CORE_BUSY: *read_16k_lsb_busy
   Read_write_conflict_Fire_N_Forget_MSB_AARV:
-    base: RECOVERY_READ
+    base: RECOVERY_RD
     multi: false
     celltype: TLC
     durations:
       ISSUE: 129.6582
       CORE_BUSY: *read_16k_msb_busy
   Read_write_conflict_Fire_N_Forget_MSB:
-    base: RECOVERY_READ
+    base: RECOVERY_RD
     multi: false
     celltype: TLC
     durations:
       ISSUE: 129.5482
       CORE_BUSY: *read_16k_msb_busy
   Read_write_conflict_Fire_N_Forget_Multi_Plane_CSB_AARV:
-    base: RECOVERY_READ
+    base: RECOVERY_RD
     multi: true
     celltype: TLC
     durations:
       ISSUE: 218.0778
       CORE_BUSY: *read_16k_csb_busy
   Read_write_conflict_Fire_N_Forget_Multi_Plane_CSB:
-    base: RECOVERY_READ
+    base: RECOVERY_RD
     multi: true
     celltype: TLC
     durations:
@@ -3224,21 +3224,21 @@ op_names:
       ISSUE: 218.0778
       CORE_BUSY: *read_16k_lsb_busy
   Read_write_conflict_Fire_N_Forget_Multi_Plane_LSB:
-    base: RECOVERY_READ
+    base: RECOVERY_RD
     multi: true
     celltype: TLC
     durations:
       ISSUE: 217.9678
       CORE_BUSY: *read_16k_lsb_busy
   Read_write_conflict_Fire_N_Forget_Multi_Plane_MSB_AARV:
-    base: RECOVERY_READ
+    base: RECOVERY_RD
     multi: true
     celltype: TLC
     durations:
       ISSUE: 218.0778
       CORE_BUSY: *read_16k_msb_busy
   Read_write_conflict_Fire_N_Forget_Multi_Plane_MSB:
-    base: RECOVERY_READ
+    base: RECOVERY_RD
     multi: true
     celltype: TLC
     durations:
@@ -4418,10 +4418,14 @@ phase_conditional: {}
 phase_conditional_overrides:
   # op_base->value overrides for all op_states
   global:
-    RESET: 0.001
-    RESET_LUN: 0.001
-    ERASE_SUSPEND: 0.001
-    PROGRAM_SUSPEND: 0.001
+    RESET: 0.0001
+    RESET_LUN: 0.0001
+    ERASE_SUSPEND: 0.0001
+    PROGRAM_SUSPEND: 0.0001
+    READ: 0.01
+    READ4K: 0.01
+    PLANE_READ: 0.05
+    PLANE_READ4K: 0.05
   # op_base->value overrides for specific op_states
   # ERASE.CORE_BUSY:
   #   op_name1: 0.01
