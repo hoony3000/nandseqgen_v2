@@ -27,6 +27,8 @@
   - 개선 방향과 실험: 기본 CFG에 PROGRAM/READ의 최소 스펙을 추가(`main.py:_ensure_min_cfg`에 `op_bases[PROGRAM_SLC|READ4K]`와 `op_names[All_WL_Dummy_Program|4KB_Page_Read_confirm_LSB]` 정의). `python3 main.py -n 1 -t 1000 --out-dir out` 실행 후 CSV 확인.
   - 평가 결과: 완료 — `operation_sequence_*.csv`에 `All_WL_Dummy_Program` 포함, `committed_by_base`에 `PROGRAM_SLC` 집계. `address_touch_count_*.csv`에도 PROGRAM 집계 1건 확인.
 
+- [ ] phase_conditional runtime 으로 생성 시 .ISSUE state 제외 필요
+
 - [ ] op_state_probs.yaml 파일 미생성
   - 문제 상황: `PRD_v2.md:168-179` 문서에 따르면 op_state_probs.yaml 파일을 생성하게 돼있으나 생성되지 않음
   - 개선 방향과 실험: CFG runtime 초기화가 잘됐는지 점검

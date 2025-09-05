@@ -4413,7 +4413,7 @@ phase_conditional_overrides:
   RESET: 0.001
   RESET_LUN: 0.001
   ERASE_SUSPEND: 0.001
-  PROGREAM_SUSPEND: 0.001
+  PROGRAM_SUSPEND: 0.001
 
 # -----------------------------
 # Validator Constraints & Rules

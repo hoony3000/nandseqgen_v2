@@ -605,18 +605,27 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--pc-demo", choices=["erase-only","mix","pgm-read"], default=None,
                    help="Override phase_conditional DEFAULT to a preset: erase-only | mix | pgm-read")
     p.add_argument("--autofill-pc", action="store_true", help="Autofill phase_conditional from CFG (PRD policy)")
+    p.add_argument("--op-state-probs", dest="op_state_probs", default=None,
+                   help="Path to op_state_probs.yaml (load if present; write when auto-filled)")
     p.add_argument("--validate-pc", action="store_true", help="Validate CFG.phase_conditional and log summary")
     args = p.parse_args(argv)
 
     cfg = _load_cfg(args.config)
     cfg = _ensure_min_cfg(cfg)
-    # Optional: build phase_conditional automatically per PRD if requested or empty
-    if args.autofill_pc:
-        try:
-            import cfg_autofill as _pc
-            cfg = _pc.ensure_phase_conditional(cfg, seed=int(args.seed), force=True)
-        except Exception:
-            pass
+    # Default: load op_state_probs.yaml if present; otherwise autofill when empty or only DEFAULT
+    try:
+        import cfg_autofill as _pc
+        probs_path = args.op_state_probs
+        if not probs_path:
+            # default next to the config file
+            import os as _os
+            cfg_dir = _os.path.dirname(args.config)
+            if not cfg_dir:
+                cfg_dir = "."
+            probs_path = _os.path.join(cfg_dir, "op_state_probs.yaml")
+        cfg = _pc.ensure_from_file_or_build(cfg, path=probs_path, seed=int(args.seed), force=bool(args.autofill_pc))
+    except Exception:
+        pass
     topo = cfg.get("topology", {}) or {}
     dies = int(topo.get("dies", 1))
     planes = int(topo.get("planes", 1))

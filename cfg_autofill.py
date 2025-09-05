@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import random
 from typing import Any, Dict, List, Tuple
+import os
+
+try:
+    import yaml  # type: ignore
+except Exception:
+    yaml = None
 
 
 def _state_names_for_base(cfg: Dict[str, Any], base: str) -> List[str]:
@@ -148,11 +154,100 @@ def ensure_phase_conditional(cfg: Dict[str, Any], *, seed: int = 1729, force: bo
     """
     cur = (cfg.get("phase_conditional", {}) or {})
     keep_default = cur.get("DEFAULT")
-    if cur and not force:
+    has_non_default = any(k != "DEFAULT" for k in cur.keys())
+    # Rebuild when:
+    #  - force is True, or
+    #  - no keys, or only DEFAULT exists (treated as effectively empty)
+    if (not force) and has_non_default:
         return cfg
     pc = build_phase_conditional(cfg, seed=seed)
     if keep_default:
         pc["DEFAULT"] = keep_default
     out = dict(cfg)
     out["phase_conditional"] = pc
+    return out
+
+
+def _load_yaml(path: str) -> Dict[str, Any]:
+    if not path:
+        return {}
+    if yaml is None:
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+
+
+def _dump_yaml(data: Dict[str, Any], path: str) -> None:
+    if not path or yaml is None:
+        return
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def load_op_state_probs(path: str) -> Dict[str, Dict[str, float]]:
+    """Load phase_conditional map from a YAML file.
+
+    Accepts either a top-level mapping or a mapping under 'phase_conditional'.
+    Returns an empty dict on failure.
+    """
+    data = _load_yaml(path)
+    if not data:
+        return {}
+    if isinstance(data.get("phase_conditional"), dict):
+        pc = data.get("phase_conditional") or {}
+    elif isinstance(data, dict):
+        pc = data
+    else:
+        return {}
+    # coerce to name->prob floats
+    out: Dict[str, Dict[str, float]] = {}
+    try:
+        for k, v in pc.items():
+            if isinstance(v, dict):
+                out[str(k)] = {str(n): float(p) for n, p in v.items()}
+    except Exception:
+        return {}
+    return out
+
+
+def save_op_state_probs(pc: Dict[str, Dict[str, float]], path: str) -> None:
+    """Save phase_conditional map to YAML file under 'phase_conditional' key."""
+    if not path:
+        return
+    _dump_yaml({"phase_conditional": pc}, path)
+
+
+def ensure_from_file_or_build(
+    cfg: Dict[str, Any], *, path: str, seed: int = 1729, force: bool = False
+) -> Dict[str, Any]:
+    """If file exists and not forcing, load op_state_probs; else build and save.
+
+    - When loading: if the file lacks DEFAULT but cfg has one, keep cfg.DEFAULT.
+    - When building: preserve cfg.DEFAULT and write out the result.
+    """
+    cur_default = (cfg.get("phase_conditional", {}) or {}).get("DEFAULT")
+    if (not force) and path and os.path.exists(path):
+        pc = load_op_state_probs(path)
+        if pc:
+            if (cur_default is not None) and ("DEFAULT" not in pc):
+                pc["DEFAULT"] = cur_default
+            out = dict(cfg)
+            out["phase_conditional"] = pc
+            return out
+    # Build and save
+    out = ensure_phase_conditional(cfg, seed=seed, force=True)
+    pc2 = out.get("phase_conditional", {}) or {}
+    if path:
+        try:
+            save_op_state_probs(pc2, path)
+        except Exception:
+            pass
     return out
