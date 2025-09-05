@@ -202,10 +202,11 @@ class Operation:
       2) 순서를 보존하며 삽입,
       3) `duration`(0 이상 실수), `bus`(bool) 필수 키 검증을 수행한다.
     - `generate_seq_rules` 정규화: `sequences`가 단일 키 맵 리스트 형태인 경우, 런타임에서 `{op_base: [inherit_rules...]}` 딕셔너리로 변환해 접근성을 높인다. 이후 본 문서의 예시처럼 `CFG[generate_seq_rules][key][op_base]` 형태로 조회 가능하다.
-    - 파생 런타임 키: `op_specs[op_name]`는 `op_bases[base]`를 상속하되, `op_names[*]`의 `durations/multi/celltype`로 오버라이드한다. 이때 base에 정의된 상태의 duration 값은 무시하고, `op_names[op_name].durations[state]`를 단일 진실로 사용한다.
-    - `groups_by_base`: 동일 base에서 파생된 `op_name` 리스트를 구성한다.
-    - `exclusion_groups` / `exclusions_by_*`: config.yaml의 명칭을 단일 진실로 사용한다. 본 문서 전반의 표기를 `exclusions_by_op_state` 등 config와 동일하게 맞춘다.
-    - 검증 불변식: 모든 `op_specs[op_name].durations`는 base가 정의한 모든 상태 키를 포함해야 하며, 음수 duration은 금지되고 `bus`는 불리언이어야 한다.
+  - 파생 런타임 키: `op_specs[op_name]`는 `op_bases[base]`를 상속하되, `op_names[*]`의 `durations/multi/celltype`로 오버라이드한다. 이때 base에 정의된 상태의 duration 값은 무시하고, `op_names[op_name].durations[state]`를 단일 진실로 사용한다.
+  - `op_specs[op_name].instant_resv`: bool, 기본 false. true이면 admission window 상한에 관계없이 현재 훅 시각 `t` 이후의 earliest feasible 시각에 예약을 시도한다. 동일 틱 원자성(전부/없음)과 모든 검증/배제 규칙은 그대로 적용된다.
+  - `groups_by_base`: 동일 base에서 파생된 `op_name` 리스트를 구성한다.
+  - `exclusion_groups` / `exclusions_by_*`: config.yaml의 명칭을 단일 진실로 사용한다. 본 문서 전반의 표기를 `exclusions_by_op_state` 등 config와 동일하게 맞춘다.
+  - 검증 불변식: 모든 `op_specs[op_name].durations`는 base가 정의한 모든 상태 키를 포함해야 하며, 음수 duration은 금지되고 `bus`는 불리언이어야 한다.
 
 ### 5.3 Scheduler
 - 역할: event_hook으로 현재 시각을 진전시키고 `Proposer` 호출. `Validator` 통과한 operation을 timeline에 schedule하고 `ResourceManager`를 통해 state update
@@ -216,6 +217,7 @@ class Operation:
     - 전역 시뮬레이션은 이산 이벤트 훅으로만 시간 전진. 동일 시각(time)의 훅 집합을 하나의 결정적 틱으로 간주한다.
     - 훅 실행 시 `[t, t+admission_window)` 구간을 제안 윈도우로 사용해 슬롯을 탐색한다. 기본값은 `CFG[policies][admission_window_us]`로 정의하며, 0이면 비활성(윈도잉 미사용), 0보다 크면 활성화한다.
     - 무충돌 슬롯 탐색: `ResourceManager`의 배제 윈도우/IO_bus 점유/래치 상태를 질의하여 윈도우 내 가장 이른 feasible time을 선택한다. feasible time이 없으면 해당 훅에서는 스킵(no-op)한다.
+    - 예외(즉시예약): `CFG[op_specs][op_name][instant_resv]=true`인 operation은 admission window 상한을 무시한다. Proposer가 now 이후 earliest feasible 시각을 제안하면 Scheduler는 이를 수락할 수 있다(동일 틱 원자성 준수, 검증 통과 조건 하).
     - 동일 틱 내 부분 스케줄 금지: 하나의 훅 처리 중 일부만 성공/일부 실패 상태로 분할 예약하지 않는다. 시퀀스 제안은 전부 수락되거나 전부 거절된다.
   - RNG 분기(재현성)
     - 실행 시작 시 전역 시드 고정. 각 훅은 `(global_seed, hook_counter)` 기반 스트림으로 분기하여 독립적이고 결정적인 난수 시퀀스를 사용한다. 시스템 시간은 사용하지 않는다.
@@ -256,6 +258,7 @@ class Operation:
   - 제안 전, sequence 전체를 가상 추가해 `Validator`로 validity 확인
   - sequence 내 각 operation은 우선 예약. 종료 예상 시간 기반 예약 시간 산정, 해당 시점의 event_hook을 생성하도록 `Scheduler`에 전달
   - sequence 일부 누락 없이 무조건 실행되어야 함
+  - 즉시예약(instant_resv): `op_specs[op_name].instant_resv=true`인 경우, Proposer는 admission window 상한을 적용하지 않고 now 이후 earliest feasible 시각으로 예약을 제안한다.
 - `ResourceManager`로부터 state 참조해 특정 operation 제외 처리 후 최종 operation 및 필요 시 target address 선정
 - Workflow (샘플링 단계)
   1) `Scheduler`의 event_hook이 `Proposer.propose`를 호출하고 payload 전달

@@ -18,6 +18,8 @@ celltypes:
 policies:
   admission_window: 0.5
   queue_refill_period_us: 50.0
+  topN: 4
+  epsilon_greedy: 0.0
   maxplanes: 4
   maxloop_seq: 4
   maxtry_candidate: 4
