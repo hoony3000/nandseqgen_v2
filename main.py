@@ -15,6 +15,7 @@ except Exception:
     yaml = None  # optional
 
 from scheduler import Scheduler
+import proposer as _proposer
 from resourcemgr import ResourceManager, Address, SIM_RES_US, quantize
 
 try:
@@ -486,6 +487,30 @@ def _ensure_min_cfg(cfg: Dict[str, Any]) -> Dict[str, Any]:
                 {"name": "CORE_BUSY", "bus": False, "duration": 8.0},
             ],
         }
+    # Minimal PROGRAM (SLC) base: ISSUE -> DATA_IN -> CORE_BUSY
+    if "PROGRAM_SLC" not in op_bases:
+        op_bases["PROGRAM_SLC"] = {
+            "scope": "PLANE_SET",
+            "affect_state": True,
+            "instant_resv": False,
+            "states": [
+                {"name": "ISSUE", "bus": True, "duration": 0.2},
+                {"name": "DATA_IN", "bus": True, "duration": 0.4},
+                {"name": "CORE_BUSY", "bus": False, "duration": 6.0},
+            ],
+        }
+    # Minimal READ4K base: ISSUE -> CORE_BUSY -> DATA_OUT (aliased to DOUT4K duration)
+    if "READ4K" not in op_bases:
+        op_bases["READ4K"] = {
+            "scope": "PLANE_SET",
+            "affect_state": True,
+            "instant_resv": False,
+            "states": [
+                {"name": "ISSUE", "bus": True, "duration": 0.1},
+                {"name": "CORE_BUSY", "bus": False, "duration": 2.0},
+                {"name": "DATA_OUT", "bus": True, "duration": 0.4},
+            ],
+        }
     c["op_bases"] = op_bases
 
     op_names = dict(c.get("op_names", {}) or {})
@@ -495,6 +520,22 @@ def _ensure_min_cfg(cfg: Dict[str, Any]) -> Dict[str, Any]:
             "multi": False,
             "celltype": "SLC",
             "durations": {"ISSUE": 0.4, "CORE_BUSY": 8.0},
+        }
+    # Minimal concrete PROGRAM op
+    if "All_WL_Dummy_Program" not in op_names:
+        op_names["All_WL_Dummy_Program"] = {
+            "base": "PROGRAM_SLC",
+            "multi": False,
+            "celltype": "SLC",
+            "durations": {"ISSUE": 0.2, "DATAIN": 0.4, "CORE_BUSY": 6.0},
+        }
+    # Minimal concrete READ op
+    if "4KB_Page_Read_confirm_LSB" not in op_names:
+        op_names["4KB_Page_Read_confirm_LSB"] = {
+            "base": "READ4K",
+            "multi": False,
+            "celltype": "SLC",
+            "durations": {"ISSUE": 0.1, "CORE_BUSY": 2.0, "DOUT4K": 0.4},
         }
     c["op_names"] = op_names
 
@@ -563,10 +604,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--out-dir", default="out", help="Output directory root")
     p.add_argument("--pc-demo", choices=["erase-only","mix","pgm-read"], default=None,
                    help="Override phase_conditional DEFAULT to a preset: erase-only | mix | pgm-read")
+    p.add_argument("--autofill-pc", action="store_true", help="Autofill phase_conditional from CFG (PRD policy)")
+    p.add_argument("--validate-pc", action="store_true", help="Validate CFG.phase_conditional and log summary")
     args = p.parse_args(argv)
 
     cfg = _load_cfg(args.config)
     cfg = _ensure_min_cfg(cfg)
+    # Optional: build phase_conditional automatically per PRD if requested or empty
+    if args.autofill_pc:
+        try:
+            import cfg_autofill as _pc
+            cfg = _pc.ensure_phase_conditional(cfg, seed=int(args.seed), force=True)
+        except Exception:
+            pass
     topo = cfg.get("topology", {}) or {}
     dies = int(topo.get("dies", 1))
     planes = int(topo.get("planes", 1))
@@ -596,6 +646,21 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "4KB_Page_Read_confirm_LSB": 0.4,
                 }
             cfg_run["phase_conditional"] = pc
+        # Enable proposer file logging per run
+        try:
+            os.makedirs(args.out_dir, exist_ok=True)
+            log_path = os.path.join(args.out_dir, f"proposer_debug_{_date_stamp()}_{_run_id_str(i+1)}.log")
+            _proposer.enable_file_log(log_path)
+        except Exception:
+            pass
+
+        # Optional: validate phase_conditional keys and distributions
+        if args.validate_pc:
+            try:
+                _proposer.validate_phase_conditional(cfg_run)
+            except Exception:
+                pass
+
         seed_i = (int(args.seed) + i) if args.seed is not None else None
         sched, res = run_once(cfg_run, rm, am, run_until_us=float(args.run_until), rng_seed=seed_i)
 

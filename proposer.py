@@ -68,6 +68,36 @@ class AddressSampler:
 
 # ------------------------------
 # Helpers
+# --- lightweight file logger for proposer debug ---
+_LOG_PATH: Optional[str] = None
+
+
+def enable_file_log(path: str) -> None:
+    """Enable proposer debug logs to be written to a file.
+
+    If not enabled, logs are printed to stdout.
+    """
+    global _LOG_PATH
+    _LOG_PATH = str(path)
+    try:
+        # Touch file and write a header
+        with open(_LOG_PATH, "w", encoding="utf-8") as f:
+            f.write("# proposer debug log\n")
+    except Exception:
+        # Fallback to disabled on failure
+        _LOG_PATH = None
+
+
+def _log(msg: str) -> None:
+    try:
+        if _LOG_PATH:
+            with open(_LOG_PATH, "a", encoding="utf-8") as f:
+                f.write(str(msg) + "\n")
+        else:
+            print(str(msg))
+    except Exception:
+        # Best-effort; ignore logging failures
+        pass
 # ------------------------------
 def _cfg_topology(cfg: Dict[str, Any]) -> Tuple[int, int]:
     topo = cfg.get("topology", {}) or {}
@@ -535,15 +565,30 @@ def _phase_key(hook: Dict[str, Any], res: ResourceView, now_us: float) -> str:
     die = int(hook.get("die", 0))
     plane = int(hook.get("plane", 0))
     st = res.op_state(die, plane, now_us)
+    key: str
     if st:
-        return str(st)
-    # Fallback to hook label if formatted as BASE.STATE
-    lbl = str(hook.get("label", "")).strip()
-    if "." in lbl:
-        parts = lbl.split(".")
-        if len(parts) >= 2:
-            return f"{parts[0]}.{parts[1]}"
-    return "DEFAULT"
+        key = str(st)
+    else:
+        # Fallback to hook label if formatted as BASE.STATE
+        lbl = str(hook.get("label", "")).strip()
+        if "." in lbl:
+            parts = lbl.split(".")
+            if len(parts) >= 2:
+                key = f"{parts[0]}.{parts[1]}"
+            else:
+                key = "DEFAULT"
+        else:
+            key = "DEFAULT"
+    try:
+        # Debug: trace how phase key is derived
+        _log(
+            f"[proposer] phase_key: now={float(now_us):.3f} die={die} plane={plane} rm_state={str(st)} hook_label={str(hook.get('label'))} -> key={key}"
+        )
+        if key.endswith(".ISSUE"):
+            _log("[proposer][warn] phase_key ends with .ISSUE — check PHASE_HOOK timing and state mapping")
+    except Exception:
+        pass
+    return key
 
 
 def _phase_dist(cfg: Dict[str, Any], key: str) -> Dict[str, float]:
@@ -568,6 +613,74 @@ def _sorted_candidates(dist: Dict[str, float], eps: float) -> List[Tuple[str, fl
     return items
 
 
+def validate_phase_conditional(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate cfg['phase_conditional'] contents.
+
+    Checks per-key distribution shape, name validity, positive mass and normalization.
+    Returns an aggregate summary and logs concise per-key lines to the proposer log.
+    """
+    pc = (cfg.get("phase_conditional", {}) or {})
+    op_names = (cfg.get("op_names", {}) or {})
+    out: Dict[str, Any] = {
+        "keys": 0,
+        "empty": 0,
+        "invalid_names": 0,
+        "nonpos": 0,
+        "not_normalized": 0,
+    }
+
+    def _summ(dist: Dict[str, Any]) -> Tuple[int, int, float, List[Tuple[str, float]], int, int]:
+        vals: Dict[str, float] = {}
+        bad_names = 0
+        nonpos = 0
+        for k, v in (dist or {}).items():
+            name = str(k)
+            try:
+                p = float(v)
+            except Exception:
+                p = 0.0
+            if name not in op_names:
+                bad_names += 1
+            if p <= 0.0:
+                nonpos += 1
+            vals[name] = p
+        s = sum(vals.values()) if vals else 0.0
+        pos = len([1 for v in vals.values() if v > 0.0])
+        top = sorted(vals.items(), key=lambda x: -x[1])[:5]
+        return len(vals), pos, s, top, bad_names, nonpos
+
+    if not pc:
+        _log("[proposer][pc] EMPTY (no keys)")
+        return out
+
+    _log(f"[proposer][pc] keys={len(pc)}")
+    for k in sorted(pc.keys()):
+        v = pc.get(k)
+        if not isinstance(v, dict):
+            out["keys"] += 1
+            out["empty"] += 1
+            _log(f"[proposer][pc] {k}: invalid type={type(v).__name__}")
+            continue
+        cnt, pos, s, top, bad, nonpos = _summ(v)
+        out["keys"] += 1
+        if cnt == 0 or pos == 0:
+            out["empty"] += 1
+        out["invalid_names"] += bad
+        out["nonpos"] += nonpos
+        if s > 0.0 and abs(s - 1.0) > 1e-6:
+            out["not_normalized"] += 1
+        top_s = ", ".join([f"{n}:{p:.4f}" for (n, p) in top])
+        _log(
+            f"[proposer][pc] {k}: cnt={cnt} pos={pos} sum={s:.6f}"
+            + (f" top=[{top_s}]" if top else "")
+        )
+
+    _log(
+        f"[proposer][pc] summary: keys={out['keys']} empty={out['empty']} invalid_names={out['invalid_names']} nonpos={out['nonpos']} not_normalized={out['not_normalized']}"
+    )
+    return out
+
+
 def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: ResourceView, addr_sampler: AddressSampler, rng: Any) -> Optional[ProposedBatch]:
     """
     Top‑N greedy proposer (single-op batch, pure):
@@ -588,6 +701,14 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
     W = float(_pol_window(cfg))
     maxtry = max(1, _pol_maxtry(cfg))
 
+    try:
+        # Debug: show distribution used for this phase key
+        _log(
+            f"[proposer] dist for key={key}: { {k: float(v) for k, v in dist.items()} }"
+        )
+    except Exception:
+        pass
+
     cands = _sorted_candidates(dist, eps)
     cands = cands[:topN]
     if not cands:
@@ -596,6 +717,11 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
     best: Optional[Tuple[float, ProposedOp, float, List[ProposedOp]]] = None  # (t0, first_op, prob, full_plan)
     attempts: List[Dict[str, Any]] = []
     tried = 0
+    try:
+        _log(f"[proposer] candidates (topN={topN}): {[(n, round(p, 6)) for (n,p) in cands]}")
+        _log(f"[proposer] window_us={W} maxtry={maxtry} epsilon_greedy={eps}")
+    except Exception:
+        pass
     for name, prob in cands:
         tried += 1
         if tried > maxtry:
@@ -603,12 +729,20 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
         # Light prefilter based on ODT/SUSPEND/CACHE states
         if _candidate_blocked_by_states(now, cfg, res_view, name, hook):
             attempts.append({"name": name, "prob": prob, "reason": "state_block"})
+            try:
+                _log(f"[proposer] try name={name} p={prob:.6f} -> state_block")
+            except Exception:
+                pass
             continue
         # Sample targets (address-bearing ops only)
         sel_die = hook.get("die")
         targets = _sample_targets_for_op(cfg, addr_sampler, name, sel_die=(int(sel_die) if sel_die is not None else None))
         if not targets:
             attempts.append({"name": name, "prob": prob, "reason": "sample_none"})
+            try:
+                _log(f"[proposer] try name={name} p={prob:.6f} -> sample_none")
+            except Exception:
+                pass
             continue
         # Build operation and evaluate earliest feasible start
         op_stub = _build_op(cfg, name, targets)
@@ -616,11 +750,19 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
         t0 = res_view.feasible_at(op_stub, targets, start_hint=float(now), scope=scope)
         if t0 is None:
             attempts.append({"name": name, "prob": prob, "reason": "feasible_none"})
+            try:
+                _log(f"[proposer] try name={name} p={prob:.6f} -> feasible_none")
+            except Exception:
+                pass
             continue
         # Admission window check unless instant reservation
         instant = _base_instant(cfg, op_stub.base)
         if (not instant) and (t0 >= (now + W)):
             attempts.append({"name": name, "prob": prob, "reason": "window_exceed", "t0": float(t0)})
+            try:
+                _log(f"[proposer] try name={name} p={prob:.6f} -> window_exceed(t0={float(t0):.3f}, now={float(now):.3f}, W={W})")
+            except Exception:
+                pass
             continue
         # Sequence expansion (one step) + preflight plan
         seq_next = _expand_sequence_once(cfg, name, targets, rng)
@@ -630,6 +772,10 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
         planned = _preflight_schedule(now, cfg, res_view, ops_chain)
         if not planned:
             attempts.append({"name": name, "prob": prob, "reason": "preflight_fail", "t0": float(t0)})
+            try:
+                _log(f"[proposer] try name={name} p={prob:.6f} -> preflight_fail")
+            except Exception:
+                pass
             continue
         p_first = planned[0]
         if best is None or (p_first.start_us < best[0]):
@@ -648,6 +794,10 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
                 pass
 
         attempts.append({"name": name, "prob": prob, "reason": "ok", "t0": float(p_first.start_us)})
+        try:
+            _log(f"[proposer] try name={name} p={prob:.6f} -> ok(t0={float(p_first.start_us):.3f})")
+        except Exception:
+            pass
 
     if best is None:
         return None
@@ -666,4 +816,11 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
             "len_batch": len(best[3]),
         },
     }
+    try:
+        sel = metrics["selected"]
+        _log(
+            f"[proposer] selected op={sel['op_name']} base={sel['base']} start_us={float(sel['start_us']):.3f} len_batch={int(sel['len_batch'])}"
+        )
+    except Exception:
+        pass
     return ProposedBatch(ops=list(best[3]), source="proposer.topN_greedy", hook=dict(hook or {}), metrics=metrics)

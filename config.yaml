@@ -73,6 +73,17 @@ op_bases:
       - CORE_BUSY:
         bus: false
         duration: 8.0
+  ALLWL_PROGRAM:
+    scope: "DIE_WIDE"
+    affect_state: true
+    instant_resv: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        duration: 8.0
   CACHE_PROGRAM_SLC:
     scope: "DIE_WIDE"
     affect_state: true
@@ -652,6 +663,7 @@ op_bases:
 payload_by_op_base:
   ERASE: [die,plane,block,page,celltype]
   PROGRAM_SLC: [die,plane,block,page,celltype]
+  ALLWL_PROGRAM: [die,plane,block,page,celltype]
   CACHE_PROGRAM_SLC: [die,plane,block,page,celltype]
   ONESHOT_PROGRAM_LSB: [die,plane,block,page,celltype]
   ONESHOT_PROGRAM_CSB: [die,plane,block,page,celltype]
@@ -706,6 +718,7 @@ exclusion_groups:
   on_busy:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -757,6 +770,7 @@ exclusion_groups:
   on_camread:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -808,6 +822,7 @@ exclusion_groups:
   on_dout:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -858,6 +873,7 @@ exclusion_groups:
   on_cache_dout:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -908,6 +924,7 @@ exclusion_groups:
   on_plane_cache_dout:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -958,6 +975,7 @@ exclusion_groups:
   after_read:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -1008,6 +1026,7 @@ exclusion_groups:
   after_copyback_read:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -1058,6 +1077,7 @@ exclusion_groups:
   after_oneshot_copyback_program_lsb:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -1108,6 +1128,7 @@ exclusion_groups:
   after_oneshot_copyback_program_csb:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -1158,6 +1179,7 @@ exclusion_groups:
   after_oneshot_copyback_program_msb:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -1208,6 +1230,7 @@ exclusion_groups:
   after_cache_read:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -1258,6 +1281,7 @@ exclusion_groups:
   after_plane_cache_read:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -1308,6 +1332,7 @@ exclusion_groups:
   on_cache_program_datain:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     # - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -1410,6 +1435,7 @@ exclusion_groups:
   on_oneshot_cache_program_datain:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     # - ONESHOT_PROGRAM_LSB
     # - ONESHOT_PROGRAM_CSB
@@ -1461,6 +1487,7 @@ exclusion_groups:
   after_oneshot_cache_program:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     # - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -1512,6 +1539,7 @@ exclusion_groups:
   after_oneshot_program_lsb:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     # - ONESHOT_PROGRAM_CSB
@@ -1562,6 +1590,7 @@ exclusion_groups:
   after_oneshot_program_csb:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -1612,6 +1641,7 @@ exclusion_groups:
   after_oneshot_program_msb:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -1662,6 +1692,7 @@ exclusion_groups:
   on_read:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -1713,6 +1744,7 @@ exclusion_groups:
   on_erase:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -1764,6 +1796,7 @@ exclusion_groups:
   on_program:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -1815,6 +1848,7 @@ exclusion_groups:
   odt_disable:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -1915,6 +1949,7 @@ exclusion_groups:
   program_suspended:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -1964,6 +1999,7 @@ exclusion_groups:
   nested_suspended:
     - ERASE
     - PROGRAM_SLC
+    - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
@@ -2366,14 +2402,14 @@ op_names:
       CORE_BUSY: *read_4k_slc_busy
       DOUT: *read_4k_dout
   All_WL_Dummy_Program:
-    base: PROGRAM_SLC
+    base: ALLWL_PROGRAM
     multi: false
     celltype: NONE
     durations:
       ISSUE: 0.085
       CORE_BUSY: *program_slc_busy
   All_WL_Dummy_Program_Multi_Plane:
-    base: PROGRAM_SLC
+    base: ALLWL_PROGRAM
     multi: true
     celltype: NONE
     durations:
