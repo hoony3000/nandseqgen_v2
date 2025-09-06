@@ -200,6 +200,22 @@ class Scheduler:
         reserved_any = False
         resv_records: List[Dict[str, Any]] = []
         self.metrics["window_attempts"] += 1
+        # Phase key used for this proposal (Option B propagation)
+        pk: Optional[str] = None
+        try:
+            if getattr(batch, "metrics", None):
+                m = batch.metrics or {}
+                v = m.get("phase_key")
+                if v is not None:
+                    pk = str(v)
+        except Exception:
+            pk = None
+
+        # Capture propose-time context for analysis/export only
+        hook_die = hook.get("die") if isinstance(hook, dict) else None
+        hook_plane = hook.get("plane") if isinstance(hook, dict) else None
+        hook_label = hook.get("label") if isinstance(hook, dict) else None
+
         for p in batch.ops:
             op = _proposer._build_op(d.cfg, p.op_name, p.targets)
             instant = _is_instant_base(d.cfg, p.base)
@@ -222,6 +238,12 @@ class Scheduler:
                 "start_us": float(r.start_us or p.start_us),
                 "end_us": float(r.end_us or (p.start_us)),
                 "op": op,
+                "phase_key": pk,
+                # proposal-time context (analysis/export only)
+                "propose_now": float(now),
+                "phase_hook_die": (None if hook_die is None else int(hook_die)),
+                "phase_hook_plane": (None if hook_plane is None else int(hook_plane)),
+                "phase_hook_label": (None if hook_label is None else str(hook_label)),
             })
             # accumulate logical latencies
             self.metrics["sum_wait_us"] += max(0.0, float(p.start_us) - now)

@@ -83,6 +83,12 @@ class _OpRow:
     op_base: str
     source: Optional[str]
     op_uid: int
+    phase_key: Optional[str] = None
+    # proposal-time context (optional; analysis/export only)
+    phase_hook_die: Optional[int] = None
+    phase_hook_plane: Optional[int] = None
+    phase_hook_label: Optional[str] = None
+    phase_key_time: Optional[float] = None
 
 
 class InstrumentedScheduler(Scheduler):
@@ -99,6 +105,12 @@ class InstrumentedScheduler(Scheduler):
         end = float(rec["end_us"])  # type: ignore[index]
         base = str(rec["base"])  # type: ignore[index]
         name = str(rec.get("op_name", base))
+        phase_key = rec.get("phase_key")
+        # proposal-time context
+        pk_time = rec.get("propose_now")
+        hk_die = rec.get("phase_hook_die")
+        hk_plane = rec.get("phase_hook_plane")
+        hk_label = rec.get("phase_hook_label")
         targets: List[Address] = list(rec.get("targets", []) or [])
         uid = self._next_uid
         self._next_uid += 1
@@ -115,6 +127,11 @@ class InstrumentedScheduler(Scheduler):
                     op_base=base,
                     source=None,
                     op_uid=uid,
+                    phase_key=(None if phase_key in (None, "None") else str(phase_key)),
+                    phase_hook_die=(None if hk_die in (None, "None") else int(hk_die)),
+                    phase_hook_plane=(None if hk_plane in (None, "None") else int(hk_plane)),
+                    phase_hook_label=(None if hk_label in (None, "None") else str(hk_label)),
+                    phase_key_time=(None if pk_time in (None, "None") else float(pk_time)),
                 )
             )
 
@@ -157,7 +174,13 @@ def export_operation_timeline(rows: List[Dict[str, Any]], rm: ResourceManager, *
         die = int(r["die"])  # type: ignore[index]
         plane = int(r["plane"])  # type: ignore[index]
         start = float(r["start_us"])  # type: ignore[index]
-        op_state = rm.op_state(die, plane, start) or "NONE"
+        # Option B: prefer the exact phase_key used by proposer; fallback to RM lookup
+        op_state_fk = r.get("phase_key")
+        if op_state_fk is None or str(op_state_fk).strip() == "":
+            # Fallback to RM state; keep simple at-start lookup (Option A can be added if needed)
+            op_state = rm.op_state(die, plane, start) or "NONE"
+        else:
+            op_state = str(op_state_fk)
         out_rows.append(
             {
                 "start": float(r["start_us"]),
@@ -173,7 +196,8 @@ def export_operation_timeline(rows: List[Dict[str, Any]], rm: ResourceManager, *
                 "op_state": str(op_state),
             }
         )
-    out_rows.sort(key=lambda x: (x["die"], x["block"], x["start"], x["end"]))
+    # Sort primarily by op_uid for consumer friendliness
+    out_rows.sort(key=lambda x: (int(x.get("op_uid", 0)), x["start"], x["die"], x["plane"], x["block"]))
     fname = f"operation_timeline_{_date_stamp()}_{_run_id_str(run_idx+1)}.csv"
     path = os.path.join(out_dir, fname)
     _csv_write(path, out_rows, [
@@ -182,7 +206,7 @@ def export_operation_timeline(rows: List[Dict[str, Any]], rm: ResourceManager, *
     return path
 
 
-def export_op_state_timeline(rm: ResourceManager, *, out_dir: str, run_idx: int) -> str:
+def export_op_state_timeline(rm: ResourceManager, rows: Optional[List[Dict[str, Any]]] = None, *, out_dir: str, run_idx: int) -> str:
     # From RM snapshot timeline: (die, plane, op_base, state, start_us, end_us)
     snap = rm.snapshot()
     segs = snap.get("timeline", []) or []
@@ -201,7 +225,48 @@ def export_op_state_timeline(rm: ResourceManager, *, out_dir: str, run_idx: int)
                 "duration": dur,
             }
         )
-    out_rows.sort(key=lambda x: (x["die"], x["plane"], x["start"]))
+    # If operation rows are provided, derive a stable op_uid per segment for sorting
+    if rows is not None:
+        idx: Dict[Tuple[int, int, str], List[Tuple[float, float, int]]] = {}
+        for r in rows:
+            die = int(r["die"])  # type: ignore[index]
+            plane = int(r["plane"])  # type: ignore[index]
+            base = str(r["op_base"])  # type: ignore[index]
+            idx.setdefault((die, plane, base), []).append((float(r["start_us"]), float(r["end_us"]), int(r["op_uid"])) )
+        for k in idx:
+            idx[k].sort(key=lambda t: (t[0], t[1]))
+
+        def _uid_for(seg: Dict[str, Any]) -> int:
+            die = int(seg["die"])
+            plane = int(seg["plane"])
+            base = str(seg.get("op_name", ""))  # op_name here is base per exporter
+            s0 = float(seg["start"]) 
+            cand = idx.get((die, plane, base))
+            if not cand:
+                return 0
+            # Find the op whose window covers the segment start
+            # Assumption: no overlap on same (die,plane) for same base
+            lo, hi = 0, len(cand)
+            while lo < hi:
+                mid = (lo + hi) // 2
+                if cand[mid][0] <= s0:
+                    lo = mid + 1
+                else:
+                    hi = mid
+            i = max(0, lo - 1)
+            if 0 <= i < len(cand):
+                st, en, uid = cand[i]
+                if st <= s0 < en:
+                    return uid
+            # fallback: first overlapping
+            for (st, en, uid) in cand:
+                if st < seg["end"] and s0 < en:
+                    return uid
+            return 0
+
+        out_rows.sort(key=lambda x: (_uid_for(x), x["start"], x["die"], x["plane"]))
+    else:
+        out_rows.sort(key=lambda x: (x["die"], x["plane"], x["start"]))
     fname = f"op_state_timeline_{_date_stamp()}_{_run_id_str(run_idx+1)}.csv"
     path = os.path.join(out_dir, fname)
     _csv_write(path, out_rows, [
@@ -295,7 +360,13 @@ def export_op_state_name_input_time_count(rows: List[Dict[str, Any]], rm: Resour
         s0, s1, base, state = seg
         dur = max(SIM_RES_US, float(s1) - float(s0))
         it = _q((t - s0) / dur)
-        key = (f"{base}.{state}", str(r["op_name"]), it)
+        # Prefer proposer phase_key if present (Option B); fallback to RM segment key
+        st_key = r.get("phase_key")
+        if st_key is None or str(st_key).strip() == "":
+            st = f"{base}.{state}"
+        else:
+            st = str(st_key)
+        key = (st, str(r["op_name"]), it)
         cnt[key] = cnt.get(key, 0) + 1
 
     out_rows = [
@@ -357,6 +428,68 @@ def export_operation_sequence(rows: List[Dict[str, Any]], cfg: Dict[str, Any], *
     fname = f"operation_sequence_{_date_stamp()}_{_run_id_str(run_idx+1)}.csv"
     path = os.path.join(out_dir, fname)
     _csv_write(path, out, ["seq", "time", "op_id", "op_name", "op_uid", "payload"])
+    return path
+
+
+def export_phase_proposal_counts(rows: List[Dict[str, Any]], rm: ResourceManager, *, out_dir: str, run_idx: int) -> str:
+    """Aggregate proposal-time (used vs. virtual) phase keys per (die,plane,op_name).
+
+    - used: row.phase_key if present else "DEFAULT"
+    - virtual: rm.phase_key_at(d, p, t) using proposal-time context when available
+    - choose (d,p,t) from row: prefer phase_hook_(die,plane) and phase_key_time; fallback to row's (die,plane,start_us)
+    - output columns: phase_key_used, phase_key_virtual, die, plane, propose_time, op_name, count
+    - sort by: (die, plane, op_name, phase_key_used, phase_key_virtual)
+    """
+    from typing import Tuple as _T
+
+    agg: Dict[_T[str, str, int, int, str], Dict[str, Any]] = {}
+
+    for r in rows:
+        used = str(r.get("phase_key") or "DEFAULT")
+        # proposal-time context
+        d = r.get("phase_hook_die")
+        p = r.get("phase_hook_plane")
+        t = r.get("phase_key_time")
+        if d in (None, "None") or p in (None, "None"):
+            d = int(r["die"])  # type: ignore[index]
+            p = int(r["plane"])  # type: ignore[index]
+        else:
+            d = int(d)
+            p = int(p)
+        if t in (None, "None"):
+            t = float(r["start_us"])  # type: ignore[index]
+        else:
+            t = float(t)
+        t = quantize(t)
+        virt = rm.phase_key_at(int(d), int(p), float(t))
+        key = (str(used), str(virt), int(d), int(p), str(r["op_name"]))
+        cur = agg.get(key)
+        if cur is None:
+            agg[key] = {"count": 1, "propose_time": float(t)}
+        else:
+            cur["count"] = int(cur.get("count", 0)) + 1
+            # keep earliest proposal time as representative
+            cur["propose_time"] = min(float(cur.get("propose_time", float(t))), float(t))
+
+    out_rows: List[Dict[str, Any]] = []
+    for (used, virt, d, p, name), info in sorted(agg.items(), key=lambda kv: (kv[0][2], kv[0][3], kv[0][4], kv[0][0], kv[0][1])):
+        out_rows.append(
+            {
+                "phase_key_used": used,
+                "phase_key_virtual": virt,
+                "die": int(d),
+                "plane": int(p),
+                "propose_time": float(info.get("propose_time", 0.0)),
+                "op_name": name,
+                "count": int(info.get("count", 0)),
+            }
+        )
+
+    fname = f"phase_proposal_counts_{_date_stamp()}_{_run_id_str(run_idx+1)}.csv"
+    path = os.path.join(out_dir, fname)
+    _csv_write(path, out_rows, [
+        "phase_key_used", "phase_key_virtual", "die", "plane", "propose_time", "op_name", "count",
+    ])
     return path
 
 
@@ -613,10 +746,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         # Exports (PRD §3)
         os.makedirs(args.out_dir, exist_ok=True)
         op_timeline = export_operation_timeline(rows, rm, out_dir=args.out_dir, run_idx=i)
-        opstate_timeline = export_op_state_timeline(rm, out_dir=args.out_dir, run_idx=i)
+        opstate_timeline = export_op_state_timeline(rm, rows=rows, out_dir=args.out_dir, run_idx=i)
         touch_cnt = export_address_touch_count(rows, cfg, out_dir=args.out_dir, run_idx=i)
         opstate_name_input_time = export_op_state_name_input_time_count(rows, rm, out_dir=args.out_dir, run_idx=i)
         op_sequence = export_operation_sequence(rows, cfg, out_dir=args.out_dir, run_idx=i)
+        phase_counts = export_phase_proposal_counts(rows, rm, out_dir=args.out_dir, run_idx=i)
         snap_path = save_snapshot(rm, out_dir=args.out_dir, run_idx=i)
 
         # Brief run summary
@@ -628,7 +762,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             for k in sorted(cmb.keys()):
                 print(f"    - {k}: {cmb[k]}")
         print("  files:")
-        for pth in (op_sequence, touch_cnt, op_timeline, opstate_timeline, opstate_name_input_time, snap_path):
+        for pth in (op_sequence, touch_cnt, op_timeline, opstate_timeline, opstate_name_input_time, phase_counts, snap_path):
             print("   -", pth)
 
     return 0

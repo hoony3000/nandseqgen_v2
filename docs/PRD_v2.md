@@ -67,6 +67,7 @@ seq,time,op_id,op_name,op_uid,payload
 - 범위: (die,plane) 별 op_state_phase timeline
 - 시각화: gantt 차트
   - x: time, y: plane, 점유: op_state
+  - 주의: `.END`는 분석/집계 전용의 가상 분류이며, `op_state_timeline`에는 실제 세그먼트로 추가하지 않는다. 타임라인은 유한·비중첩으로 유지한다.
 
 ### 3.5 op_state x op_name x input_time Count
 - 목적: 다양한 op_state에서 다양한 operation이 다양한 시점에서 실제로 수행되는지 확인 (실제 propose 시 참조한 op_state 사용)
@@ -86,6 +87,21 @@ seq,time,op_id,op_name,op_uid,payload
 - 스냅샷 대상
   - 전역: 스키마/PRD 버전, `config.yaml` 커밋 해시, RNG 상태(시드+생성기 바이트), 현재 시뮬레이션 시간 `t`
   - ResourceManager: (die,plane)별 `op_state_timeline` 꼬리(마지막 상태와 종료 시각), 다이별 `suspend_states`, `odt_state`, (die,plane)별 `cache_state`, 활성 `exclusion_windows`, `ongoing_ops`/`suspended_ops` 메타데이터(op_id, op_name, base, 타깃 주소, 잔여 duration)
+  - 비고: `.END`는 타임라인에 존재하지 않는 가상 분류이므로 스냅샷에 포함되지 않는다.
+
+### 3.7 Phase Proposal Counts (Virtual END)
+- 목적: 제안 시점(proposal-time)의 (op_state × op_name) 분포를 안정적으로 제공하고, 세그먼트 사이의 빈 구간 또는 경계에서는 가상 `<BASE>.END`로 분류한다.
+- 파일형태: `phase_proposal_counts_yymmdd_0000001.csv`
+- 필수 필드: `phase_key_used,phase_key_virtual,die,plane,propose_time,op_name,count`
+- 의미
+  - phase_key_used: Proposer가 실제로 사용한 phase key(없으면 `DEFAULT`).
+  - phase_key_virtual: 제안 시점의 (die,plane,propose_time) 기준으로 ResourceManager가 유추한 키.
+    - 세그먼트 내부면 `BASE.STATE`.
+    - 세그먼트 밖(빈 구간)이면 직전 세그먼트의 `<BASE>.END`.
+    - 세그먼트 경계(t == 다음 세그먼트 시작)에서는 직전 세그먼트의 `<BASE>.END`를 우선한다.
+    - `.ISSUE` 내부에서의 제안은 분석상 직전 `<BASE>.END`로 간주한다(없으면 `DEFAULT`).
+- 정렬: `(die, plane, op_name, phase_key_used, phase_key_virtual)`
+- 비고: `<BASE>.END`는 집계/분석 전용의 가상 분류이며, 내부 상태 타임라인에는 실제 세그먼트로 추가되지 않는다.
   - AddressManager: `addr_state` 배열, `addr_mode_erase`, `addr_mode_pgm`
 - 재개 절차
   1) JSON 로드 → 버전/스키마 검증 → 사이드카(있다면) 로드
@@ -177,7 +193,8 @@ class Operation:
     - 초기화 가이드
       1) `op_state_probs.yaml` 파일이 있으면 로드하여 사용한다. 없으면 아래 단계로 생성한다.
       2) `op_specs`의 key(op_name)와 각 `states`를 결합해 모든 `op_name.state`를 만들고, 이를 phase_conditional의 기본 key로 사용한다.
-        - .ISSUE state 는 제외하고, .END state 는 모든 op_name 에 대해서 추가한다.
+        - `.ISSUE` state는 제외하고, `.END` state는 모든 op_name에 대해 추가한다.
+        - 주석: `.END`는 집계/분석 전용의 가상 분류 키다. 내부 `op_state_timeline`에는 END 세그먼트를 추가하지 않으며, 제안 시점의 가상 키 계산(3.7 참조)에만 사용한다.
         - 단 예외적으로 DEFAULT op_base.state 형태가 아닌 DEFAULT 그 자체로 key 에 추가한다.
       3) 각 `op_name.state`의 후보는 기본적으로 `CFG[op_names]`의 모든 `op_name`이며, `CFG[exclusion_groups][CFG[exclusions_by_op_state[op_name.state]]]`에 속한 base에 해당하는 후보는 제외한다(`groups_by_base` 활용).
       4) 남은 후보 중 특별 가중치가 필요한 항목은 `config.yaml`의 `phase_conditional_overrides`로 명시적으로 override한다(예: RESET 등). 이때 3)에서 제외된 후보는 override에서도 제외한다.
@@ -185,7 +202,7 @@ class Operation:
           - CFG[phase_conditional_overrides] 의 key 값을 순회하여 key 값에 따라 override 항목 정한다
             - global: 모든 op_state 에 적용한다.
             - 특정 op_state: 특정 op_state 에만 적용한다. e.g) ERASE.END, READ.CORE_BUSY
-            - overrides 순서는 global->특정 opstate 순
+            - overrides 순서는 global->특정 opstate 순으로 `config.yaml`->phase_conditional_overrides->global/op_state 에 직접 명시된 값이 최종값이 되도록 하고 나머지 값들은 normalize 해서 weight 의 합이 1이 되게 한다.
       5) override하지 않은 후보들의 확률은 랜덤 샘플로 채운 뒤 양수 항목의 합이 1이 되도록 정규화한다.
       6) 이렇게 생성한 초기 확률을 `op_state_probs.yaml`로 저장하고, 필요 시 사용자가 값을 수동으로 미세 조정한다.
     - 템플릿(YAML 예시)
@@ -202,9 +219,6 @@ class Operation:
       - op_bases와의 일관성 유지: 파생 `op_name`은 해당 base의 제약을 따른다.
       - 래치/배제 정책 준수: `exclusions_by_*`로 금지된 `op_name`의 확률은 0으로 한다.
       - 상태별 정규화: 양수 항목이 존재하면 합이 1이 되도록 정규화한다.
-    - 런타임 적응(선택)
-      - 승인율/큐 기아를 추적해 작은 보정(±epsilon)을 적용하되, 사전 정의한 min/max 범위 내에서 제한한다.
-      - 학습된 보정은 기본 설정과 분리해 저장한다.
 
   - 런타임 정규화 규칙
     - Topology 키 매핑: `dies→num_dies`, `planes→num_planes`, `blocks_per_die→num_blocks`, `pages_per_block→pagesize`로 런타임 키를 생성한다. 각 값은 0보다 큰 정수로 검증한다.
@@ -315,17 +329,18 @@ class Operation:
 - 역할: resource의 현재/미래 시점 상태 관리
 - 주의: `AddressManager`의 `addr_state`, `addr_mode_erase`, `addr_mode_pgm`는 현재 시점 참조에 사용. 미래 시점 값은 별도 관리
 - state_timeline 관리 방법
-  - operation 스케쥴 시 operation의 모든 `logic_state`를 `op_state_timeline`에 등록하고, 추가로 `op_name.END` state를 마지막에 end_time='inf'로 추가
-  - 목적: "달성 지표" 중 `op_state x op_name x input_time` 다양성 확보
+  - operation 스케쥴 시 operation의 모든 `logic_state`를 `op_state_timeline`에 등록한다.
+  - `.END`는 타임라인에 실제 세그먼트로 추가하지 않는다(유한·비중첩 불변성 유지). 대신 분석/집계 시점에 가상 분류를 사용한다(아래 `phase_key_at` 참조).
+  - 목적: "달성 지표" 중 `op_state x op_name x input_time` 다양성 확보는 타임라인 내 실존 세그먼트로 계산하고, 제안 시점 분포는 가상 END 분류(3.7)로 계산한다.
   - 예외 operation
     - SUSPEND→RESUME
       - workflow (ERASE_SUSPEND 예시, PROGRAM_SUSPEND도 동일 적용)
-        1) ERASE 동작이 `Scheduler`에 의해 예약됨. 이때 `ongoing_ops` 배열에 해당 operation을 복사하여 추가
-        2) `ERASE.CORE_BUSY` 중 SUSPEND 동작이 `time_suspend` 시각에 등록됨
-        3) `ResourceManager`가 `op_state_timeline`의 `ERASE.CORE_BUSY` 상태를 `time_suspend` 이후부터 제거하고, `ERASE_SUSPEND` 스케쥴을 등록. `suspended_ops`에 기존 ERASE를 추가하고 `ongoing_ops`에서 제거. `suspend_states`를 'erase_suspended'로 변경
-           - 규칙: ERASE_SUSPEND/PROGRAM_SUSPEND/ERASE_RESUME/PROGRAM_SUSPEND는 END state를 별도로 추가하지 않음 → 예외 루틴 처리
+        1) ERASE/PROGRAM 동작이 `Scheduler`에 의해 예약됨. 이때 `ongoing_ops` 배열에 해당 operation을 복사하여 추가
+        2) `ERASE.CORE_BUSY`/`PROGRAM.CORE_BUSY` state 중 ERASE_SUSPEND/PROGRAM_SUSPEND 동작이 `time_suspend` 시각에 등록됨
+        3) `ResourceManager`가 `op_state_timeline`의 `ERASE.CORE_BUSY`/`PROGRAM.CORE_BUSY` state 를 `time_suspend` 이후부터 제거하고, `ERASE_SUSPEND` 스케쥴을 등록. `suspended_ops`에 기존 ERASE를 추가하고 `ongoing_ops`에서 제거. `suspend_states`를 'erase_suspended'로 변경
+           - 규칙: ERASE_RESUME/PROGRAM_RESUME 은 state를 별도로 추가하지 않음 → 예외 루틴 처리
         4) 이후 ERASE_RESUME 예약 시, `Scheduler`는 RESUME 동작으로 인지하여 별도 루틴으로 처리: `ERASE_RESUME.CORE_BUSY`를 timeline에 예약하고, `suspended_ops`에 있던 operation을 `ERASE_RESUME` 종료 직후에 추가
-    - RESET/RESET_LUN 스케쥴 시: RESET의 경우 모든 die의 동작 및 state 초기화
+    - RESET/RESET_LUN 스케쥴 시: RESET/RESET_LUN 의 경우 스케쥴된 시점 이후에 예약된 operation/op_state 를 제거하고 RESET/RESET_LUN 에 의한 state 만 등록함
 - attributes
   - `CFG`
   - `addr_state`: (die,block) 별 현재 data 기록 상태. 예) -2: BAD, -1: ERASE, 0~pagesize-1: last_pgmed_page_address
@@ -345,6 +360,9 @@ class Operation:
       - READ 계열: DOUT 종료 시 대상 plane 해제 → `ResourceManager.release_on_dout_end(targets, now)`
       - PROGRAM 계열: ONESHOT_PROGRAM_MSB_23h 또는 ONESHOT_PROGRAM_EXEC_MSB 종료 시 해당 die 전체 해제 → `ResourceManager.release_on_exec_msb_end(die, now)`
   - `op_state_timeline`: (die,plane) target. logic_state timeline 등록. state에 따른 `exclusions_by_op_state` list
+  - 분석용 phase key 유틸: `phase_key_at(die:int, plane:int, t:float, default="DEFAULT") -> str`
+    - 내부 의미: 세그먼트 내부면 `BASE.STATE`; 세그먼트 밖이면 직전 세그먼트의 `<BASE>.END`를 반환. 세그먼트 경계(t == 다음 세그먼트 시작)에서는 직전 `<BASE>.END`를 우선한다. `.ISSUE` 내부에서의 제안은 분석상 직전 `<BASE>.END`로 간주(선행 세그먼트가 없으면 `DEFAULT`).
+    - 사용처: 3.7의 `phase_proposal_counts` 산출.
   - `suspend_states`: (die) target. suspend_states on/off 등록. state에 따른 `exclusions_by_suspend_state` list
   - `odt_state`: on/off 등록. state에 따른 `exclusions_by_odt_state` list
   - `cache_state`: (die,plane) target. cache_read/cache_program 진행 중인지 관리

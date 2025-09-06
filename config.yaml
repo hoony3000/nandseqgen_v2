@@ -43,7 +43,7 @@ bootstrap:
     TLC: 0.8
 
 op_bases:
-  DEFAULT:
+  ETC:
     scope: "NONE"
     affect_state: false
     instant_resv: false
@@ -716,6 +716,7 @@ payload_by_op_base:
 
 exclusion_groups:
   on_busy:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -768,6 +769,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   on_camread:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -820,6 +822,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   on_dout:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -871,6 +874,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   on_cache_dout:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -922,6 +926,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   on_plane_cache_dout:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -973,6 +978,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   after_read: []
+    # - DEFAULT
     # - ERASE
     # - PROGRAM_SLC
     # - ALLWL_PROGRAM
@@ -1024,6 +1030,7 @@ exclusion_groups:
     # - ODTDISABLE
     # - ODTENABLE
   after_copyback_read:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -1075,6 +1082,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   after_oneshot_copyback_program_lsb:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -1126,6 +1134,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   after_oneshot_copyback_program_csb:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -1177,6 +1186,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   after_oneshot_copyback_program_msb:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -1228,6 +1238,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   after_cache_read:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -1279,6 +1290,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   after_plane_cache_read:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -1330,6 +1342,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   on_cache_program_datain:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -1382,6 +1395,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   after_cache_program:
+    - ETC
     - ERASE
     # - PROGRAM_SLC
     # - CACHE_PROGRAM_SLC
@@ -1433,6 +1447,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   on_oneshot_cache_program_datain:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -1485,6 +1500,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   after_oneshot_cache_program:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -1537,6 +1553,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   after_oneshot_program_lsb:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -1588,6 +1605,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   after_oneshot_program_csb:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -1639,6 +1657,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   after_oneshot_program_msb:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -1690,6 +1709,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   on_read:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -1742,58 +1762,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   on_erase:
-    - ERASE
-    - PROGRAM_SLC
-    - ALLWL_PROGRAM
-    - CACHE_PROGRAM_SLC
-    - ONESHOT_PROGRAM_LSB
-    - ONESHOT_PROGRAM_CSB
-    - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
-    - ONESHOT_PROGRAM_EXEC_MSB
-    - ONESHOT_CACHE_PROGRAM
-    - READ
-    - RECOVERY_RD
-    - READ4K
-    - CACHE_READ
-    - CACHE_READ_END
-    - PLANE_READ
-    - PLANE_READ4K
-    - PLANE_CACHE_READ
-    - PLANE_CACHE_READ_END
-    - COPYBACK_READ
-    - COPYBACK_PROGRAM_SLC
-    - ONESHOT_COPYBACK_PROGRAM_LSB
-    - ONESHOT_COPYBACK_PROGRAM_CSB
-    - ONESHOT_COPYBACK_PROGRAM_MSB
-    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
-    - DOUT
-    - DOUT4K
-    - DATAIN
-    # - SR
-    # - SR_ADD
-    - CAMREAD
-    - CAMREAD_LUN
-    - ERASE_SUSPEND
-    # - ERASE_RESUME
-    # - PROGRAM_SUSPEND
-    # - PROGRAM_RESUME
-    # - TRAINING
-    - READID
-    - SETPARA
-    - GETPARA
-    - PLANE_SETPARA
-    - SETFEATURE
-    - GETFEATURE
-    - SETFEATURE_LUN
-    - GETFEATURE_LUN
-    # - RESET
-    # - RESET_LUN
-    - TEMPSENSOR
-    # - ZQCAL
-    - ODTDISABLE
-    - ODTENABLE
-  on_program:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -1827,7 +1796,60 @@ exclusion_groups:
     - CAMREAD
     - CAMREAD_LUN
     # - ERASE_SUSPEND
-    # - ERASE_RESUME
+    - ERASE_RESUME
+    # - PROGRAM_SUSPEND
+    # - PROGRAM_RESUME
+    # - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    # - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  on_program:
+    - ETC
+    - ERASE
+    - PROGRAM_SLC
+    - ALLWL_PROGRAM
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_EXEC_MSB
+    - ONESHOT_CACHE_PROGRAM
+    - READ
+    - RECOVERY_RD
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    - DOUT
+    - DOUT4K
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    # - ERASE_SUSPEND
+    - ERASE_RESUME
     - PROGRAM_SUSPEND
     # - PROGRAM_RESUME
     # - TRAINING
@@ -1846,6 +1868,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   odt_disable:
+    # - DEFAULT
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -1898,6 +1921,7 @@ exclusion_groups:
     - ODTDISABLE
     # - ODTENABLE
   erase_suspended:
+    # - DEFAULT
     - ERASE
     # - PROGRAM_SLC
     # - CACHE_PROGRAM_SLC
@@ -1927,10 +1951,10 @@ exclusion_groups:
     # - SR_ADD
     # - CAMREAD
     # - CAMREAD_LUN
-    # - ERASE_SUSPEND
-    - ERASE_RESUME
-    - PROGRAM_SUSPEND
-    # - PROGRAM_RESUME
+    - ERASE_SUSPEND
+    # - ERASE_RESUME
+    # - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
     # - TRAINING
     # - READID
     # - SETPARA
@@ -1947,6 +1971,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   program_suspended:
+    # - DEFAULT
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -1997,6 +2022,7 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   nested_suspended:
+    - ETC
     - ERASE
     - PROGRAM_SLC
     - ALLWL_PROGRAM
@@ -2809,7 +2835,7 @@ op_names:
       CORE_BUSY: *read_16k_msb_busy
       DOUT: *read_16k_dout
   Data_Out_Termination:
-    base: DEFAULT
+    base: ETC
     multi: false
     celltype: NONE
     durations:
@@ -2842,7 +2868,7 @@ op_names:
     durations:
       ISSUE: 2.2508
   Delay:
-    base: DEFAULT
+    base: ETC
     multi: false
     celltype: NONE
     durations:
@@ -2854,13 +2880,13 @@ op_names:
     durations:
       ISSUE: 100.4104
   Disable_Cache_PGM_Flag:
-    base: DEFAULT
+    base: ETC
     multi: false
     celltype: NONE
     durations:
       ISSUE: 0.025
   DSL_Vth_Check:
-    base: DEFAULT
+    base: ETC
     multi: false
     celltype: NONE
     durations:
@@ -3382,7 +3408,7 @@ op_names:
     durations:
       ISSUE: 0.05
   Write_Protect_Operation:
-    base: DEFAULT
+    base: ETC
     multi: false
     celltype: NONE
     durations:
@@ -4353,7 +4379,7 @@ op_names:
       CORE_BUSY: *read_16k_fast_csb_busy
       DOUT: *read_16k_dout
   Read_Dout_Resume_After_tR:
-    base: DEFAULT
+    base: ETC
     multi: false
     celltype: NONE
     durations:
@@ -4426,6 +4452,12 @@ phase_conditional_overrides:
     READ4K: 0.01
     PLANE_READ: 0.05
     PLANE_READ4K: 0.05
+  # DEFAULT:
+  #   ERASE_SUSPEND: 0.0
+  #   ERASE_RESUME: 0.0
+  #   PROGRAM_SUSPEND: 0.0
+  #   PROGRAM_RESUME: 0.0
+    
   # op_base->value overrides for specific op_states
   # ERASE.CORE_BUSY:
   #   op_name1: 0.01

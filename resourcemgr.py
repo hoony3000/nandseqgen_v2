@@ -483,6 +483,79 @@ class ResourceManager:
     def op_state(self, die: int, plane: int, at_us: float) -> Optional[str]:
         return self._st.state_at(die, plane, quantize(at_us))
 
+    def phase_key_at(
+        self,
+        die: int,
+        plane: int,
+        t: float,
+        default: str = "DEFAULT",
+        derive_end: bool = True,
+        prefer_end_on_boundary: bool = True,
+        exclude_issue: bool = True,
+    ) -> str:
+        """Return phase key at time t for (die,plane).
+
+        Behavior:
+        - Inside a state segment: return "BASE.STATE" (same as op_state).
+        - If no segment covers t and derive_end=True: return "<LAST_BASE>.END" when a prior
+          segment exists with end_us <= t; otherwise return default.
+        - If a segment starts exactly at t and prefer_end_on_boundary=True: prefer previous
+          segment's "<BASE>.END" when it exists; otherwise fall back to the covering segment.
+        """
+        tq = quantize(float(t))
+        key = (int(die), int(plane))
+        lst = self._st.by_plane.get(key, [])
+        starts = self._st._starts_by_plane.get(key)
+        if starts is None or len(starts or []) != len(lst):
+            starts = [s.start_us for s in lst]
+            self._st._starts_by_plane[key] = starts
+
+        # Fast path: current covering state
+        st = self._st.state_at(die, plane, tq)
+        if st is not None and str(st).strip() != "":
+            # Optionally remap ISSUE -> previous.END for analysis-only consumers
+            if exclude_issue and str(st).endswith(".ISSUE") and lst:
+                import bisect as _b
+                j = _b.bisect_right(starts, tq) - 1 if starts else -1
+                if 0 <= j < len(lst):
+                    cur = lst[j]
+                    if str(cur.state).upper() == "ISSUE":
+                        if j - 1 >= 0:
+                            prev = lst[j - 1]
+                            if float(prev.end_us) <= tq:
+                                return f"{prev.op_base}.END"
+                        # No previous segment; fall through to default/derive_end path below
+                        if not derive_end:
+                            return str(default)
+                        # try virtual end based on prior segment even if inside first ISSUE
+                        return str(default)
+            if prefer_end_on_boundary and lst:
+                # Detect exact boundary: a segment whose start == t exists
+                import bisect as _b
+                j = _b.bisect_right(starts, tq) - 1 if starts else -1
+                if 0 <= j < len(lst) and abs(float(lst[j].start_us) - tq) <= 0.0:
+                    # If this is exactly the start of segment j, prefer previous END when present
+                    if j - 1 >= 0:
+                        prev = lst[j - 1]
+                        # Only prefer END if previous segment truly ended at or before t
+                        if float(prev.end_us) <= tq:
+                            return f"{prev.op_base}.END"
+                    # No previous segment; fall back to current state
+            return str(st)
+
+        if not derive_end:
+            return str(default)
+        if not lst:
+            return str(default)
+        import bisect as _b
+        i = _b.bisect_right(starts, tq) - 1 if starts else -1
+        if 0 <= i < len(lst):
+            seg = lst[i]
+            # If t is at or after this segment's end and no segment covers t, treat as virtual END
+            if tq >= float(seg.end_us):
+                return f"{seg.op_base}.END"
+        return str(default)
+
     def has_overlap(self, scope: Scope, die: int, plane_set: Optional[List[int]], start_us: float, end_us: float, pred: Optional[Callable[[_StateInterval], bool]] = None) -> bool:
         t0, t1 = quantize(start_us), quantize(end_us)
         if scope == Scope.DIE_WIDE:
