@@ -146,6 +146,15 @@ def _base_instant(cfg: Dict[str, Any], base: str) -> bool:
     return bool(((cfg.get("op_bases", {}) or {}).get(base, {}) or {}).get("instant_resv", False))
 
 
+def _pol_hook_targets_enabled(cfg: Dict[str, Any]) -> bool:
+    try:
+        pol = _cfg_policies(cfg)
+        v = pol.get("hook_targets_enabled", True)
+        return bool(True if v in (None, "None") else v)
+    except Exception:
+        return True
+
+
 def _exclusion_groups(cfg: Dict[str, Any]) -> Dict[str, List[str]]:
     eg = cfg.get("exclusion_groups", {}) or {}
     out: Dict[str, List[str]] = {}
@@ -163,6 +172,186 @@ def _blocked_by_groups(cfg: Dict[str, Any], base: str, groups: List[str]) -> boo
         if str(base) in set(eg.get(str(g), []) or []):
             return True
     return False
+
+
+def _pol_validate_pc(cfg: Dict[str, Any]) -> bool:
+    try:
+        pol = _cfg_policies(cfg)
+        return bool(pol.get("validate_pc", False))
+    except Exception:
+        return False
+
+
+def _excluded_bases_for_op_state_key(cfg: Dict[str, Any], key: str) -> List[str]:
+    try:
+        by_state = (cfg.get("exclusions_by_op_state", {}) or {})
+        groups = list(by_state.get(str(key), []) or [])
+        eg = _exclusion_groups(cfg)
+        out: List[str] = []
+        for g in groups:
+            out.extend([str(x) for x in (eg.get(str(g), []) or [])])
+        # dedup keep order
+        seen = set()
+        uniq: List[str] = []
+        for b in out:
+            if b not in seen:
+                uniq.append(b)
+                seen.add(b)
+        return uniq
+    except Exception:
+        return []
+
+
+def _apply_phase_overrides(cfg: Dict[str, Any], key: str, dist: Dict[str, float]) -> Dict[str, float]:
+    """Apply runtime phase_conditional_overrides to a given key's distribution.
+
+    Semantics:
+    - Global then per-key precedence; per-key replaces same symbol from global.
+    - Symbols can be op_name or base; base mass distributes to its candidate op_names.
+      Distribution among a base's names is proportional to current dist for those
+      names; if all zero/missing, distribute uniformly.
+    - Candidate set starts from current dist keys; extend with override-referenced
+      names/bases when allowed by exclusions and present in cfg.
+    - If sum(overrides) >= 1: keep only overrides and normalize to 1.
+      Else: scale remaining non-overridden positives proportionally to fill 1.
+    - Zero masses act as explicit removals (they block receiving leftover).
+    """
+    names_by_base = _op_names_by_base(cfg)
+    # base_of map for quick lookup
+    base_of: Dict[str, str] = {}
+    for b, lst in names_by_base.items():
+        for n in lst:
+            base_of[str(n)] = str(b)
+
+    # Allowed check via exclusions_by_op_state
+    excl = set(_excluded_bases_for_op_state_key(cfg, str(key)))
+    def _allowed_name(n: str) -> bool:
+        b = base_of.get(str(n))
+        if b is None:
+            return False
+        return str(b) not in excl
+
+    # Start candidates from existing dist keys
+    cand: Dict[str, float] = {str(n): float(v) for n, v in (dist or {}).items()}
+
+    # Collect override symbols and values
+    src = (cfg.get("phase_conditional_overrides", {}) or {})
+
+    def _collect_numeric(d: Any) -> Dict[str, float]:
+        out: Dict[str, float] = {}
+        if isinstance(d, dict):
+            for k, v in d.items():
+                try:
+                    val = float(v)
+                except Exception:
+                    continue
+                # Ignore negatives; treat zero as explicit removal if applied
+                if val < 0.0:
+                    continue
+                out[str(k)] = val
+        return out
+
+    flat_numeric: Dict[str, float] = {}
+    for k, v in src.items():
+        if isinstance(v, (int, float)):
+            try:
+                vv = float(v)
+                if vv >= 0.0:
+                    flat_numeric[str(k)] = vv
+            except Exception:
+                continue
+    glob = _collect_numeric(src.get("global"))
+    g_all: Dict[str, float] = {}
+    g_all.update(flat_numeric)
+    g_all.update(glob)
+    pk = _collect_numeric(src.get(str(key)))
+
+    # Extend candidates from override symbols (op_name or base)
+    def _extend_from(sym: str) -> None:
+        s = str(sym)
+        if s in base_of:
+            if _allowed_name(s):
+                cand.setdefault(s, cand.get(s, 0.0))
+        elif s in names_by_base:
+            for n in (names_by_base.get(s) or []):
+                if _allowed_name(n):
+                    cand.setdefault(str(n), cand.get(str(n), 0.0))
+        # else: unknown symbol ignored
+
+    for sym in list(g_all.keys() | pk.keys()):
+        _extend_from(sym)
+
+    # Resolve absolute masses per op_name with precedence
+    fixed: Dict[str, float] = {}
+    # 1) global op_name entries
+    for sym, mass in g_all.items():
+        if sym in base_of and sym in cand and _allowed_name(sym):
+            fixed[sym] = float(mass)
+    # 2) per-key op_name entries (replace)
+    for sym, mass in pk.items():
+        if sym in base_of and sym in cand and _allowed_name(sym):
+            fixed[sym] = float(mass)
+
+    # Base-level masses (global then per-key override)
+    base_masses: Dict[str, float] = {b: m for b, m in g_all.items() if b in names_by_base}
+    for b, m in pk.items():
+        if b in names_by_base:
+            base_masses[b] = float(m)
+
+    for b, mass in base_masses.items():
+        # Candidate names of this base that are allowed and not already fixed
+        lst = [n for n in cand.keys() if (base_of.get(n) == b) and _allowed_name(n) and (n not in fixed)]
+        if not lst:
+            continue
+        # Proportional to existing dist among these names; fallback to uniform
+        weights = [max(0.0, float(dist.get(n, 0.0))) for n in lst]
+        sw = sum(weights)
+        if sw > 0.0:
+            for n, w in zip(lst, weights):
+                fixed[n] = float(mass) * (float(w) / float(sw))
+        else:
+            share = (float(mass) / float(len(lst))) if len(lst) > 0 else 0.0
+            for n in lst:
+                fixed[n] = share
+
+    # Normalize with others according to rules
+    sum_fixed = sum(v for v in fixed.values() if v > 0.0)
+    if sum_fixed >= 1.0 - 1e-12:
+        out = {n: (v / sum_fixed) for n, v in fixed.items() if v > 0.0}
+    else:
+        rem = 1.0 - sum_fixed
+        others = {n: max(0.0, float(dist.get(n, 0.0))) for n in cand.keys() if n not in fixed}
+        s = sum(others.values())
+        out: Dict[str, float] = {}
+        if s > 0.0:
+            for n, v in others.items():
+                out[n] = (float(v) / float(s)) * rem
+            for n, v in fixed.items():
+                if v > 0.0:
+                    out[n] = float(v)
+        else:
+            # No positive others; renormalize fixed if any, else empty
+            if sum_fixed > 0.0:
+                out = {n: (v / sum_fixed) for n, v in fixed.items() if v > 0.0}
+            else:
+                out = {}
+
+    # Optional one-line validation log
+    if _pol_validate_pc(cfg):
+        try:
+            def _top3(d: Dict[str, float]) -> str:
+                items = sorted(((n, float(p)) for n, p in d.items() if float(p) > 0.0), key=lambda x: -x[1])[:3]
+                return ", ".join([f"{n}:{p:.4f}" for n, p in items])
+            s_before = sum(max(0.0, float(v)) for v in (dist or {}).values())
+            s_after = sum(out.values()) if out else 0.0
+            _log(
+                f"[proposer][pc-rt] {str(key)}: before_sum={s_before:.6f} top=[{_top3(dist)}]; "
+                f"ovr_sum={sum_fixed:.6f} top=[{_top3({k:v for k,v in fixed.items() if v>0})}]; "
+                f"after_sum={s_after:.6f} top=[{_top3(out)}]"
+            )
+        except Exception:
+            pass
+    return out
 
 
 def _candidate_blocked_by_states(
@@ -401,6 +590,52 @@ def _sample_targets_for_op(cfg: Dict[str, Any], addr: AddressSampler, op_name: s
     return []
 
 
+def _is_addr_sampling_base(base: str) -> bool:
+    """Return True if this op base should use AddressManager sampling.
+
+    Allowed families per PRD and plan:
+    - ERASE
+    - PROGRAM family (excluding *_SUSPEND/*_RESUME)
+    - READ family: READ/RECOVERY_RD/READ4K/PLANE_READ/PLANE_READ4K/CACHE_READ/PLANE_CACHE_READ/COPYBACK_READ
+    """
+    b = str(base or "").upper()
+    if b == "ERASE":
+        return True
+    # Explicit READ-like bases
+    read_bases = {
+        "READ",
+        "READ4K",
+        "PLANE_READ",
+        "PLANE_READ4K",
+        "CACHE_READ",
+        "PLANE_CACHE_READ",
+        "COPYBACK_READ",
+    }
+    if b in read_bases:
+        return True
+    # PROGRAM families (exclude suspend/resume)
+    if ("PROGRAM" in b) and ("SUSPEND" not in b) and ("RESUME" not in b):
+        return True
+    return False
+
+
+def _targets_from_hook(hook: Dict[str, Any]) -> List[Address]:
+    """Parse enriched PHASE_HOOK targets: [(die,plane,block,page,celltype?) ...]."""
+    vals = hook.get("targets") if isinstance(hook, dict) else None
+    out: List[Address] = []
+    if not isinstance(vals, list):
+        return out
+    for item in vals:
+        try:
+            if isinstance(item, (list, tuple)) and len(item) >= 4:
+                d = int(item[0]); p = int(item[1]); b = int(item[2])
+                pg = None if item[3] in (None, "None") else int(item[3])
+                out.append(Address(die=d, plane=p, block=b, page=pg))
+        except Exception:
+            continue
+    return out
+
+
 def _op_names_by_base(cfg: Dict[str, Any]) -> Dict[str, List[str]]:
     out: Dict[str, List[str]] = {}
     for name, spec in (cfg.get("op_names", {}) or {}).items():
@@ -604,6 +839,12 @@ def _phase_dist(cfg: Dict[str, Any], key: str) -> Dict[str, float]:
             out[str(k)] = float(v)
     except Exception:
         return {}
+    # Apply runtime overrides as a final, idempotent correction layer
+    try:
+        out = _apply_phase_overrides(cfg, key, out)
+    except Exception:
+        # Best-effort: fall back to raw distribution on failure
+        pass
     return out
 
 
@@ -788,16 +1029,61 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
             except Exception:
                 pass
             continue
-        # Sample targets (address-bearing ops only)
+        # Decide target source: (E/P/R) AddressManager sampling vs hook-provided targets for non-E/P/R
         sel_die = hook.get("die")
-        targets = _sample_targets_for_op(cfg, addr_sampler, name, sel_die=(int(sel_die) if sel_die is not None else None))
-        if not targets:
-            attempts.append({"name": name, "prob": prob, "reason": "sample_none"})
+        base = str(((cfg.get("op_names", {}) or {}).get(name, {}) or {}).get("base"))
+        targets: List[Address] = []
+        used_hook_ctx = False
+        if _is_addr_sampling_base(base):
+            planes_hint = None
             try:
-                _log(f"[proposer] try name={name} p={prob:.6f} -> sample_none")
+                ph = hook.get("plane_set")
+                if isinstance(ph, list):
+                    planes_hint = [int(x) for x in ph]
             except Exception:
-                pass
-            continue
+                planes_hint = None
+            targets = _sample_targets_for_op(
+                cfg, addr_sampler, name, sel_die=(int(sel_die) if sel_die is not None else None), planes_hint=planes_hint
+            )
+            if not targets:
+                attempts.append({"name": name, "prob": prob, "reason": "sample_none"})
+                try:
+                    _log(f"[proposer] try name={name} p={prob:.6f} -> sample_none")
+                except Exception:
+                    pass
+                continue
+        else:
+            # Non‑E/P/R ops: prefer hook‑provided targets; otherwise fall back to phase_key die/plane
+            if _pol_hook_targets_enabled(cfg):
+                targets = _targets_from_hook(hook)
+            if not targets:
+                # Fallback per research/2025-09-06_22-56-15_non_epr_target_selection.md:
+                # use the die/plane that were used to derive phase_key
+                try:
+                    dies, planes = _cfg_topology(cfg)
+                except Exception:
+                    dies, planes = (1, 1)
+                try:
+                    die_val = hook.get("die")
+                    die = int(die_val) if die_val is not None else 0
+                except Exception:
+                    die = 0
+                try:
+                    plane_val = hook.get("plane")
+                    plane = int(plane_val) if plane_val is not None else 0
+                except Exception:
+                    plane = 0
+                # Clamp to topology just in case
+                if dies > 0:
+                    die = max(0, min(die, dies - 1))
+                if planes > 0:
+                    plane = max(0, min(plane, planes - 1))
+                targets = [Address(die=die, plane=plane, block=0, page=None)]
+                try:
+                    _log(f"[proposer] non‑EPR fallback targets -> [(die={die}, plane={plane}, block=0, page=None)] for base={base}")
+                except Exception:
+                    pass
+            used_hook_ctx = True
         # Build operation and evaluate earliest feasible start
         op_stub = _build_op(cfg, name, targets)
         scope = _base_scope(cfg, op_stub.base)
@@ -847,7 +1133,10 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
             except Exception:
                 pass
 
-        attempts.append({"name": name, "prob": prob, "reason": "ok", "t0": float(p_first.start_us)})
+        rec: Dict[str, Any] = {"name": name, "prob": prob, "reason": "ok", "t0": float(p_first.start_us)}
+        if used_hook_ctx:
+            rec["note"] = "skip_non_epr_sample"
+        attempts.append(rec)
         try:
             _log(f"[proposer] try name={name} p={prob:.6f} -> ok(t0={float(p_first.start_us):.3f})")
         except Exception:

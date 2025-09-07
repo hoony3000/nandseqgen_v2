@@ -44,7 +44,7 @@ bootstrap:
 
 op_bases:
   ETC:
-    scope: "NONE"
+    scope: "DIE_WIDE"
     affect_state: false
     instant_resv: false
     states:
@@ -52,6 +52,17 @@ op_bases:
         bus: true
         duration: 0.4
   ERASE:
+    scope: "DIE_WIDE"
+    affect_state: true
+    instant_resv: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        duration: 8.0
+  DSL_VTH_CHECK:
     scope: "DIE_WIDE"
     affect_state: true
     instant_resv: false
@@ -662,6 +673,7 @@ op_bases:
 
 payload_by_op_base:
   ERASE: [die,plane,block,page,celltype]
+  DSL_VTH_CHECK: [die,plane,block,page,celltype]
   PROGRAM_SLC: [die,plane,block,page,celltype]
   ALLWL_PROGRAM: [die,plane,block,page,celltype]
   CACHE_PROGRAM_SLC: [die,plane,block,page,celltype]
@@ -689,8 +701,8 @@ payload_by_op_base:
   DOUT: [die,plane,block,page,celltype]
   DOUT4K: [die,plane,block,page,celltype]
   DATAIN: [die,plane,block,page,celltype]
-  SR: [die,plane]
-  SR_ADD: [die,plane]
+  SR: [die,plane,expected_value]
+  SR_ADD: [die,plane,expected_value]
   CAMREAD: []
   CAMREAD_LUN: [die]
   ERASE_SUSPEND: [die]
@@ -718,6 +730,7 @@ exclusion_groups:
   on_busy:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -771,6 +784,7 @@ exclusion_groups:
   on_camread:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -824,6 +838,7 @@ exclusion_groups:
   on_dout:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -876,6 +891,7 @@ exclusion_groups:
   on_cache_dout:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -928,6 +944,7 @@ exclusion_groups:
   on_plane_cache_dout:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -1032,6 +1049,7 @@ exclusion_groups:
   after_copyback_read:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -1084,6 +1102,7 @@ exclusion_groups:
   after_oneshot_copyback_program_lsb:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -1136,6 +1155,7 @@ exclusion_groups:
   after_oneshot_copyback_program_csb:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -1188,6 +1208,7 @@ exclusion_groups:
   after_oneshot_copyback_program_msb:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -1240,6 +1261,7 @@ exclusion_groups:
   after_cache_read:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -1292,6 +1314,7 @@ exclusion_groups:
   after_plane_cache_read:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -1344,6 +1367,7 @@ exclusion_groups:
   on_cache_program_datain:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     # - CACHE_PROGRAM_SLC
@@ -1397,6 +1421,7 @@ exclusion_groups:
   after_cache_program:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     # - PROGRAM_SLC
     # - CACHE_PROGRAM_SLC
     - ONESHOT_PROGRAM_LSB
@@ -1449,6 +1474,7 @@ exclusion_groups:
   on_oneshot_cache_program_datain:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -1502,6 +1528,7 @@ exclusion_groups:
   after_oneshot_cache_program:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -1555,6 +1582,7 @@ exclusion_groups:
   after_oneshot_program_lsb:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -1607,6 +1635,7 @@ exclusion_groups:
   after_oneshot_program_csb:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -1659,6 +1688,7 @@ exclusion_groups:
   after_oneshot_program_msb:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -1711,6 +1741,7 @@ exclusion_groups:
   on_read:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -1764,6 +1795,7 @@ exclusion_groups:
   on_erase:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -1817,6 +1849,7 @@ exclusion_groups:
   on_program:
     - ETC
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -1870,6 +1903,7 @@ exclusion_groups:
   odt_disable:
     # - DEFAULT
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -1923,6 +1957,7 @@ exclusion_groups:
   erase_suspended:
     # - DEFAULT
     - ERASE
+    - DSL_VTH_CHECK
     # - PROGRAM_SLC
     # - CACHE_PROGRAM_SLC
     # - ONESHOT_PROGRAM_LSB
@@ -1970,9 +2005,12 @@ exclusion_groups:
     # - ZQCAL
     - ODTDISABLE
     - ODTENABLE
+  not_erase_suspended:
+    - ERASE_RESUME
   program_suspended:
     # - DEFAULT
     - ERASE
+    - DSL_VTH_CHECK
     - PROGRAM_SLC
     - ALLWL_PROGRAM
     - CACHE_PROGRAM_SLC
@@ -2021,61 +2059,14 @@ exclusion_groups:
     # - ZQCAL
     - ODTDISABLE
     - ODTENABLE
-  nested_suspended:
-    - ETC
-    - ERASE
-    - PROGRAM_SLC
-    - ALLWL_PROGRAM
-    - CACHE_PROGRAM_SLC
-    - ONESHOT_PROGRAM_LSB
-    - ONESHOT_PROGRAM_CSB
-    - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
-    - ONESHOT_PROGRAM_EXEC_MSB
-    - ONESHOT_CACHE_PROGRAM
-    # - READ
-    # - READ4K
-    - CACHE_READ
-    - CACHE_READ_END
-    # - PLANE_READ
-    # - PLANE_READ4K
-    - PLANE_CACHE_READ
-    - PLANE_CACHE_READ_END
-    - COPYBACK_READ
-    - COPYBACK_PROGRAM_SLC
-    - ONESHOT_COPYBACK_PROGRAM_LSB
-    - ONESHOT_COPYBACK_PROGRAM_CSB
-    - ONESHOT_COPYBACK_PROGRAM_MSB
-    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
-    # - DOUT
-    - DATAIN
-    # - SR
-    # - SR_ADD
-    # - CAMREAD
-    # - CAMREAD_LUN
-    - ERASE_SUSPEND
-    - ERASE_RESUME
-    - PROGRAM_SUSPEND
-    # - PROGRAM_RESUME
-    # - TRAINING
-    # - READID
-    # - SETPARA
-    # - GETPARA
-    # - PLANE_SETPARA
-    - SETFEATURE
-    - GETFEATURE
-    - SETFEATURE_LUN
-    - GETFEATURE_LUN
-    # - RESET
-    # - RESET_LUN
-    # - TEMPSENSOR
-    # - ZQCAL
-    - ODTDISABLE
-    - ODTENABLE
+  not_erase_suspended:
+    - PROGRAM_RESUME
 
 exclusions_by_op_state:
   ERASE.CORE_BUSY: ['on_erase']
   ERASE.END: []
+  DSL_VTH_CHECK.CORE_BUSY: ['on_busy']
+  DSL_VTH_CHECK.END: []
   PROGRAM_SLC.CORE_BUSY: ['on_program']
   PROGRAM_SLC.END: []
   ALLWL_PROGRAM.CORE_BUSY: ['on_busy']
@@ -2151,9 +2142,10 @@ exclusions_by_latch_state:
   LATCH_ON_MSB: ['after_oneshot_program_msb']
 
 exclusions_by_suspend_state:
-  ERASE_SUSPEND: ['erase_suspended']
-  PROGRAM_SUSPEND: ['program_suspended']
-  NESTED_SUSPEND: ['nested_suspended']
+  NOT_ERASE_SUSPENDED: ['not_erase_suspended']
+  ERASE_SUSPENDED: ['erase_suspended']
+  NOT_PROGRAM_SUSPENDED: ['not_program_suspended']
+  PROGRAM_SUSPENDED: ['program_suspended']
 
 exclusions_by_odt_state:
   ODT_DISABLE: ['odt_disable']
@@ -2886,18 +2878,19 @@ op_names:
     durations:
       ISSUE: 0.025
   DSL_Vth_Check:
-    base: ETC
+    base: DSL_VTH_CHECK
     multi: false
-    celltype: NONE
+    celltype: SLC
     durations:
       ISSUE: 0.085
+      CORE_BUSY: *erase_slc_busy
   DSL_Vth_Check_Multi_Plane:
-    base: READ
+    base: DSL_VTH_CHECK
     multi: true
-    celltype: NONE
+    celltype: SLC
     durations:
       ISSUE: 0.34
-      CORE_BUSY: *read_16k_slc_busy
+      CORE_BUSY: *erase_slc_busy
   Enhanced_Random_Data_Output_Primary:
     base: DOUT
     multi: false
@@ -3043,13 +3036,13 @@ op_names:
     durations:
       ISSUE: 1.2522
   LUN_Status_Read_for_LUN0:
-    base: READ
+    base: SR
     multi: false
     celltype: NONE
     durations:
       ISSUE: 0.2786
   LUN_Status_Read_for_LUN2:
-    base: READ
+    base: SR
     multi: false
     celltype: NONE
     durations:
@@ -3068,6 +3061,13 @@ op_names:
       ISSUE: 9.8244
       CORE_BUSY: *oneshot_program_trans_busy
   One_Shot_Copyback_Program_Execution_MSB:
+    base: ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    multi: false
+    celltype: TLC
+    durations:
+      ISSUE: 9.8244
+      CORE_BUSY: *oneshot_program_tlc_busy
+  One_Shot_Copyback_Program_Multi_Plane_Execution_MSB:
     base: ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
     multi: false
     celltype: TLC
@@ -3407,6 +3407,7 @@ op_names:
     celltype: NONE
     durations:
       ISSUE: 0.05
+      CORE_BUSY: *camread_busy
   Write_Protect_Operation:
     base: ETC
     multi: false
@@ -4173,49 +4174,49 @@ op_names:
     durations:
       ISSUE: 0.2786
   Read_Status_Enhanced_71h:
-    base: SR
+    base: SR_ADD
     multi: false
     celltype: NONE
     durations:
       ISSUE: 0.3036
   Read_Status_Enhanced_72h:
-    base: SR
+    base: SR_ADD
     multi: false
     celltype: NONE
     durations:
       ISSUE: 0.3036
   Read_Status_Enhanced_78h:
-    base: SR
+    base: SR_ADD
     multi: false
     celltype: NONE
     durations:
       ISSUE: 0.3136
   Read_Status_Enhanced_7Ah:
-    base: SR
+    base: SR_ADD
     multi: false
     celltype: NONE
     durations:
       ISSUE: 0.3136
   Read_Status_Enhanced_7Bh:
-    base: SR
+    base: SR_ADD
     multi: false
     celltype: NONE
     durations:
       ISSUE: 0.3136
   Read_Status_Enhanced_7Ch:
-    base: SR
+    base: SR_ADD
     multi: false
     celltype: NONE
     durations:
       ISSUE: 0.3136
   Read_Status_Enhanced_7Dh:
-    base: SR
+    base: SR_ADD
     multi: false
     celltype: NONE
     durations:
       ISSUE: 0.3036
   Read_Status_Enhanced_7Eh:
-    base: SR
+    base: SR_ADD
     multi: false
     celltype: NONE
     durations:
@@ -4533,7 +4534,7 @@ constraints:
       category: state_forbid
       gated: true
       reason_codes: [state_forbid_suspend]
-      description: "Block operations during ERASE/PROGRAM/NESTED suspend states via exclusions_by_suspend_state."
+      description: "Block operations during ERASE/PROGRAM suspend states via exclusions_by_suspend_state."
     - name: state_forbid_odt
       category: state_forbid
       gated: true

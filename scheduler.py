@@ -8,6 +8,7 @@ from resourcemgr import ResourceManager, Scope, Address, SIM_RES_US, quantize
 import proposer as _proposer
 from bootstrap import BootstrapController
 from event_queue import EventQueue
+from typing import Iterable
 
 
 class SchedulerResult(TypedDict):
@@ -176,6 +177,62 @@ class Scheduler:
             else:
                 die = int(payload.get("die", 0))
             self._deps.rm.release_on_exec_msb_end(die, now_us=self.now_us)
+        # AddressManager state sync at OP_END for ERASE/PROGRAM families
+        try:
+            self._am_apply_on_end(base=str(payload.get("base")), op_name=str(payload.get("op_name", "")), targets=targets)
+        except Exception:
+            # Best-effort: ignore AM sync failures to avoid breaking scheduling
+            pass
+
+    def _am_apply_on_end(self, base: str, op_name: str, targets: Iterable[Address]) -> None:
+        """Apply ERASE/PROGRAM effects to AddressManager on OP_END.
+
+        - ERASE family: mark blocks as ERASE with erase celltype
+        - PROGRAM family: increment programmed page and set program mode on fresh ERASE
+        Converts targets -> numpy ndarray of shape (#, 1, 3) as (die, block, page).
+        Guards: no-op on empty targets or when addrman lacks apply_*.
+        """
+        d = self._deps
+        am = getattr(d, "addrman", None)
+        if am is None:
+            return
+        # Determine op celltype from cfg when available
+        def _celltype_from_cfg(cfg: Dict[str, Any], name: str) -> str:
+            try:
+                ct = ((cfg.get("op_names", {}) or {}).get(name or "", {}) or {}).get("celltype")
+                return "TLC" if ct in (None, "None", "NONE") else str(ct)
+            except Exception:
+                return "TLC"
+
+        b = str(base or "").upper()
+        # Only handle ERASE and PROGRAM-like bases
+        is_erase = (b == "ERASE")
+        is_program = ("PROGRAM" in b) and ("SUSPEND" not in b) and ("RESUME" not in b)
+        if not (is_erase or is_program):
+            return
+        t_list = list(targets or [])
+        if not t_list:
+            return
+        try:
+            import numpy as np  # type: ignore
+        except Exception:
+            return
+        # Build ndarray (#, 1, 3): (die, block, page)
+        rows = []
+        for t in t_list:
+            die = int(getattr(t, "die", 0))
+            block = int(getattr(t, "block", 0))
+            page_val = getattr(t, "page", None)
+            page = 0 if (is_erase or page_val is None) else int(page_val)
+            rows.append([die, block, page])
+        if not rows:
+            return
+        addrs = np.array(rows, dtype=int).reshape(-1, 1, 3)
+        mode = _celltype_from_cfg(d.cfg, op_name)
+        if is_erase and hasattr(am, "apply_erase"):
+            am.apply_erase(addrs, mode=mode)
+        elif is_program and hasattr(am, "apply_pgm"):
+            am.apply_pgm(addrs, mode=mode)
 
     # -----------------
     # Propose and schedule
@@ -282,6 +339,31 @@ class Scheduler:
         base = str(rec["base"]) 
         op = rec["op"]
         targets = rec["targets"]
+        # Policy: enrich READ-family PHASE_HOOK payload with plane_set and targets to guide non‑EPR ops (e.g., DOUT)
+        def _hook_targets_enabled(cfg: Dict[str, Any]) -> bool:
+            try:
+                pol = (cfg.get("policies", {}) or {})
+                v = pol.get("hook_targets_enabled", True)
+                return bool(True if v in (None, "None") else v)
+            except Exception:
+                return True
+        def _is_read_family(b: str) -> bool:
+            bb = str(b or "").upper()
+            return bb in {"READ", "READ4K", "PLANE_READ", "PLANE_READ4K", "CACHE_READ", "PLANE_CACHE_READ", "COPYBACK_READ"}
+        enrich_hook = _hook_targets_enabled(self._deps.cfg) and _is_read_family(base)
+        plane_set_sorted: Optional[List[int]] = None
+        hook_targets_payload: Optional[List[tuple]] = None
+        if enrich_hook:
+            try:
+                plane_set_sorted = sorted({int(t.plane) for t in targets})
+                cell = _proposer._op_celltype(self._deps.cfg, rec.get("op_name"))
+                hook_targets_payload = [
+                    (int(t.die), int(t.plane), int(t.block), (None if t.page is None else int(t.page)), cell)
+                    for t in targets
+                ]
+            except Exception:
+                plane_set_sorted = None
+                hook_targets_payload = None
         # OP_START and OP_END
         self._eq.push(start, "OP_START", payload={"base": base, "op_name": rec["op_name"], "targets": targets})
         self._eq.push(end, "OP_END", payload={"base": base, "op_name": rec["op_name"], "targets": targets})
@@ -299,11 +381,17 @@ class Scheduler:
                 # one PHASE_HOOK per target plane
                 for tgt in targets:
                     hook = {"die": int(tgt.die), "plane": int(tgt.plane), "label": f"{base}.{name}"}
+                    if enrich_hook and plane_set_sorted is not None and hook_targets_payload is not None:
+                        hook["plane_set"] = list(plane_set_sorted)
+                        hook["targets"] = list(hook_targets_payload)
                     self._eq.push(pre_t, "PHASE_HOOK", payload={"hook": hook})
                 # also immediately after state end to drive next-stage proposals
                 post_t = quantize(t_end)
                 for tgt in targets:
                     hook = {"die": int(tgt.die), "plane": int(tgt.plane), "label": f"{base}.{name}"}
+                    if enrich_hook and plane_set_sorted is not None and hook_targets_payload is not None:
+                        hook["plane_set"] = list(plane_set_sorted)
+                        hook["targets"] = list(hook_targets_payload)
                     self._eq.push(post_t, "PHASE_HOOK", payload={"hook": hook})
             t = t_end
 

@@ -51,3 +51,4 @@ out*/
 
 # not to be included in context window
 nandsim_demo.py
+tools/

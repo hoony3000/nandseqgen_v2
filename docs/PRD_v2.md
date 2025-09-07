@@ -4,6 +4,7 @@
 - 다양한 시나리오에서 NAND device를 평가하기 위한 다양한 operation sequence를 생성한다.
 - NAND 내부 state에 따른 확률 기반 샘플링으로 sequence를 생성해 미세조정 가능한 시스템을 만든다.
 - 생성된 sequence를 ATE(Automatic Test Environment)가 사용 가능한 파일 형태로 출력한다.
+- 런타임 원칙: 주소 상태(AddressManager)는 OP_END 시점에 ERASE/PROGRAM 효과를 반영한다.
 
 ## 2. Terminology
 - op_id: operation을 schedule 할 때 생기는 고유값. log tracing을 위해 사용
@@ -22,6 +23,20 @@
 - 파일형태: `operation_sequence_yymmdd_0000001.csv`
 - 필수 필드: `seq,time,op_id,op_name,op_uid,payload`
 - payload는 op_name에 따라 다르며, CFG[payload_by_op_base] 에 명시
+  - SR/SR_ADD 는 특별히 `expected_value` 라는 payload 로 가짐. SR/SR_ADD 이 예약될 당시의 op_name(of SR/SR_ADD), target die, plane(s) 의 진행 중인 op_state(s), op_name(on timeline at target plane(s)) 에 따라 기대 값이 달라짐.
+    - Read_Status_Enhanced_70h: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
+    - Read_Status_Enhanced_71h: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
+    - Read_Status_Enhanced_7Ah: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
+    - Read_Status_Enhanced_7Bh: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
+    - Read_Status_Enhanced_7Dh: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
+    - Read_Status_Enhanced_7Eh: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
+    - Read_Status_Enhanced_72h: target plane 이 예약된 op_state 가 있다면 'busy' / 그 외 'ready'
+    - Read_Status_Enhanced_7Ch: target plane 이 예약된 op_state 가 있다면 'busy' / 그 외 'ready'
+    - LUN_Status_Read_for_LUN0: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
+    - LUN_Status_Read_for_LUN1: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
+    - LUN_Status_Read_for_LUN2: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
+    - LUN_Status_Read_for_LUN3: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
+
 - 예시:
 ```
 seq,time,op_id,op_name,op_uid,payload
@@ -204,6 +219,7 @@ class Operation:
             - 특정 op_state: 특정 op_state 에만 적용한다. e.g) ERASE.END, READ.CORE_BUSY
             - overrides 순서는 global->특정 opstate 순으로 `config.yaml`->phase_conditional_overrides->global/op_state 에 직접 명시된 값이 최종값이 되도록 하고 나머지 값들은 normalize 해서 weight 의 합이 1이 되게 한다.
       5) override하지 않은 후보들의 확률은 랜덤 샘플로 채운 뒤 양수 항목의 합이 1이 되도록 정규화한다.
+      - 런타임 강제화: 로드된 분포에 대해 proposer가 동일한 오버라이드 규칙을 최종 보정층으로 멱등 적용하여, global/per‑state 오버라이드가 항상 최종 값으로 반영되도록 한다(배제 규칙 허용 범위 내, 필요 시 후보 확장).
       6) 이렇게 생성한 초기 확률을 `op_state_probs.yaml`로 저장하고, 필요 시 사용자가 값을 수동으로 미세 조정한다.
     - 템플릿(YAML 예시)
       ```yaml
@@ -303,9 +319,10 @@ class Operation:
   2) 현재 시각 기준 `ResourceManager.op_state_timeline`으로 op_state 확인
   3) `phase_conditional[op_state]`로 (operation, prob) 후보 list 생성하고, `exclusions_by_*`(op_state/latch/suspend/odt/cache) 기반 금지 operation을 제거한다.
   4) cache_state 고려: `ResourceManager.cache_state` 참조로 celltype 기반 제외. cache 진행 중에는 cache end 전까지 target plane(for cache_read)/die(for cache_program)에 대해 동일 celltype의 후속 cache_read/cache_program만 허용
-  5) 남은 (operation, prob) 확률 정규화 후 후보 샘플링. 모든 난수는 훅별 RNG 스트림으로 생성한다. 후보가 비면 해당 훅은 no-op으로 종료한다.
-  6) erase/program/read가 후보라면 `AddressManager.from_topology(topology)`로 초기화된 `AddressManager`를 통해 target address 샘플링. `CFG[op_specs][op_name][multi]=true`면 `CFG[policies][maxplanes]`로 plane_set 조합 생성 후 address 샘플링. 실패 시 plane_set 최소 크기 2까지 축소 시도. 그래도 없으면 남은 후보 중 `CFG[policies][maxtry_candidate]` 횟수만큼 비복원 샘플링
-  7) 샘플링된 op_name에 `CFG[op_specs][op_name][sequence]`가 존재하면 `sequence[probs]`로 샘플링하여 후속 operation 생성을 위한 "sequence 생성 루틴" 실행
+  5) 남은 (operation, prob) 확률 정규화 후 후보 샘플링. 모든 난수는 훅별 RNG 스트림으로 생성한다. 후보가 비면 해당 훅은 no-op으로 종료한다. 샘플링된 후보에 따라 다음에 따라 처리한다.
+    - 후보가 erase/program/read 가 아니라면, 6 번의 과정으로 진행
+    - erase/program/read 가 후보라면 `AddressManager.from_topology(topology)`로 초기화된 `AddressManager`를 통해 target address 샘플링. `CFG[op_specs][op_name][multi]=true`면 `CFG[policies][maxplanes]`로 plane_set 조합 생성 후 address 샘플링. 실패 시 plane_set 최소 크기 2까지 축소 시도. 그래도 없으면 남은 후보 중 `CFG[policies][maxtry_candidate]` 횟수만큼 비복원 샘플링
+  6) 샘플링된 op_name에 `CFG[op_specs][op_name][sequence]`가 존재하면 `sequence[probs]`로 샘플링하여 후속 operation 생성을 위한 "sequence 생성 루틴" 실행
      - sequence 생성 루틴
        1. 선택된 `sequence[probs]`의 key를 '.'로 split 후 두 번째 원소가 'SEQ'가 아니면, `CFG[groups_by_base][key]` 후보를 uniform 확률로 샘플링하여 후속 operation 선택. `CFG[op_specs][op_name][sequence][inherit][key]` 규칙을 반영해 최종 operation sequence 생성. 규칙은 "후속 operation inherit 생성 규칙"에 따름
           - 'inc_page': 직전 operation의 page address에서 +1 (`AddressManager` 샘플링 시 `sequential=true`)
@@ -316,8 +333,8 @@ class Operation:
           - 'same_page_from_program_suspend': RECOVERY_READ 시에 직전에 입력됐던 ResourceManager.suspended_ops 의 target address 를 그대로 상속
           - sequence 내 operation 간 time 간격: `CFG[policies][sequence_gap]`
        2. 선택된 `sequence[probs]`의 key를 '.'로 split 후 두 번째 원소가 'SEQ'라면, `CFG[generate_seq_rules][key][sequences]` 원소들을 모두 합쳐 operation sequence 생성. 각 operation 별 생성 규칙은 `CFG[generate_seq_rules][key][op_base]`의 "inherit 생성 규칙" 사용
-  8) 사전 검증과 재시도: 동일 슬롯(윈도우) 내 가안 배치를 구성해 `Validator` 체크(epr_dependencies, IO_bus_overlap, exclusion_window_violation, 래치 락, ODT/피처 상태)를 수행한다. 실패 시 `CFG[policies][maxtry_candidate]` 한도 내에서 대안 op_name/주소 조합을 재시도한다. 동일 틱 내 부분 스케줄은 금지한다.
-  9)  검증 통과 시 operation/time을 `Scheduler`에 반환하여 예약
+  7) 사전 검증과 재시도: 동일 슬롯(윈도우) 내 가안 배치를 구성해 `Validator` 체크(epr_dependencies, IO_bus_overlap, exclusion_window_violation, 래치 락, ODT/피처 상태)를 수행한다. 실패 시 `CFG[policies][maxtry_candidate]` 한도 내에서 대안 op_name/주소 조합을 재시도한다. 동일 틱 내 부분 스케줄은 금지한다.
+  8)  검증 통과 시 operation/time을 `Scheduler`에 반환하여 예약
 - attributes
   - `CFG`
   - `op_state_probs`

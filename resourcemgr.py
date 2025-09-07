@@ -71,7 +71,7 @@ class _CacheEntry:
 @dataclass
 class _SuspState:
     die: int
-    state: str  # 'ERASE_SUSPEND' | 'PROGRAM_SUSPEND' | 'NESTED_SUSPEND'
+    state: str  # 'ERASE_SUSPEND' | 'PROGRAM_SUSPEND'
     start_us: float
     end_us: Optional[float] = None
 
@@ -454,14 +454,14 @@ class ResourceManager:
                     ent.end_us = end
             # SUSPEND bookkeeping
             if b == "ERASE_SUSPEND":
-                self._suspend_states[die] = _SuspState(die=die, state="ERASE_SUSPEND", start_us=start)
+                self._suspend_states[die] = _SuspState(die=die, state="ERASE_SUSPENDED", start_us=start)
             elif b == "PROGRAM_SUSPEND":
                 cur = self._suspend_states.get(die)
                 # nested when ERASE_SUSPEND then PROGRAM_SUSPEND
                 if cur and cur.state == "ERASE_SUSPEND":
                     self._suspend_states[die] = _SuspState(die=die, state="NESTED_SUSPEND", start_us=start)
                 else:
-                    self._suspend_states[die] = _SuspState(die=die, state="PROGRAM_SUSPEND", start_us=start)
+                    self._suspend_states[die] = _SuspState(die=die, state="PRGRAM_SUSPENDED", start_us=start)
             elif b in ("ERASE_RESUME", "PROGRAM_RESUME"):
                 st = self._suspend_states.get(die)
                 if st and st.end_us is None:
@@ -1028,11 +1028,19 @@ class ResourceManager:
                     ]
                     epr_cfg = rcfg.get("epr", {}) or {}
                     offset_guard = epr_cfg.get("offset_guard")
+                    # Derive celltype for this op (if any) from cfg.op_names
+                    cell = None
+                    try:
+                        on = self._op_name(op)
+                        cell = ((self.cfg.get("op_names", {}) or {}).get(on or "", {}) or {}).get("celltype")
+                        cell = None if cell in (None, "NONE", "None") else str(cell)
+                    except Exception:
+                        cell = None
                     res = self.addr_policy(
                         base=self._op_base(op),
                         targets=simple_targets,
                         op_name=self._op_name(op),
-                        op_celltype=None,
+                        op_celltype=cell,
                         as_of_us=start,
                         pending=pending,
                         offset_guard=offset_guard,

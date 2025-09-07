@@ -169,18 +169,29 @@ def _csv_write(path: str, rows: List[Dict[str, Any]], fieldnames: List[str]) -> 
 
 def export_operation_timeline(rows: List[Dict[str, Any]], rm: ResourceManager, *, out_dir: str, run_idx: int) -> str:
     # PRD 3.3 fields: start,end,die,plane,block,page,op_name,op_base,source,op_uid,op_state
+    # Extended: phase_key_used, phase_key_virtual (proposal-time used and virtual keys)
     out_rows: List[Dict[str, Any]] = []
     for r in rows:
         die = int(r["die"])  # type: ignore[index]
         plane = int(r["plane"])  # type: ignore[index]
         start = float(r["start_us"])  # type: ignore[index]
-        # Option B: prefer the exact phase_key used by proposer; fallback to RM lookup
-        op_state_fk = r.get("phase_key")
-        if op_state_fk is None or str(op_state_fk).strip() == "":
-            # Fallback to RM state; keep simple at-start lookup (Option A can be added if needed)
+        # Used: prefer the exact phase_key used by proposer; fallback to RM lookup
+        used_fk = r.get("phase_key")
+        if used_fk is None or str(used_fk).strip() == "":
+            # Fallback to RM state at start
             op_state = rm.op_state(die, plane, start) or "NONE"
+            phase_key_used = str(op_state)
         else:
-            op_state = str(op_state_fk)
+            op_state = str(used_fk)
+            phase_key_used = str(used_fk)
+        # Virtual: derive proposal-time virtual key using preserved context when available
+        d_ctx = r.get("phase_hook_die")
+        p_ctx = r.get("phase_hook_plane")
+        t_ctx = r.get("phase_key_time")
+        vd = int(d_ctx) if d_ctx not in (None, "None") else die
+        vp = int(p_ctx) if p_ctx not in (None, "None") else plane
+        vt = float(t_ctx) if t_ctx not in (None, "None") else start
+        phase_key_virtual = rm.phase_key_at(int(vd), int(vp), float(vt))
         out_rows.append(
             {
                 "start": float(r["start_us"]),
@@ -194,6 +205,8 @@ def export_operation_timeline(rows: List[Dict[str, Any]], rm: ResourceManager, *
                 "source": r.get("source"),
                 "op_uid": int(r["op_uid"]),
                 "op_state": str(op_state),
+                "phase_key_used": str(phase_key_used),
+                "phase_key_virtual": str(phase_key_virtual),
             }
         )
     # Sort primarily by op_uid for consumer friendliness
@@ -202,6 +215,7 @@ def export_operation_timeline(rows: List[Dict[str, Any]], rm: ResourceManager, *
     path = os.path.join(out_dir, fname)
     _csv_write(path, out_rows, [
         "start", "end", "die", "plane", "block", "page", "op_name", "op_base", "source", "op_uid", "op_state",
+        "phase_key_used", "phase_key_virtual",
     ])
     return path
 
@@ -317,6 +331,7 @@ def export_address_touch_count(rows: List[Dict[str, Any]], cfg: Dict[str, Any], 
 
 def export_op_state_name_input_time_count(rows: List[Dict[str, Any]], rm: ResourceManager, *, out_dir: str, run_idx: int) -> str:
     # PRD 3.5: op_state, op_name, input_time, count
+    # Extended: phase_key_used, phase_key_virtual (used in grouping for consistency)
     # input_time = (t - state_start) / (state_end - state_start) in [0,1]
     # Build an index for quick lookup of state segment covering t
     snap = rm.snapshot()
@@ -349,7 +364,8 @@ def export_op_state_name_input_time_count(rows: List[Dict[str, Any]], rm: Resour
     def _q(v: float, decimals: int = 2) -> float:
         return round(max(0.0, min(1.0, v)), decimals)
 
-    cnt: Dict[Tuple[str, str, float], int] = {}
+    # Grouping key: (phase_key_used, phase_key_virtual, op_name, input_time)
+    cnt: Dict[Tuple[str, str, str, float], int] = {}
     for r in rows:
         d = int(r["die"])  # type: ignore[index]
         p = int(r["plane"])  # type: ignore[index]
@@ -360,22 +376,37 @@ def export_op_state_name_input_time_count(rows: List[Dict[str, Any]], rm: Resour
         s0, s1, base, state = seg
         dur = max(SIM_RES_US, float(s1) - float(s0))
         it = _q((t - s0) / dur)
-        # Prefer proposer phase_key if present (Option B); fallback to RM segment key
-        st_key = r.get("phase_key")
-        if st_key is None or str(st_key).strip() == "":
-            st = f"{base}.{state}"
+        # phase_key_used: prefer proposer phase_key; fallback to RM segment key
+        used_fk = r.get("phase_key")
+        if used_fk is None or str(used_fk).strip() == "":
+            used = f"{base}.{state}"
         else:
-            st = str(st_key)
-        key = (st, str(r["op_name"]), it)
+            used = str(used_fk)
+        # phase_key_virtual: derive via RM.phase_key_at using proposal-time context when available
+        d_ctx = r.get("phase_hook_die")
+        p_ctx = r.get("phase_hook_plane")
+        t_ctx = r.get("phase_key_time")
+        vd = int(d_ctx) if d_ctx not in (None, "None") else d
+        vp = int(p_ctx) if p_ctx not in (None, "None") else p
+        vt = float(t_ctx) if t_ctx not in (None, "None") else t
+        virt = rm.phase_key_at(int(vd), int(vp), float(vt))
+        key = (used, virt, str(r["op_name"]), it)
         cnt[key] = cnt.get(key, 0) + 1
 
     out_rows = [
-        {"op_state": k[0], "op_name": k[1], "input_time": k[2], "count": v}
-        for k, v in sorted(cnt.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2]))
+        {
+            "op_state": k[0],  # preserve legacy column (equals phase_key_used)
+            "phase_key_used": k[0],
+            "phase_key_virtual": k[1],
+            "op_name": k[2],
+            "input_time": k[3],
+            "count": v,
+        }
+        for k, v in sorted(cnt.items(), key=lambda kv: (kv[0][2], kv[0][0], kv[0][1], kv[0][3]))
     ]
     fname = f"op_state_name_input_time_count_{_date_stamp()}_{_run_id_str(run_idx+1)}.csv"
     path = os.path.join(out_dir, fname)
-    _csv_write(path, out_rows, ["op_state", "op_name", "input_time", "count"])
+    _csv_write(path, out_rows, ["op_state", "phase_key_used", "phase_key_virtual", "op_name", "input_time", "count"])
     return path
 
 
@@ -626,11 +657,15 @@ def _ensure_min_cfg(cfg: Dict[str, Any]) -> Dict[str, Any]:
     return c
 
 
-def _apply_overrides(cfg: Dict[str, Any], *, admission_window: Optional[float], bootstrap_enabled: bool) -> Dict[str, Any]:
+def _apply_overrides(
+    cfg: Dict[str, Any], *, admission_window: Optional[float], bootstrap_enabled: bool, validate_pc: Optional[bool] = None
+) -> Dict[str, Any]:
     c = dict(cfg)
     pol = dict(c.get("policies", {}) or {})
     if admission_window is not None:
         pol["admission_window"] = float(admission_window)
+    if validate_pc is not None:
+        pol["validate_pc"] = bool(validate_pc)
     c["policies"] = pol
     b = dict(c.get("bootstrap", {}) or {})
     b["enabled"] = bool(bootstrap_enabled)
@@ -655,7 +690,7 @@ def run_once(cfg: Dict[str, Any], rm: ResourceManager, am: Any, *, run_until_us:
 def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser(description="Run NAND scheduler and export PRD outputs")
     p.add_argument("--config", default="config.yaml", help="Path to YAML config")
-    p.add_argument("--run-until", "-t", type=float, default=50000.0, help="Simulation time per run (us)")
+    p.add_argument("--run-until", "-t", type=float, default=100000.0, help="Simulation time per run (us)")
     p.add_argument("--num-runs", "-n", type=int, default=1, help="Number of runs")
     p.add_argument("--bootstrap", dest="bootstrap", action="store_true", help="Enable bootstrap (first run only if num_runs>1)")
     p.add_argument("--no-bootstrap", dest="bootstrap", action="store_false", help="Disable bootstrap")
@@ -700,11 +735,22 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Shared state across runs for continuity
     rm = ResourceManager(cfg=cfg, dies=dies, planes=planes)
     am = _mk_addrman(cfg)
+    # Register address-dependent policy (EPR) when available
+    try:
+        if hasattr(rm, "register_addr_policy") and hasattr(am, "check_epr"):
+            rm.register_addr_policy(am.check_epr)  # type: ignore[attr-defined]
+    except Exception:
+        pass
 
     # Per run
     for i in range(args.num_runs):
         enable_boot = bool(args.bootstrap) and (i == 0) and (args.num_runs > 1)
-        cfg_run = _apply_overrides(cfg, admission_window=args.admission_window, bootstrap_enabled=enable_boot)
+        cfg_run = _apply_overrides(
+            cfg,
+            admission_window=args.admission_window,
+            bootstrap_enabled=enable_boot,
+            validate_pc=bool(args.validate_pc),
+        )
         # Optional phase_conditional demo override
         if args.pc_demo is not None:
             pc = dict(cfg_run.get("phase_conditional", {}) or {})

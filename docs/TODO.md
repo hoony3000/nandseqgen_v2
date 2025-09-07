@@ -78,11 +78,30 @@
     - 검증: 동일 실행에서 두 CSV가 op_uid 증가 순으로 정렬되는지 확인. 사양 컬럼/순서/의미 불변.
   - 평가 결과: (작성 예정)
 
-- [ ] 11. op_state_timeline에 `op_name.END` 미등록 (PRD §5.5 미준수)
-  - 문제 상황: PRD_v2.md:315에 따르면 operation 스케줄 시 모든 logic_state 등록 후 `op_name.END`를 end_time='inf'로 추가해야 하나, 현재 구현은 states만 기록하고 END를 추가하지 않음(`resourcemgr.py:428-433`, `_StateTimeline.reserve_op:27-31`, `main.py:195-213`).
-  - 개선 방향과 실험: reserve.op 시점에 `txn.st_ops`로 전달하는 `st_list` 뒤에 `("END", inf)`(내부 표현: open-ended, 예: `end_us=None` 또는 큰 sentinel) 세그먼트를 추가. overlap 검출에서는 `.END`를 제외하도록 필터 적용. 샘플 실행 후 `out/op_state_timeline_*.csv`에 `*.END` 존재 확인 및 overlap/latch/배제 로직 회귀 여부 검증.
+- [ ] 12. suspend_state 에 suspend 상태가 아닐때 RESUME 제한하기.
+  - 문제 상황: SUSPEND operation 이 수행되기 전에는 RESUME operation 이 금지되어야 함에도 propose 되어 스케쥴에 등록되는 상황 발생
+  - 개선 방향과 실험: 현재는 ERASE_SUSPEND 와 PROGRAM_SUSPEND 를 동일한 state 의 값에다 관리하는데, 따로 state 를 분리하고, exclusions_by_suspend_state 의 key 값에 NOT_ERASE_SUSPENDED, NOT_PROGRAM_SUSPENDED 를 등록해서 SUSPEND 수행되기 전 상태에서 RESUME operation 제한. NESTED_SUSPEND 삭제
+  - 평가 결과:
+  
+- [x] 13. output csv 에서 phase_key_used, phase_key_virtual filed 추가
+  - 문제 상황: phase_proposal_counts*.csv 에서 사용한 phase_key_used, phase_key_virtual 필드를 op_state_name_input_time_count*.csv, operation_timeline*.csv 에도 노출 필요
+  - 개선 방향과 실험:
+    - 구현: `main.py` 수정
+      - operation_timeline: 각 row에 `phase_key_used`(제안 시 사용 키), `phase_key_virtual`(RM의 가상 키) 추가. 제안 컨텍스트(`phase_hook_die/plane`, `phase_key_time`) 존재 시 이를 사용해 virtual 계산, 부재 시 (die,plane,start_us)로 대체. 정렬/기존 컬럼 불변.
+      - op_state_name_input_time_count: 집계 키를 `(phase_key_used, phase_key_virtual, op_name, input_time)`로 확장해 두 키를 컬럼으로 추가. 하위호환을 위해 `op_state`는 `phase_key_used`와 동일 값으로 유지.
+    - 확인: 동일 설정에서 CSV 생성 후 각 파일에 컬럼 존재 확인 및 값 샘플 검토. `phase_proposal_counts*.csv`와의 used/virtual 일관성 확인.
   - 평가 결과: (작성 예정)
 
+- [ ] 14. phase_conditiona_overrides 에 입력한 값이 최종값이 되도록 강제하기
+  - 문제 상황: `config.yaml`->phase_conditional_overrides->global 에서 입력한 값들이 최종값이 되지 않음. 현재는 phase_conditional_overrides->특정state 에 입력한 값은 최종값이 됨
+  - 개선 방향과 실험: override 순서는 global->특정state 임. normalize 는 override 한 값들의 합(=sum_overrides)이 1이 되는지 검사한 후, 1 이상이면 override 한 값들끼리만 normalize 하고, override 대상이 아닌 나머지 operation 모두 제외. 1 보다 작으면, override 대상이 아닌 나머지 operation 의 확률값들의 합(=sum_others)이 1-sum_overrides 되게 normalize 를 한다.
+  - 평가 결과:
+  
+- [ ] 15. op_state_timeline 의 op_name field 이름을 op_base 로 고치기
+  - 문제 상황: op_state_timeline*.csv 파일에서 op_name 이라고 표기된 field 가 실제 의미적으로는 op_base 여서, 정합성을 맞출 필요가 있음.
+  - 개선 방향과 실험: 기본 코드, csv 출력 field, 시각화 코드 포함해서 모두 고치기
+  - 평가 결과:
+  
 ## Medium Priority
 
 <!-- 중요하지만 즉시 긴급하지는 않은 작업들 -->

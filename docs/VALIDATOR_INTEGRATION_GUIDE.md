@@ -1,7 +1,7 @@
 ---
 title: ResourceManager Validator Integration Guide
 status: draft
-updated: 2025-09-04
+updated: 2025-09-07
 ---
 
 Overview
@@ -14,7 +14,7 @@ Enablement (config.yaml)
   - `enable_epr: true` — allow RM to call the EPR policy.
   - `epr: { offset_guard: <int> }` — optional, overrides AddressManager.offset for READ guard.
 
-Example
+Basic Example
 ```yaml
 constraints:
   enabled_rules: ["state_forbid", "addr_dep"]
@@ -24,7 +24,7 @@ constraints:
 ```
 
 Register Address Policy (at runtime)
-- Provide an EPR callback that matches the standard interface. AddressManager exposes `check_epr`:
+- Provide an EPR callback that matches the standard interface. AddressManager exposes `check_epr` (bind as a basic example):
 ```python
 rm.register_addr_policy(am.check_epr)
 ```
@@ -39,4 +39,3 @@ Overlay (same-transaction awareness)
 
 Backward Compatibility
 - If `constraints.enabled_rules` is empty or `enable_epr` is false, validators are no-ops and RM behavior is identical to previous versions.
-
