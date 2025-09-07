@@ -246,6 +246,7 @@ class Operation:
     - `generate_seq_rules` 정규화: `sequences`가 단일 키 맵 리스트 형태인 경우, 런타임에서 `{op_base: [inherit_rules...]}` 딕셔너리로 변환해 접근성을 높인다. 이후 본 문서의 예시처럼 `CFG[generate_seq_rules][key][op_base]` 형태로 조회 가능하다.
   - 파생 런타임 키: `op_specs[op_name]`는 `op_bases[base]`를 상속하되, `op_names[*]`의 `durations/multi/celltype`로 오버라이드한다. 이때 base에 정의된 상태의 duration 값은 무시하고, `op_names[op_name].durations[state]`를 단일 진실로 사용한다.
   - `op_specs[op_name].instant_resv`: bool, 기본 false. true이면 admission window 상한에 관계없이 현재 훅 시각 `t` 이후의 earliest feasible 시각에 예약을 시도한다. 동일 틱 원자성(전부/없음)과 모든 검증/배제 규칙은 그대로 적용된다.
+    - RM 확장: instant_resv 베이스는 버스 기준 즉시(now) 예약 경로를 사용하며, 이때 bus/latch/룰만 검사하고 plane/die 배타 및 plane 예약창 기록은 우회한다. 정책 가드(`policies.instant_bus_only_scope_none`)가 true일 때는 `scope==NONE` 인 경우에만 즉시 경로를 허용한다.
   - `groups_by_base`: 동일 base에서 파생된 `op_name` 리스트를 구성한다.
   - `exclusion_groups` / `exclusions_by_*`: config.yaml의 명칭을 단일 진실로 사용한다. 본 문서 전반의 표기를 `exclusions_by_op_state` 등 config와 동일하게 맞춘다.
   - 검증 불변식: 모든 `op_specs[op_name].durations`는 base가 정의한 모든 상태 키를 포함해야 하며, 음수 duration은 금지되고 `bus`는 불리언이어야 한다.
@@ -258,8 +259,10 @@ class Operation:
   - 결정적 시간 샘플링(윈도잉)
     - 전역 시뮬레이션은 이산 이벤트 훅으로만 시간 전진. 동일 시각(time)의 훅 집합을 하나의 결정적 틱으로 간주한다.
     - 훅 실행 시 `[t, t+admission_window)` 구간을 제안 윈도우로 사용해 슬롯을 탐색한다. 기본값은 `CFG[policies][admission_window_us]`로 정의하며, 0이면 비활성(윈도잉 미사용), 0보다 크면 활성화한다.
+    - 적용 범위: Admission window는 제안된 배치의 "첫 번째 op"에만 적용한다. 후속 연쇄(예: READ→DOUT)는 proposer의 계획(start_hint 및 sequence_gap)에 따라 창 밖으로 나가더라도 허용한다.
     - 무충돌 슬롯 탐색: `ResourceManager`의 배제 윈도우/IO_bus 점유/래치 상태를 질의하여 윈도우 내 가장 이른 feasible time을 선택한다. feasible time이 없으면 해당 훅에서는 스킵(no-op)한다.
-    - 예외(즉시예약): `CFG[op_specs][op_name][instant_resv]=true`인 operation은 admission window 상한을 무시한다. Proposer가 now 이후 earliest feasible 시각을 제안하면 Scheduler는 이를 수락할 수 있다(동일 틱 원자성 준수, 검증 통과 조건 하).
+    - 예외(즉시예약): `CFG[op_specs][op_name][instant_resv]=true`인 operation은 admission window 상한을 무시하고 now 시각 기준으로 예약을 한다.
+    - 
     - 동일 틱 내 부분 스케줄 금지: 하나의 훅 처리 중 일부만 성공/일부 실패 상태로 분할 예약하지 않는다. 시퀀스 제안은 전부 수락되거나 전부 거절된다.
   - RNG 분기(재현성)
     - 실행 시작 시 전역 시드 고정. 각 훅은 `(global_seed, hook_counter)` 기반 스트림으로 분기하여 독립적이고 결정적인 난수 시퀀스를 사용한다. 시스템 시간은 사용하지 않는다.
@@ -271,7 +274,9 @@ class Operation:
     - 데이터: time, 'PHASE_HOOK', payload
     - payload: time, hook.die, hook.plane, 기타 operation 정보
     - 생성 시점: state duration 끝나기 전/후 각각 생성. 각 time은 random
-    - 주의: ISSUE state는 bus 제약으로 모든 operation이 거절되므로 PHASE_HOOK 생성하지 않음
+    - **주의**
+      - affect_state=false 인 operation 은 PHASE_HOOK 을 생성하지 않음.
+      - ISSUE/DATA_IN/DATA_OUT state 는 PHASE_HOOK 생성하지 않음.
   - OP_START
     - 목적: operation 시작 시점에 hook 생성, console에 시작 로그 출력
     - 데이터: time, 'OP_START', operation
@@ -329,7 +334,7 @@ class Operation:
           - 'same_page': 직전 operation의 page address와 동일
           - 'pgm_same_page': 직전 program operation의 page address와 동일
           - 'same_celltype': 직전 operation의 celltype 동일
-          - 'multi': 직전 operation이 multi-plane read였다면 해당 plane_set 모두에 DOUT 추가
+          - **중요**:'multi': 직전 operation이 multi-plane read였다면 해당 plane_set 의 plane 갯수만큼 DOUT 을 순차적으로 생성해야 함. 즉, READ 가 plane_set {0,1,2} 였다면, DOUT for 0,1,2 를 각 각 순차적으로 예약해야 함.
           - 'same_page_from_program_suspend': RECOVERY_READ 시에 직전에 입력됐던 ResourceManager.suspended_ops 의 target address 를 그대로 상속
           - sequence 내 operation 간 time 간격: `CFG[policies][sequence_gap]`
        2. 선택된 `sequence[probs]`의 key를 '.'로 split 후 두 번째 원소가 'SEQ'라면, `CFG[generate_seq_rules][key][sequences]` 원소들을 모두 합쳐 operation sequence 생성. 각 operation 별 생성 규칙은 `CFG[generate_seq_rules][key][op_base]`의 "inherit 생성 규칙" 사용
@@ -358,6 +363,8 @@ class Operation:
            - 규칙: ERASE_RESUME/PROGRAM_RESUME 은 state를 별도로 추가하지 않음 → 예외 루틴 처리
         4) 이후 ERASE_RESUME 예약 시, `Scheduler`는 RESUME 동작으로 인지하여 별도 루틴으로 처리: `ERASE_RESUME.CORE_BUSY`를 timeline에 예약하고, `suspended_ops`에 있던 operation을 `ERASE_RESUME` 종료 직후에 추가
     - RESET/RESET_LUN 스케쥴 시: RESET/RESET_LUN 의 경우 스케쥴된 시점 이후에 예약된 operation/op_state 를 제거하고 RESET/RESET_LUN 에 의한 state 만 등록함
+- RESET/RESET_ADD 동작에 대한 후속 처리
+  - RESET 수행 시 latch, suspend_state, cache_state, ongoing_ops, suspended_ops 는 모두 기본 값으로  돌아간다.
 - attributes
   - `CFG`
   - `addr_state`: (die,block) 별 현재 data 기록 상태. 예) -2: BAD, -1: ERASE, 0~pagesize-1: last_pgmed_page_address

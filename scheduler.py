@@ -90,6 +90,9 @@ class Scheduler:
         self._eq = EventQueue()
         # seed initial queue_refill event
         self._eq.push(self.now_us, "QUEUE_REFILL", payload={})
+        # round-robin cursor for QUEUE_REFILL hooks
+        self._rr_die: int = 0
+        self._rr_plane: int = 0
 
     # -----------------
     # Public API
@@ -136,7 +139,7 @@ class Scheduler:
                 reason = reason or rsn
         for (_t, _prio, _seq, kind, payload) in batch:
             if kind == "QUEUE_REFILL":
-                c, rb, rsn = self._propose_and_schedule(self.now_us, {"label": "DEFAULT"})
+                c, rb, rsn = self._propose_and_schedule(self.now_us, self._next_refill_hook())
                 # schedule next periodic refill
                 self._eq.push(self.now_us + self._queue_period(), "QUEUE_REFILL", payload={})
                 committed_total += c
@@ -161,6 +164,29 @@ class Scheduler:
     # -----------------
     def _queue_period(self) -> float:
         return float(((self._deps.cfg.get("policies", {}) or {}).get("queue_refill_period_us", 50.0)))
+
+    def _topology(self) -> tuple[int, int]:
+        topo = (self._deps.cfg.get("topology", {}) or {})
+        try:
+            dies = int(topo.get("dies", 1))
+        except Exception:
+            dies = 1
+        try:
+            planes = int(topo.get("planes", 1))
+        except Exception:
+            planes = 1
+        return (max(1, dies), max(1, planes))
+
+    def _next_refill_hook(self) -> Dict[str, Any]:
+        dies, planes = self._topology()
+        # build hook from current cursor
+        hook = {"label": "DEFAULT", "die": int(self._rr_die), "plane": int(self._rr_plane)}
+        # advance plane-major, wrap across dies
+        self._rr_plane += 1
+        if self._rr_plane >= planes:
+            self._rr_plane = 0
+            self._rr_die = (self._rr_die + 1) % dies
+        return hook
 
     # -----------------
     # Event handlers
@@ -273,15 +299,18 @@ class Scheduler:
         hook_plane = hook.get("plane") if isinstance(hook, dict) else None
         hook_label = hook.get("label") if isinstance(hook, dict) else None
 
-        for p in batch.ops:
+        for idx, p in enumerate(batch.ops):
             op = _proposer._build_op(d.cfg, p.op_name, p.targets)
             instant = _is_instant_base(d.cfg, p.base)
-            if (not instant) and W > 0 and p.start_us >= (now + W):
+            # Admission window is enforced only for the first op in the batch.
+            # Proposer already guarantees the first op is within window; follow that contract here.
+            if idx == 0 and (not instant) and W > 0 and p.start_us >= (now + W):
                 ok_all = False
                 self.metrics["last_reason"] = "window_exceed"
                 self.metrics["window_exceeds"] += 1
                 break
             r = d.rm.reserve(txn, op, p.targets, p.scope)
+            # print(f"{p.op_name}, {p.base}, {p.targets}, {p.scope} -> {r}") # DEBUG
             if not r.ok:
                 ok_all = False
                 self.metrics["last_reason"] = f"reserve_fail:{r.reason}"
@@ -305,6 +334,15 @@ class Scheduler:
             # accumulate logical latencies
             self.metrics["sum_wait_us"] += max(0.0, float(p.start_us) - now)
             self.metrics["sum_exec_us"] += max(0.0, float((r.end_us or p.start_us)) - float(p.start_us))
+            # Ensure sequential reservation within a transaction: advance txn.now_us to the
+            # end of the just-reserved op so follow-ups cannot overlap the current one.
+            # This keeps READ -> DOUT strictly ordered and avoids die-level multi exclusion.
+            try:
+                if r.end_us is not None:
+                    txn.now_us = quantize(float(r.end_us))
+            except Exception:
+                # Best-effort; if quantize or end_us fails, keep txn.now_us unchanged
+                pass
 
         if ok_all and reserved_any:
             d.rm.commit(txn)
@@ -339,6 +377,16 @@ class Scheduler:
         base = str(rec["base"]) 
         op = rec["op"]
         targets = rec["targets"]
+        # PHASE_HOOK generation guard per PRD v2 §5.3
+        # - Skip ISSUE/DATA_IN/DATA_OUT states for PHASE_HOOKs
+        # - Skip PHASE_HOOKs entirely when op base affect_state == false
+        #   (OP_START/OP_END events are still emitted as usual)
+        SKIP_STATES = {"ISSUE", "DATA_IN", "DATA_OUT"}
+        def _affects_state(cfg: Dict[str, Any], b: str) -> bool:
+            try:
+                return bool(((cfg.get("op_bases", {}) or {}).get(str(b), {}) or {}).get("affect_state", True))
+            except Exception:
+                return True
         # Policy: enrich READ-family PHASE_HOOK payload with plane_set and targets to guide non‑EPR ops (e.g., DOUT)
         def _hook_targets_enabled(cfg: Dict[str, Any]) -> bool:
             try:
@@ -367,6 +415,9 @@ class Scheduler:
         # OP_START and OP_END
         self._eq.push(start, "OP_START", payload={"base": base, "op_name": rec["op_name"], "targets": targets})
         self._eq.push(end, "OP_END", payload={"base": base, "op_name": rec["op_name"], "targets": targets})
+        # If this operation does not affect state, do not emit PHASE_HOOKs
+        if not _affects_state(self._deps.cfg, base):
+            return
         # State-driven PHASE_HOOKs (skip ISSUE)
         t = float(start)
         for seg in getattr(op, "states", []) or []:
@@ -375,7 +426,8 @@ class Scheduler:
             if dur <= 0:
                 continue
             t_end = t + dur
-            if str(name).upper() != "ISSUE":
+            # PRD v2 §5.3: skip ISSUE/DATA_IN/DATA_OUT for PHASE_HOOKs
+            if str(name).upper() not in SKIP_STATES:
                 pre_t = max(t, t_end - max(SIM_RES_US, 0.1 * dur))
                 pre_t = quantize(pre_t)
                 # one PHASE_HOOK per target plane

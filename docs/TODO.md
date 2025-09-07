@@ -101,7 +101,12 @@
   - 문제 상황: op_state_timeline*.csv 파일에서 op_name 이라고 표기된 field 가 실제 의미적으로는 op_base 여서, 정합성을 맞출 필요가 있음.
   - 개선 방향과 실험: 기본 코드, csv 출력 field, 시각화 코드 포함해서 모두 고치기
   - 평가 결과:
-  
+
+- [ ] 16. RESET/RSET_ADD 에 대한 state 값 reset
+  - 문제 상황: 
+  - 개선 방향과 실험:
+  - 평가 결과:
+
 ## Medium Priority
 
 <!-- 중요하지만 즉시 긴급하지는 않은 작업들 -->

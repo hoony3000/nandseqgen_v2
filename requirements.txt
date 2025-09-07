@@ -10,3 +10,4 @@ streamlit
 pyvis
 pandas
 bokeh>=3.4.0
+pytest

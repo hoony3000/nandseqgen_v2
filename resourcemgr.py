@@ -122,6 +122,32 @@ class ResourceManager:
         except Exception:
             self._ALLOWED_SINGLE_SINGLE_BASES = set(default_allowed)
 
+    # --- instant reservation helpers (bus-only immediate scheduling) ---
+    def _base_instant(self, base: str) -> bool:
+        """Return True when cfg marks this base as instant-reservable.
+
+        Semantics: proposer may bypass admission window; RM additionally allows
+        bus-only immediate reservation at now (or start_hint for feasibility),
+        skipping plane/die exclusivity and plane reservation windows.
+        """
+        try:
+            return bool(((self.cfg.get("op_bases", {}) or {}).get(base, {}) or {}).get("instant_resv", False))
+        except Exception:
+            return False
+
+    def _instant_scope_ok(self, scope: Scope, base: str) -> bool:
+        """Optional policy guard to restrict instant path by scope.
+
+        If cfg['policies']['instant_bus_only_scope_none'] is true, allow only
+        scope == Scope.NONE; otherwise allow all scopes declared instant.
+        """
+        try:
+            pol = (self.cfg.get("policies", {}) or {})
+            guard = bool(pol.get("instant_bus_only_scope_none", False))
+        except Exception:
+            guard = False
+        return (scope == Scope.NONE) if guard else True
+
     def _op_base(self, op: Any) -> str:
         try:
             return str(op.base.name)
@@ -338,8 +364,21 @@ class ResourceManager:
     def feasible_at(self, op: Any, targets: List[Address], start_hint: float, scope: Scope = Scope.PLANE_SET) -> Optional[float]:
         die = targets[0].die
         plane_set = [t.plane for t in targets]
-        t0 = quantize(max(start_hint, self._earliest_planescope(die, scope, plane_set)))
         base = self._op_base(op)
+        # instant path: bus-only validation, plane/die exclusivity bypass
+        if self._base_instant(base) and self._instant_scope_ok(scope, base):
+            t0 = quantize(start_hint)
+            end = quantize(t0 + self._total_duration(op))
+            if not self._bus_ok(op, t0):
+                return None
+            if not self._latch_ok(op, targets, t0, scope):
+                return None
+            ok, _reason = self._eval_rules(stage="feasible", op=op, targets=targets, scope=scope, start=t0, end=end, txn=None)
+            if not ok:
+                return None
+            return t0
+        # normal path
+        t0 = quantize(max(start_hint, self._earliest_planescope(die, scope, plane_set)))
         end = quantize(t0 + self._total_duration(op))
         if not self._planescope_ok(die, scope, plane_set, t0, end):
             return None
@@ -364,9 +403,38 @@ class ResourceManager:
         die = targets[0].die
         plane_set = [t.plane for t in targets]
         dur = float(duration_us) if duration_us is not None else self._total_duration(op)
+        base = self._op_base(op)
+        # instant path: schedule at txn.now_us with bus/latch/rules only; skip plane/die windows
+        if self._base_instant(base) and self._instant_scope_ok(scope, base):
+            start = quantize(txn.now_us)
+            end = quantize(start + dur)
+            if not self._bus_ok(op, start):
+                return Reservation(False, "bus", op, targets, None, None)
+            if not self._latch_ok(op, targets, start, scope):
+                return Reservation(False, "latch", op, targets, None, None)
+            ok, reason = self._eval_rules(stage="reserve", op=op, targets=targets, scope=scope, start=start, end=end, txn=txn)
+            if not ok:
+                return Reservation(False, (reason or "rules"), op, targets, None, None)
+            # Only reserve bus segments and state timeline; do NOT create plane or die exclusivity windows
+            for (off0, off1) in self._bus_segments(op):
+                txn.bus_resv.append((quantize(start + off0), quantize(start + off1)))
+            # Latch transitions (same semantics as normal path)
+            latch_kind = self._latch_kind_for_base(base)
+            if latch_kind:
+                if base in ("READ", "READ4K", "PLANE_READ", "PLANE_READ4K", "CACHE_READ", "PLANE_CACHE_READ", "COPYBACK_READ"):
+                    for t in targets:
+                        txn.latch_locks[(t.die, t.plane)] = _Latch(start_us=end, end_us=None, kind=latch_kind)
+                elif base in ("ONESHOT_PROGRAM_LSB", "ONESHOT_PROGRAM_CSB", "ONESHOT_PROGRAM_MSB"):
+                    for p in range(self.planes):
+                        txn.latch_locks[(die, p)] = _Latch(start_us=end, end_us=None, kind=latch_kind)
+            st_list = [(getattr(s, "name", "STATE"), float(getattr(s, "dur_us", 0.0))) for s in getattr(op, "states", [])]
+            for t in targets:
+                txn.st_ops.append((t.die, t.plane, base, st_list, start))
+            self._update_overlay_for_reserved(txn, base, targets)
+            return Reservation(True, None, op, targets, start, end)
+        # normal path
         start = quantize(max(txn.now_us, self._earliest_planescope(die, scope, plane_set)))
         end = quantize(start + dur)
-        base = self._op_base(op)
         if not self._planescope_ok(die, scope, plane_set, start, end):
             return Reservation(False, "planescope", op, targets, None, None)
         if not self._bus_ok(op, start):

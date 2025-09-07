@@ -94,7 +94,7 @@ class AddressManager:
         pagesize: int,
         init: int = GOOD,
         badlist=np.array([], dtype=int),
-        offset: int = 30,
+        offset: int = 0,
         num_dies: int = 1,
     ):
         """
