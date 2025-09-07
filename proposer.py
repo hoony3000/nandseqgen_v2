@@ -680,6 +680,78 @@ def _choose_op_name_for_base(
     return names[0]
 
 
+def _choose_op_name_for_base_uniform(
+    cfg: Dict[str, Any],
+    base: str,
+    multi: Optional[bool] = None,
+    celltype: Optional[str] = None,
+    rng: Any = None,
+    weights: Optional[Dict[str, float]] = None,
+) -> Optional[str]:
+    """Choose an op_name for the given base by uniform (or weighted) sampling.
+
+    - Filters candidates by optional `multi` and `celltype` hints using cfg.op_names.
+    - If `weights` is provided and contains positive weights for any of the filtered
+      candidates, samples proportionally to those weights.
+    - Otherwise, samples uniformly among filtered candidates.
+    - Uses provided `rng.random()` when available; falls back to `random.random()`.
+    """
+    names = _op_names_by_base(cfg).get(str(base), [])
+    if not names:
+        return None
+
+    def ok(n: str) -> bool:
+        spec = (cfg.get("op_names", {}) or {}).get(n, {}) or {}
+        if celltype is not None and str(spec.get("celltype")) not in (celltype, None, "None", "NONE"):
+            return False
+        if multi is not None and bool(spec.get("multi", False)) != bool(multi):
+            return False
+        return True
+
+    cand = [n for n in names if ok(n)]
+    if not cand:
+        return None
+
+    # Weighted sampling if weights provided for any candidate (positive)
+    keys: List[str] = []
+    wts: List[float] = []
+    if isinstance(weights, dict):
+        for n in cand:
+            try:
+                w = float(weights.get(n, 0.0))
+            except Exception:
+                w = 0.0
+            if w > 0.0:
+                keys.append(n)
+                wts.append(w)
+    if keys and wts and sum(wts) > 0.0:
+        tot = float(sum(wts))
+        try:
+            import random as _r
+            r = (rng.random() if hasattr(rng, "random") else _r.random()) * tot
+        except Exception:
+            from random import random as _rr
+            r = _rr() * tot
+        acc = 0.0
+        for n, w in zip(keys, wts):
+            acc += float(w)
+            if r <= acc:
+                return n
+        return keys[-1]
+
+    # Uniform among candidates
+    try:
+        import random as _r
+        r = (rng.random() if hasattr(rng, "random") else _r.random())
+    except Exception:
+        from random import random as _rr
+        r = _rr()
+    idx = int(r * len(cand))
+    if idx >= len(cand):
+        idx = len(cand) - 1
+    return cand[idx]
+
+
 def _seq_spec(cfg: Dict[str, Any], base: str) -> Optional[Dict[str, Any]]:
     return ((cfg.get("op_bases", {}) or {}).get(str(base), {}) or {}).get("sequence")
 
@@ -834,7 +906,10 @@ def _expand_sequence_once(
     # Inherit celltype when requested
     cell = _op_celltype(cfg, first_name) if ("same_celltype" in rules) else None
     multi = (len(first_targets) > 1) if ("multi" in rules) else None
-    name2 = _choose_op_name_for_base(cfg, base2, multi=multi, celltype=cell)
+    if _feature_enabled(cfg, "uniform_subseq_sampling", True):
+        name2 = _choose_op_name_for_base_uniform(cfg, base2, multi=multi, celltype=cell, rng=rng)
+    else:
+        name2 = _choose_op_name_for_base(cfg, base2, multi=multi, celltype=cell)
     if not name2:
         return None
     t2 = _targets_with_inherit(rules, first_targets)
@@ -905,6 +980,9 @@ def _expand_sequence_seq(
     # Celltype hint from first op when rule requests same_celltype
     first_cell = _op_celltype(cfg, first_name)
 
+    # Optional per-step name weights by base for this sequence key
+    name_weights_root = (rules_root.get("name_weights", {}) or {})
+
     for ent in seqs:
         if not isinstance(ent, dict) or not ent:
             continue
@@ -914,7 +992,18 @@ def _expand_sequence_seq(
         # Name selection hints
         multi_hint: Optional[bool] = (len(first_targets) > 1) if ("multi" in rules_i) else None
         cell_hint: Optional[str] = first_cell if ("same_celltype" in rules_i) else None
-        name_i = _choose_op_name_for_base(cfg, base_i, multi=multi_hint, celltype=cell_hint)
+        # Optional weights for this base at this choice key
+        weights_i = None
+        if _feature_enabled(cfg, "uniform_subseq_sampling", True):
+            try:
+                m = name_weights_root.get(base_i)
+                if isinstance(m, dict):
+                    weights_i = {str(k): float(v) for k, v in m.items()}
+            except Exception:
+                weights_i = None
+            name_i = _choose_op_name_for_base_uniform(cfg, base_i, multi=multi_hint, celltype=cell_hint, rng=rng, weights=weights_i)
+        else:
+            name_i = _choose_op_name_for_base(cfg, base_i, multi=multi_hint, celltype=cell_hint)
         if not name_i:
             continue
         # Targets via inherit rules using ctx
@@ -984,7 +1073,10 @@ def _expand_sequence_chain(
     rules = inherit.get(choice, [])
     cell = _op_celltype(cfg, first_name) if ("same_celltype" in rules) else None
     multi = (len(first_targets) > 1) if ("multi" in rules) else None
-    name2 = _choose_op_name_for_base(cfg, base2, multi=multi, celltype=cell)
+    if _feature_enabled(cfg, "uniform_subseq_sampling", True):
+        name2 = _choose_op_name_for_base_uniform(cfg, base2, multi=multi, celltype=cell, rng=rng)
+    else:
+        name2 = _choose_op_name_for_base(cfg, base2, multi=multi, celltype=cell)
     if not name2:
         return chain
     t2 = _targets_with_inherit(rules, first_targets)

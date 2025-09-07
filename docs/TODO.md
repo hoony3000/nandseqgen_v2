@@ -106,6 +106,22 @@
   - 문제 상황: 
   - 개선 방향과 실험:
   - 평가 결과:
+  
+- [ ] 17. operation chain 의 후속 operation 만들 시, 이전 operation 의 multi 조건을 제대로 상속받지 못함
+  - 문제 상황: 
+  - 개선 방향과 실험:
+  - 평가 결과:
+
+- [ ] 18. multi-plane 동작 예약 시 PHASE_HOOK 이 targets 갯수만큼 만드는 문제.
+  - 문제 상황: 
+  - 개선 방향과 실험:
+  - 평가 결과:
+
+- [ ] 19. operation 생성이 중간에 멈추는 현상 개선
+  - 문제 상황: 
+  - 개선 방향과 실험:
+  - 평가 결과:
+
 
 ## Medium Priority
 

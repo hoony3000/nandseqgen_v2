@@ -536,6 +536,11 @@ class ResourceManager:
                 ent = self._cache_program.get(die)
                 if ent and ent.end_us is None:
                     ent.end_us = end
+            elif b in ("ONESHOT_PROGRAM_MSB_23H", "ONESHOT_PROGRAM_EXEC_MSB"):
+                # One‑shot cache program should conclude by MSB EXEC completion as well
+                ent = self._cache_program.get(die)
+                if ent and ent.end_us is None:
+                    ent.end_us = end
             # SUSPEND bookkeeping
             if b == "ERASE_SUSPEND":
                 self._suspend_states[die] = _SuspState(die=die, state="ERASE_SUSPENDED", start_us=start)

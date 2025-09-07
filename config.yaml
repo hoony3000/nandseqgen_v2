@@ -32,6 +32,9 @@ features:
   phase_key_rm_fallback: true
   # Normalize reserved-time phase key for instant reservations
   phase_key_used_reserved_time: true
+  # Use uniform (or name_weights) sampling for subsequent op_name selection in sequences
+  # If false, fall back to legacy first-match selection
+  uniform_subseq_sampling: true
 
 bootstrap:
   enabled: false
@@ -197,6 +200,39 @@ op_bases:
         bus: false
         duration: 8.0
       - DATA_IN:
+        bus: false
+        duration: 8.0
+  TRANSFER_TO_CACHE_LSB:
+    scope: "DIE_WIDE"
+    affect_state: true
+    instant_resv: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        duration: 8.0
+  TRANSFER_TO_CACHE_CSB:
+    scope: "DIE_WIDE"
+    affect_state: true
+    instant_resv: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
+        bus: false
+        duration: 8.0
+  TRANSFER_TO_CACHE_MSB:
+    scope: "DIE_WIDE"
+    affect_state: true
+    instant_resv: false
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
+      - CORE_BUSY:
         bus: false
         duration: 8.0
   READ:
@@ -748,6 +784,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -802,6 +841,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -856,6 +898,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -909,6 +954,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -962,6 +1010,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -1067,6 +1118,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -1120,6 +1174,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -1173,6 +1230,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -1226,6 +1286,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -1279,6 +1342,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -1332,6 +1398,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -1385,6 +1454,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -1438,6 +1510,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -1546,6 +1621,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -1600,6 +1678,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     # - READ
     # - READ4K
     - CACHE_READ
@@ -1759,6 +1840,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -1813,6 +1897,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -1867,6 +1954,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -1921,6 +2011,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     - READ
     - RECOVERY_RD
     - READ4K
@@ -2028,6 +2121,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     # - READ
     # - READ4K
     - CACHE_READ
@@ -2095,6 +2191,12 @@ exclusions_by_op_state:
   ONESHOT_CACHE_PROGRAM.CORE_BUSY: ['on_program']
   ONESHOT_CACHE_PROGRAM.DATA_IN: ['on_oneshot_cache_program_datain']
   ONESHOT_CACHE_PROGRAM.END: ['after_oneshot_cache_program']
+  TRANSFER_TO_CACHE_LSB.CORE_BUSY: ['on_busy']
+  TRANSFER_TO_CACHE_LSB.END: ['after_read']
+  TRANSFER_TO_CACHE_CSB.CORE_BUSY: ['on_busy']
+  TRANSFER_TO_CACHE_CSB.END: ['after_read']
+  TRANSFER_TO_CACHE_MSB.CORE_BUSY: ['on_busy']
+  TRANSFER_TO_CACHE_MSB.END: ['after_read']
   READ.CORE_BUSY: ['on_read']
   READ.DATA_OUT: ['on_dout']
   READ.END: ['after_read']
@@ -2172,27 +2274,38 @@ exclusions_by_cache_state:
 # multi : 이전 read 동작이 multi-plane 이었다면 plane_set 의 수 만큼 dout 순차적으로 생성
 
 generate_seq_rules:
+  # Optional: per-step op_name weight overrides by base.
+  # When present under a specific .SEQ key, subsequent op_name selection for that
+  # step uses the provided weights instead of uniform among candidates.
+  #
+  # Example (commented): for CACHE_READ.SEQ, bias DOUT steps to a specific name.
+  # CACHE_READ.SEQ:
+  #   name_weights:
+  #     DOUT:
+  #       Enhanced_Random_Data_Output_Primary: 1.0
+  #       Enhanced_Random_Data_Output_Secondary: 0.0
+  #       Change_Read_Column_Random_Data_Output: 0.0
   CACHE_PROGRAM_SLC.SEQ:
     sequences:
       - CACHE_PROGRAM_SLC: ['inc_page', 'same_celltype'] # inheritance conditions
       - PROGRAM_SLC: ['inc_page', 'same_celltype']
   ONESHOT_PROGRAM_CSB.SEQ:
     sequences:
-      - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype']
-      - ONESHOT_PROGRAM_MSB_23h: ['same_page', 'same_celltype']
+      - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype', 'multi']
+      - ONESHOT_PROGRAM_MSB_23h: ['same_page', 'same_celltype', 'multi']
   ONESHOT_PROGRAM_CSB_CACHE.SEQ:
     sequences:
-      - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype']
-      - ONESHOT_CACHE_PROGRAM: ['same_page', 'same_celltype']
-      - ONESHOT_PROGRAM_LSB: ['inc_page', 'same_celltype']
-      - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype']
-      - ONESHOT_PROGRAM_MSB_23h: ['same_page', 'same_celltype']
+      - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype', 'multi']
+      - ONESHOT_CACHE_PROGRAM: ['same_page', 'same_celltype', 'multi']
+      - ONESHOT_PROGRAM_LSB: ['inc_page', 'same_celltype', 'multi']
+      - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype', 'multi']
+      - ONESHOT_PROGRAM_MSB_23h: ['same_page', 'same_celltype', 'multi']
   CACHE_READ.SEQ:
     sequences:
-      - CACHE_READ: ['same_page', 'same_celltype']
-      - DOUT: ['prev_page', 'multi', 'same_celltype']
-      - CACHE_READ_END: ['inc_page', 'same_celltype']
-      - DOUT: ['same_page', 'multi', 'same_celltype']
+      - CACHE_READ: ['same_page', 'same_celltype', 'multi']
+      - DOUT: ['prev_page', 'multi', 'same_celltype', 'multi']
+      - CACHE_READ_END: ['inc_page', 'same_celltype', 'multi']
+      - DOUT: ['same_page', 'multi', 'same_celltype', 'multi']
   COPYBACK_PROGRAM_SLC.SEQ:
     sequences:
       - COPYBACK_PROGRAM_SLC: ['none', 'same_celltype']
@@ -2841,21 +2954,21 @@ op_names:
     durations:
       ISSUE: 0.025
   Data_transfer_to_cache_for_1st_Page_TLC:
-    base: ONESHOT_PROGRAM_LSB
+    base: TRANSFER_TO_CACHE_LSB
     multi: false
     celltype: TLC
     durations:
       ISSUE: 0.05
       CORE_BUSY: *oneshot_program_trans_busy
   Data_transfer_to_cache_for_2nd_Page_TLC:
-    base: ONESHOT_PROGRAM_CSB
+    base: TRANSFER_TO_CACHE_CSB
     multi: false
     celltype: TLC
     durations:
       ISSUE: 0.05
       CORE_BUSY: *oneshot_program_trans_busy
   Data_transfer_to_cache_for_3rd_Page_TLC:
-    base: ONESHOT_PROGRAM_MSB
+    base: TRANSFER_TO_CACHE_MSB
     multi: false
     celltype: TLC
     durations:
@@ -3996,7 +4109,7 @@ op_names:
   Read_Cache_Sequential:
     base: CACHE_READ
     multi: false
-    celltype: NONE
+    celltype: SLC
     durations:
       ISSUE: 0.045
       CORE_BUSY: *cache_read_slc_busy
@@ -4592,11 +4705,20 @@ phase_conditional_overrides:
     ODTDISABLE: 0.0
     ODTENABLE: 0.0
     # Read_Status_Enhanced_70h: 1
-    Block_Erase_SLC: 0.1
-    Page_Program_SLC: 0.2
-    Read_SLC: 0.6
-    Read_Status_Enhanced_70h: 0.1
+    # Block_Erase_SLC: 0.1
+    Block_Erase_TLC: 0.1
+    # Block_Erase_Multi_Plane_ONFI_SLC: 0.1
+    # Page_Program_SLC: 0.2
+    One_Shot_PGM_LSB: 0.3 
+    # Page_Program_Multi_Plane_ONFI_SLC: 0.2
+    # Read_SLC: 0.6
+    Read_LSB: 0.2
+    Read_CSB: 0.2
+    Read_MSB: 0.2
+    # Read_Multi_Plane_ONFI_SLC: 0.6
+    # Read_Status_Enhanced_70h: 0.1
     # Enhanced_Random_Data_Output_Secondary: 1
+
 
   # global:
   #   RESET: 0.0001

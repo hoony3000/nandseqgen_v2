@@ -31,6 +31,7 @@ pyvenv.cfg
 
 # File system
 .DS_STORE
+.tmp_fn
 
 # Temporal outputs
 out_patterns/

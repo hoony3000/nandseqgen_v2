@@ -191,6 +191,9 @@ class Operation:
   - maxloop_seq: sequence 생성 시 최대 길이
   - maxtry_candidate
 - generate_seq_rules: sequence 생성 규칙
+  - 후속 op_name 선택은 기본적으로 후보군에서 균등(uniform) 샘플링을 사용한다.
+  - 예외적으로 특정 .SEQ 키에서 단계별 가중치를 둘 수 있다: `generate_seq_rules[<키>].name_weights[<op_base>][<op_name>] = weight`.
+    - 지정된 base 단계에 한해 가중치 분포로 선택하며, 미지정 시 균등이 기본이다.
 - latencies: operation 별 state latency 값
 - op_names: operation 별 parameter
 - phase_conditional: op_state 별 operation 샘플링 확률 정의 (autofill 필요)
@@ -273,7 +276,8 @@ class Operation:
     - 목적: 스케쥴된 operation이 timeline에 등록될 때 해당 operation의 모든 state에서 다른 operation input 유도
     - 데이터: time, 'PHASE_HOOK', payload
     - payload: time, hook.die, hook.plane, 기타 operation 정보
-    - 생성 시점: state duration 끝나기 전/후 각각 생성. 각 time은 random
+    - 생성 시점: state duration 끝나기 전/후 각각 생성. 끝나는 시점이 t_end 라고 하면, PHASE_HOOK 시점은 t_end - random1, t_end + random2 로 만든다.
+    - PHASE_HOOK 의 갯수는 targets 의 갯수와 무관하게 operation 당 전/후 1개씩 생성한다. 하지만, DOUT 을 후속 operation 으로 요하는 READ 계열은 READ/READ4K/PLANE_READ/PLANE_READ4K/CACHE_READ/PLANE_CACHE_READ/COPYBACK_READ/RECOVER_RD 는 t_end 전 시점 1개, 후 시점은 plane_set 갯수만큼 만드는데, 일정한 간격 `CFG[policies][sequence_gap]` 을 두고 만든다.
     - **주의**
       - affect_state=false 인 operation 은 PHASE_HOOK 을 생성하지 않음.
       - ISSUE/DATA_IN/DATA_OUT state 는 PHASE_HOOK 생성하지 않음.
