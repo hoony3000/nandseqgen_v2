@@ -330,12 +330,12 @@ class Operation:
   6) 샘플링된 op_name에 `CFG[op_specs][op_name][sequence]`가 존재하면 `sequence[probs]`로 샘플링하여 후속 operation 생성을 위한 "sequence 생성 루틴" 실행
      - sequence 생성 루틴
        1. 선택된 `sequence[probs]`의 key를 '.'로 split 후 두 번째 원소가 'SEQ'가 아니면, `CFG[groups_by_base][key]` 후보를 uniform 확률로 샘플링하여 후속 operation 선택. `CFG[op_specs][op_name][sequence][inherit][key]` 규칙을 반영해 최종 operation sequence 생성. 규칙은 "후속 operation inherit 생성 규칙"에 따름
-          - 'inc_page': 직전 operation의 page address에서 +1 (`AddressManager` 샘플링 시 `sequential=true`)
-          - 'same_page': 직전 operation의 page address와 동일
-          - 'pgm_same_page': 직전 program operation의 page address와 동일
+          - 'inc_page': 직전 operation의 targets 을 상속하고, 직전 operation의 page address에서 +1 (`AddressManager` 샘플링 시 `sequential=true`)
+          - 'same_page': 직전 operation의 targets 을 상속하고, 직전 operation의 page address와 동일
+          - 'pgm_same_page': 직전 program operation의 targets 을 상속하고, page address 는 동일
           - 'same_celltype': 직전 operation의 celltype 동일
           - **중요**:'multi': 직전 operation이 multi-plane read였다면 해당 plane_set 의 plane 갯수만큼 DOUT 을 순차적으로 생성해야 함. 즉, READ 가 plane_set {0,1,2} 였다면, DOUT for 0,1,2 를 각 각 순차적으로 예약해야 함.
-          - 'same_page_from_program_suspend': RECOVERY_READ 시에 직전에 입력됐던 ResourceManager.suspended_ops 의 target address 를 그대로 상속
+          - 'same_page_from_program_suspend': RECOVERY_RD 시에 직전에 입력됐던 ResourceManager.suspended_ops 의 target address 를 그대로 상속
           - sequence 내 operation 간 time 간격: `CFG[policies][sequence_gap]`
        2. 선택된 `sequence[probs]`의 key를 '.'로 split 후 두 번째 원소가 'SEQ'라면, `CFG[generate_seq_rules][key][sequences]` 원소들을 모두 합쳐 operation sequence 생성. 각 operation 별 생성 규칙은 `CFG[generate_seq_rules][key][op_base]`의 "inherit 생성 규칙" 사용
   7) 사전 검증과 재시도: 동일 슬롯(윈도우) 내 가안 배치를 구성해 `Validator` 체크(epr_dependencies, IO_bus_overlap, exclusion_window_violation, 래치 락, ODT/피처 상태)를 수행한다. 실패 시 `CFG[policies][maxtry_candidate]` 한도 내에서 대안 op_name/주소 조합을 재시도한다. 동일 틱 내 부분 스케줄은 금지한다.
@@ -352,6 +352,7 @@ class Operation:
 - 주의: `AddressManager`의 `addr_state`, `addr_mode_erase`, `addr_mode_pgm`는 현재 시점 참조에 사용. 미래 시점 값은 별도 관리
 - state_timeline 관리 방법
   - operation 스케쥴 시 operation의 모든 `logic_state`를 `op_state_timeline`에 등록한다.
+    - 예외적으로 affect_state=false 인 경우 op_state_timeline 에 등록하지 않는다.
   - `.END`는 타임라인에 실제 세그먼트로 추가하지 않는다(유한·비중첩 불변성 유지). 대신 분석/집계 시점에 가상 분류를 사용한다(아래 `phase_key_at` 참조).
   - 목적: "달성 지표" 중 `op_state x op_name x input_time` 다양성 확보는 타임라인 내 실존 세그먼트로 계산하고, 제안 시점 분포는 가상 END 분류(3.7)로 계산한다.
   - 예외 operation

@@ -52,6 +52,10 @@ class ResourceView:
 
     def feasible_at(self, op: Any, targets: List[Address], start_hint: float, scope: Scope = Scope.PLANE_SET) -> Optional[float]:
         raise NotImplementedError
+    # Optional method provided by ResourceManager; used opportunistically when present
+    # def phase_key_at(self, die: int, plane: int, t: float, default: str = "DEFAULT", derive_end: bool = True, prefer_end_on_boundary: bool = True, exclude_issue: bool = True) -> str: ...
+    # Optional: suspended ops snapshot for inherit rules (RECOVERY_RD.SEQ)
+    # def suspended_ops(self, die: Optional[int] = None) -> List[Dict[str, Any]]: ...
 
 
 class AddressSampler:
@@ -129,6 +133,13 @@ def _pol_maxtry(cfg: Dict[str, Any]) -> int:
 
 def _pol_maxplanes(cfg: Dict[str, Any]) -> int:
     return int(_cfg_policies(cfg).get("maxplanes", 4))
+
+
+def _pol_split_dout_per_plane(cfg: Dict[str, Any]) -> bool:
+    try:
+        return bool(_cfg_policies(cfg).get("split_dout_per_plane", True))
+    except Exception:
+        return True
 
 
 def _base_scope(cfg: Dict[str, Any], base: str) -> Scope:
@@ -702,6 +713,73 @@ def _seq_inherit(seq: Dict[str, Any]) -> Dict[str, List[str]]:
                     out[str(k)] = [str(x) for x in v]
     return out
 
+@dataclass(frozen=True)
+class SeqCtx:
+    first_name: str
+    first_targets: List[Address]
+    last_step_targets: List[Address]
+    last_program_targets: Optional[List[Address]]
+    suspended_program_targets: Optional[List[Address]]
+    die: Optional[int] = None
+
+
+def _apply_inherit_rules(rules: List[str], prev_targets: List[Address], ctx: SeqCtx) -> List[Address]:
+    """Apply extended inherit rules to produce new targets.
+
+    Supported rules:
+    - same_plane: implicit (keep prev die/plane/block)
+    - same_page: keep prev page
+    - inc_page: page + 1; None -> 0
+    - prev_page: page - 1; None -> 0; lower bound 0
+    - pgm_same_page: inherit page from ctx.last_program_targets; fallback to prev_targets page
+    - same_page_from_program_suspend: page from ctx.suspended_program_targets; fallback to prev_targets
+    - same_celltype, multi, none: ignored here (handled by name selection/scheduling)
+    """
+    if not rules:
+        return list(prev_targets)
+
+    # Determine base page source
+    def _page_from(lst: Optional[List[Address]]) -> Optional[int]:
+        if not lst:
+            return None
+        try:
+            p = lst[0].page
+            return int(p) if p is not None else None
+        except Exception:
+            return None
+
+    use_same_page = ("same_page" in rules)
+    use_inc = ("inc_page" in rules)
+    use_prev = ("prev_page" in rules)
+    use_pgm_same = ("pgm_same_page" in rules)
+    use_from_suspend = ("same_page_from_program_suspend" in rules)
+
+    # Determine target page according to precedence: suspend > pgm_same > same/inc/prev
+    base_page: Optional[int] = None
+    if use_from_suspend:
+        base_page = _page_from(ctx.suspended_program_targets)
+    if base_page is None and use_pgm_same:
+        base_page = _page_from(ctx.last_program_targets)
+
+    out: List[Address] = []
+    for t in prev_targets:
+        page = t.page
+        # External page source overrides
+        new_page: Optional[int]
+        if base_page is not None:
+            new_page = int(base_page)
+        else:
+            if use_inc:
+                new_page = 0 if page is None else int(page) + 1
+            elif use_prev:
+                new_page = 0 if page is None else max(0, int(page) - 1)
+            elif use_same_page:
+                new_page = int(page) if page is not None else None
+            else:
+                new_page = page
+        out.append(Address(die=t.die, plane=t.plane, block=t.block, page=new_page))
+    return out
+
 
 def _targets_with_inherit(rules: List[str], targets: List[Address]) -> List[Address]:
     if not rules:
@@ -763,6 +841,157 @@ def _expand_sequence_once(
     return name2, t2
 
 
+def _expand_sequence_seq(
+    cfg: Dict[str, Any],
+    choice_key: str,
+    first_name: str,
+    first_targets: List[Address],
+    hook: Dict[str, Any],
+    res_view: ResourceView,
+    rng: Any,
+) -> List[Tuple[str, List[Address]]]:
+    """Expand a .SEQ choice key into a full op chain using generate_seq_rules.
+
+    Returns list of (op_name, targets) for each step defined in the sequence rules.
+    The returned list does not include (first_name, first_targets); caller prepends that.
+    """
+    rules_root = (cfg.get("generate_seq_rules", {}) or {}).get(str(choice_key), {}) or {}
+    seqs = list(rules_root.get("sequences", []) or [])
+    if not seqs:
+        return []
+
+    # Build context
+    try:
+        die_hint = first_targets[0].die if first_targets else None
+    except Exception:
+        die_hint = None
+    susp_prog_targets: Optional[List[Address]] = None
+    try:
+        fn = getattr(res_view, "suspended_ops", None)
+        if callable(fn) and die_hint is not None:
+            lst = fn(int(die_hint))
+            # pick last PROGRAM-like entry
+            for rec in (list(lst) if isinstance(lst, list) else []):
+                pass
+            # iterate from end
+            if isinstance(lst, list):
+                for i in range(len(lst) - 1, -1, -1):
+                    rec = lst[i] or {}
+                    b = str(rec.get("base", ""))
+                    if "PROGRAM" in b and ("SUSPEND" not in b) and ("RESUME" not in b):
+                        t = rec.get("targets") or []
+                        if t:
+                            # normalize Address objects
+                            susp_prog_targets = [Address(tt.die, tt.plane, tt.block, tt.page) for tt in t]
+                            break
+    except Exception:
+        susp_prog_targets = None
+
+    ctx = SeqCtx(
+        first_name=str(first_name),
+        first_targets=list(first_targets),
+        last_step_targets=list(first_targets),
+        last_program_targets=(list(first_targets) if ("PROGRAM" in str(((cfg.get("op_names", {}) or {}).get(first_name, {}) or {}).get("base", ""))) else None),
+        suspended_program_targets=susp_prog_targets,
+        die=die_hint,
+    )
+
+    chain: List[Tuple[str, List[Address]]] = []
+
+    def _is_program_base(b: str) -> bool:
+        bb = str(b)
+        return ("PROGRAM" in bb) and ("SUSPEND" not in bb) and ("RESUME" not in bb)
+
+    # Celltype hint from first op when rule requests same_celltype
+    first_cell = _op_celltype(cfg, first_name)
+
+    for ent in seqs:
+        if not isinstance(ent, dict) or not ent:
+            continue
+        base_i, rules_i = next(iter(ent.items()))
+        base_i = str(base_i)
+        rules_i = [str(x) for x in (rules_i or [])]
+        # Name selection hints
+        multi_hint: Optional[bool] = (len(first_targets) > 1) if ("multi" in rules_i) else None
+        cell_hint: Optional[str] = first_cell if ("same_celltype" in rules_i) else None
+        name_i = _choose_op_name_for_base(cfg, base_i, multi=multi_hint, celltype=cell_hint)
+        if not name_i:
+            continue
+        # Targets via inherit rules using ctx
+        prev_t = ctx.last_step_targets
+        t_i = _apply_inherit_rules(rules_i, prev_t, ctx)
+        chain.append((name_i, t_i))
+        # Update context
+        ctx = SeqCtx(
+            first_name=ctx.first_name,
+            first_targets=ctx.first_targets,
+            last_step_targets=list(t_i),
+            last_program_targets=(list(t_i) if _is_program_base(base_i) else ctx.last_program_targets),
+            suspended_program_targets=ctx.suspended_program_targets,
+            die=ctx.die,
+        )
+    return chain
+
+
+def _expand_sequence_chain(
+    cfg: Dict[str, Any],
+    first_name: str,
+    first_targets: List[Address],
+    hook: Dict[str, Any],
+    res_view: ResourceView,
+    rng: Any,
+) -> List[Tuple[str, List[Address]]]:
+    """Expand sequence from the first op to full chain when applicable.
+
+    - If no sequence: returns [(first_name, first_targets)]
+    - If sequence picks a non-.SEQ symbol: append one step using op_bases[base].sequence.inherit
+    - If sequence picks *.SEQ: expand using generate_seq_rules[choice].sequences
+    """
+    base1 = str(((cfg.get("op_names", {}) or {}).get(first_name, {}) or {}).get("base"))
+    seq = _seq_spec(cfg, base1)
+    if not seq:
+        return [(first_name, first_targets)]
+    probs = _seq_probs(seq)
+    if not probs:
+        return [(first_name, first_targets)]
+    inherit = _seq_inherit(seq)
+    # Weighted pick
+    keys = list(probs.keys())
+    weights = [float(probs[k]) for k in keys]
+    tot = sum(weights)
+    if tot <= 0:
+        return [(first_name, first_targets)]
+    acc = 0.0
+    try:
+        r = (rng.random() if hasattr(rng, "random") else __import__("random").random()) * tot
+    except Exception:
+        from random import random as _r
+        r = _r() * tot
+    choice = keys[-1]
+    for k, w in zip(keys, weights):
+        acc += w
+        if r <= acc:
+            choice = k
+            break
+
+    chain: List[Tuple[str, List[Address]]] = [(first_name, first_targets)]
+    if str(choice).endswith(".SEQ"):
+        chain.extend(_expand_sequence_seq(cfg, str(choice), first_name, first_targets, hook, res_view, rng))
+        return chain
+
+    # Non-SEQ single step
+    base2 = str(choice).split(".")[0]
+    rules = inherit.get(choice, [])
+    cell = _op_celltype(cfg, first_name) if ("same_celltype" in rules) else None
+    multi = (len(first_targets) > 1) if ("multi" in rules) else None
+    name2 = _choose_op_name_for_base(cfg, base2, multi=multi, celltype=cell)
+    if not name2:
+        return chain
+    t2 = _targets_with_inherit(rules, first_targets)
+    chain.append((name2, t2))
+    return chain
+
+
 def _preflight_schedule(
     now: float,
     cfg: Dict[str, Any],
@@ -772,6 +1001,45 @@ def _preflight_schedule(
     if not ops:
         return None
     planned: List[ProposedOp] = []
+    # Optional DOUT/CACHE_READ_END plane-wise split for multi-plane READ families
+    try:
+        if _pol_split_dout_per_plane(cfg) and len(ops) >= 2:
+            name0, targets0 = ops[0]
+            planes_order: List[int] = []
+            seenp = set()
+            for t in (targets0 or []):
+                if t.plane not in seenp:
+                    planes_order.append(t.plane)
+                    seenp.add(t.plane)
+            if len(planes_order) > 1:
+                split_bases = {"DOUT", "DOUT4K", "CACHE_READ_END", "PLANE_CACHE_READ_END"}
+                ops2: List[Tuple[str, List[Address]]] = [ops[0]]
+                for (name_i, targets_i) in ops[1:]:
+                    base_i = str(((cfg.get("op_names", {}) or {}).get(name_i, {}) or {}).get("base", ""))
+                    if base_i in split_bases:
+                        # split by original first plane order
+                        for pl in planes_order:
+                            # pick all targets for this plane (usually 1)
+                            t_pl = [Address(t.die, t.plane, t.block, t.page) for t in (targets_i or []) if t.plane == pl]
+                            if not t_pl and targets_i:
+                                # fallback: project from first_targets item for plane with same block/page as available
+                                for tt in targets_i:
+                                    if tt.plane == pl:
+                                        t_pl = [Address(tt.die, tt.plane, tt.block, tt.page)]
+                                        break
+                            if t_pl:
+                                ops2.append((name_i, t_pl))
+                    else:
+                        ops2.append((name_i, list(targets_i or [])))
+                if len(ops2) != len(ops):
+                    ops = ops2
+                    try:
+                        _log(f"[proposer] split_dout_per_plane applied planes={planes_order} total_ops={len(ops)}")
+                    except Exception:
+                        pass
+    except Exception:
+        # Fallback to original ops on any failure
+        pass
     # First op determines initial start; use feasible_at with hint=now
     name0, targets0 = ops[0]
     op0 = _build_op(cfg, name0, targets0)
@@ -796,7 +1064,29 @@ def _preflight_schedule(
     return planned
 
 
-def _phase_key(hook: Dict[str, Any], res: ResourceView, now_us: float) -> str:
+def _feature_enabled(cfg: Optional[Dict[str, Any]], name: str, default: bool = True) -> bool:
+    try:
+        if not cfg:
+            return bool(default)
+        feats = (cfg.get("features", {}) or {})
+        v = feats.get(name)
+        if v in (None, "None"):
+            return bool(default)
+        return bool(v)
+    except Exception:
+        return bool(default)
+
+
+def _parse_label_to_key(lbl: str) -> Optional[str]:
+    s = str(lbl or "").strip()
+    if "." in s:
+        parts = s.split(".")
+        if len(parts) >= 2 and parts[0] and parts[1]:
+            return f"{parts[0]}.{parts[1]}"
+    return None
+
+
+def _phase_key(cfg: Optional[Dict[str, Any]], hook: Dict[str, Any], res: ResourceView, now_us: float) -> str:
     # Hook may include die/plane and a label; prefer RM state at now
     die = int(hook.get("die", 0))
     plane = int(hook.get("plane", 0))
@@ -805,16 +1095,25 @@ def _phase_key(hook: Dict[str, Any], res: ResourceView, now_us: float) -> str:
     if st:
         key = str(st)
     else:
-        # Fallback to hook label if formatted as BASE.STATE
-        lbl = str(hook.get("label", "")).strip()
-        if "." in lbl:
-            parts = lbl.split(".")
-            if len(parts) >= 2:
-                key = f"{parts[0]}.{parts[1]}"
-            else:
-                key = "DEFAULT"
-        else:
-            key = "DEFAULT"
+        # 1) Fallback to hook label if formatted as BASE.STATE
+        key = _parse_label_to_key(hook.get("label", "")) or "DEFAULT"
+        # 2) If still DEFAULT and feature enabled, use RM virtual phase key
+        if key == "DEFAULT" and _feature_enabled(cfg, "phase_key_rm_fallback", True):
+            # Use RM's virtual END derivation when op_state is None
+            rm_key: Optional[str] = None
+            try:
+                # mypy/runtime: ResourceManager provides this method; duck-typed here
+                rm_key = getattr(res, "phase_key_at")(die, plane, float(now_us), default="DEFAULT", derive_end=True, prefer_end_on_boundary=True, exclude_issue=True)  # type: ignore[attr-defined]
+            except Exception:
+                rm_key = None
+            if isinstance(rm_key, str) and rm_key.strip():
+                key = rm_key
+                try:
+                    _log(
+                        f"[proposer] phase_key_fallback die={die} plane={plane} now={float(now_us):.3f} chosen_key={key} reason=op_state_none"
+                    )
+                except Exception:
+                    pass
     try:
         # Debug: trace how phase key is derived
         _log(
@@ -983,7 +1282,7 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
     Returns None if no candidate fits the admission window.
     """
     # Phase distribution
-    key = _phase_key(hook, res_view, now)
+    key = _phase_key(cfg, hook, res_view, now)
     dist = _phase_dist(cfg, key)
     if not dist:
         return None
@@ -1104,11 +1403,8 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
             except Exception:
                 pass
             continue
-        # Sequence expansion (one step) + preflight plan
-        seq_next = _expand_sequence_once(cfg, name, targets, rng)
-        ops_chain: List[Tuple[str, List[Address]]] = [(name, targets)]
-        if seq_next:
-            ops_chain.append(seq_next)
+        # Sequence expansion (multi-step for *.SEQ) + preflight plan
+        ops_chain: List[Tuple[str, List[Address]]] = _expand_sequence_chain(cfg, name, targets, hook, res_view, rng)
         planned = _preflight_schedule(now, cfg, res_view, ops_chain)
         if not planned:
             attempts.append({"name": name, "prob": prob, "reason": "preflight_fail", "t0": float(t0)})

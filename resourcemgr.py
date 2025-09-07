@@ -122,6 +122,20 @@ class ResourceManager:
         except Exception:
             self._ALLOWED_SINGLE_SINGLE_BASES = set(default_allowed)
 
+    def _affects_state(self, base: str) -> bool:
+        """Return True when cfg marks this base as affecting op_state timeline.
+
+        Safe lookup with conservative default True when unspecified/malformed.
+        """
+        try:
+            cfg = self.cfg or {}
+            op_bases = (cfg.get("op_bases", {}) or {})
+            b = str(base)
+            ent = (op_bases.get(b, {}) or {})
+            return bool(ent.get("affect_state", True))
+        except Exception:
+            return True
+
     # --- instant reservation helpers (bus-only immediate scheduling) ---
     def _base_instant(self, base: str) -> bool:
         """Return True when cfg marks this base as instant-reservable.
@@ -494,7 +508,9 @@ class ResourceManager:
         for k, v in txn.latch_locks.items():
             self._latch[k] = v
         for (die, plane, base, st_list, start) in txn.st_ops:
-            self._st.reserve_op(die, plane, base, st_list, start)
+            # PRD v2 §5.4: skip op_state timeline segments for affect_state == false
+            if self._affects_state(base):
+                self._st.reserve_op(die, plane, base, st_list, start)
             # Opportunistic minimal state hooks for ODT/CACHE/SUSPEND bookkeeping
             end = quantize(start + sum(float(d) for (_, d) in st_list))
             b = str(base).upper()

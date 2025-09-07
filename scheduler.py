@@ -299,6 +299,9 @@ class Scheduler:
         hook_plane = hook.get("plane") if isinstance(hook, dict) else None
         hook_label = hook.get("label") if isinstance(hook, dict) else None
 
+        # Reset last reserved records for observability/testing
+        self.metrics["last_reserved_records"] = []
+
         for idx, p in enumerate(batch.ops):
             op = _proposer._build_op(d.cfg, p.op_name, p.targets)
             instant = _is_instant_base(d.cfg, p.base)
@@ -316,7 +319,7 @@ class Scheduler:
                 self.metrics["last_reason"] = f"reserve_fail:{r.reason}"
                 break
             reserved_any = True
-            resv_records.append({
+            rec: Dict[str, Any] = {
                 "base": p.base,
                 "op_name": p.op_name,
                 "targets": list(p.targets),
@@ -324,13 +327,49 @@ class Scheduler:
                 "start_us": float(r.start_us or p.start_us),
                 "end_us": float(r.end_us or (p.start_us)),
                 "op": op,
+                # propose-time key as reported by proposer
                 "phase_key": pk,
                 # proposal-time context (analysis/export only)
                 "propose_now": float(now),
                 "phase_hook_die": (None if hook_die is None else int(hook_die)),
                 "phase_hook_plane": (None if hook_plane is None else int(hook_plane)),
                 "phase_hook_label": (None if hook_label is None else str(hook_label)),
-            })
+            }
+            # Reserved-time phase key normalization (feature-guarded, prioritize instant bases)
+            try:
+                feats = (d.cfg.get("features", {}) or {})
+                guard = feats.get("phase_key_used_reserved_time", True)
+            except Exception:
+                guard = True
+            if guard and instant:
+                try:
+                    t0_used = float(rec["start_us"])
+                    # use first target's die/plane as the reference
+                    if p.targets:
+                        die0 = int(p.targets[0].die)
+                        plane0 = int(p.targets[0].plane)
+                    else:
+                        die0 = int(hook_die) if hook_die is not None else 0
+                        plane0 = int(hook_plane) if hook_plane is not None else 0
+                    used_key = d.rm.phase_key_at(die0, plane0, t0_used)
+                    rec["phase_key_used"] = used_key
+                except Exception:
+                    # best-effort: skip if RM lacks API or errors
+                    pass
+            resv_records.append(rec)
+            # Public metrics: expose a thin copy for observability/tests
+            try:
+                pub = {
+                    "base": rec["base"],
+                    "op_name": rec["op_name"],
+                    "start_us": rec["start_us"],
+                    "end_us": rec["end_us"],
+                    "phase_key": rec.get("phase_key"),
+                    "phase_key_used": rec.get("phase_key_used"),
+                }
+                self.metrics["last_reserved_records"].append(pub)
+            except Exception:
+                pass
             # accumulate logical latencies
             self.metrics["sum_wait_us"] += max(0.0, float(p.start_us) - now)
             self.metrics["sum_exec_us"] += max(0.0, float((r.end_us or p.start_us)) - float(p.start_us))

@@ -17,13 +17,21 @@ celltypes:
 
 policies:
   admission_window: 0.5
-  queue_refill_period_us: 50.0
+  queue_refill_period_us: 500.0
   topN: 4
   epsilon_greedy: 0.0
   maxplanes: 4
   maxloop_seq: 4
   maxtry_candidate: 4
   sequence_gap: 1.0
+  split_dout_per_plane: true
+
+# Feature flags (safe defaults)
+features:
+  # Use ResourceManager.virtual END key fallback when op_state is None on QUEUE_REFILL
+  phase_key_rm_fallback: true
+  # Normalize reserved-time phase key for instant reservations
+  phase_key_used_reserved_time: true
 
 bootstrap:
   enabled: false
@@ -4431,40 +4439,6 @@ op_names:
       ISSUE: 0.12
       CORE_BUSY: *read_16k_slc_busy
       DOUT: *read_16k_dout
-
-phase_conditional: {}
-  # to be autofilled (아래는 예시)
-  # ERASE.CORE_BUSY:
-  #   op_name1: 0.01
-  #   op_name2: 0.01
-  #   ...
-  # ERASE.END:
-  #   op_name1: 0.01
-  #   op_name2: 0.01
-  #   ...
-phase_conditional_overrides:
-  # op_base->value overrides for all op_states
-  global:
-    RESET: 0.0001
-    RESET_LUN: 0.0001
-    ERASE_SUSPEND: 0.0001
-    PROGRAM_SUSPEND: 0.0001
-    READ: 0.01
-    READ4K: 0.01
-    PLANE_READ: 0.05
-    PLANE_READ4K: 0.05
-  # DEFAULT:
-  #   ERASE_SUSPEND: 0.0
-  #   ERASE_RESUME: 0.0
-  #   PROGRAM_SUSPEND: 0.0
-  #   PROGRAM_RESUME: 0.0
-    
-  # op_base->value overrides for specific op_states
-  # ERASE.CORE_BUSY:
-  #   op_name1: 0.01
-  #   op_name2: 0.01
-  #   ...
-
 # -----------------------------
 # Validator Constraints & Rules
 # -----------------------------
@@ -4482,10 +4456,10 @@ constraints:
   # Enable/disable optional rule categories or specific rules
   # Available values include category names (state_forbid, addr_dep)
   # and individual rules (state_forbid_suspend, state_forbid_odt, state_forbid_cache).
-  enabled_rules: []  # e.g., ["state_forbid", "addr_dep"]
+  enabled_rules: ["state_forbid", "addr_dep"]  # default: enable state+address rules
 
   # Enable EPR integration (addr_dep). When false, addr_dep is a no-op.
-  enable_epr: false
+  enable_epr: true
 
   # EPR-specific options
   epr:
@@ -4550,3 +4524,138 @@ constraints:
       gated: true
       reason_codes: [epr_dep]
       description: "Address-dependent rules via EPR callback (check_epr). See constraints.epr.subcodes for details."
+
+phase_conditional: {}
+  # to be autofilled (아래는 예시)
+  # ERASE.CORE_BUSY:
+  #   op_name1: 0.01
+  #   op_name2: 0.01
+  #   ...
+  # ERASE.END:
+  #   op_name1: 0.01
+  #   op_name2: 0.01
+  #   ...
+phase_conditional_overrides:
+  # op_base->value overrides for all op_states
+  global:
+    ETC: 0.0
+    ERASE: 0.0
+    DSL_VTH_CHECK: 0.0
+    PROGRAM_SLC: 0.0
+    ALLWL_PROGRAM: 0.0
+    CACHE_PROGRAM_SLC: 0.0
+    ONESHOT_PROGRAM_LSB: 0.0
+    ONESHOT_PROGRAM_CSB: 0.0
+    ONESHOT_PROGRAM_MSB: 0.0
+    ONESHOT_PROGRAM_MSB_23h: 0.0
+    ONESHOT_PROGRAM_EXEC_MSB: 0.0
+    ONESHOT_CACHE_PROGRAM: 0.0
+    READ: 0.0
+    RECOVERY_RD: 0.0
+    READ4K: 0.0
+    CACHE_READ: 0.0
+    CACHE_READ_END: 0.0
+    PLANE_READ: 0.0
+    PLANE_READ4K: 0.0
+    PLANE_CACHE_READ: 0.0
+    PLANE_CACHE_READ_END: 0.0
+    COPYBACK_READ: 0.0
+    COPYBACK_PROGRAM_SLC: 0.0
+    ONESHOT_COPYBACK_PROGRAM_LSB: 0.0
+    ONESHOT_COPYBACK_PROGRAM_CSB: 0.0
+    ONESHOT_COPYBACK_PROGRAM_MSB: 0.0
+    ONESHOT_COPYBACK_PROGRAM_EXEC_MSB: 0.0
+    DOUT: 0.0
+    DOUT4K: 0.0
+    DATAIN: 0.0
+    SR: 0.0
+    SR_ADD: 0.0
+    CAMREAD: 0.0
+    CAMREAD_LUN: 0.0
+    ERASE_SUSPEND: 0.0
+    ERASE_RESUME: 0.0
+    PROGRAM_SUSPEND: 0.0
+    PROGRAM_RESUME: 0.0
+    TRAINING: 0.0
+    READID: 0.0
+    SETPARA: 0.0
+    GETPARA: 0.0
+    PLANE_SETPARA: 0.0
+    SETFEATURE: 0.0
+    GETFEATURE: 0.0
+    SETFEATURE_LUN: 0.0
+    GETFEATURE_LUN: 0.0
+    RESET: 0.0
+    RESET_LUN: 0.0
+    TEMPSENSOR: 0.0
+    ZQCAL: 0.0
+    ODTDISABLE: 0.0
+    ODTENABLE: 0.0
+    # Read_Status_Enhanced_70h: 1
+    Block_Erase_SLC: 0.1
+    Page_Program_SLC: 0.2
+    Read_SLC: 0.6
+    Read_Status_Enhanced_70h: 0.1
+    # Enhanced_Random_Data_Output_Secondary: 1
+
+  # global:
+  #   RESET: 0.0001
+  #   RESET_LUN: 0.0001
+  #   ERASE_SUSPEND: 0.0001
+  #   PROGRAM_SUSPEND: 0.0001
+  #   READ: 0.01
+  #   READ4K: 0.01
+  #   PLANE_READ: 0.05
+  #   PLANE_READ4K: 0.05
+
+  READ.DATA_OUT:
+    DOUT: 1
+  READ.END:
+    DOUT: 1
+  READ4K.DATA_OUT:
+    DOUT: 1
+  READ4K.END:
+    DOUT: 1
+  PLANE_READ.DATA_OUT:
+    DOUT: 1
+  PLANE_READ.END:
+    DOUT: 1
+  PLANE_READ4K.DATA_OUT:
+    DOUT: 1
+  PLANE_READ4K.END:
+    DOUT: 1
+  CACHE_READ.DATA_OUT:
+    DOUT: 1
+  CACHE_READ.END:
+    CACHE_READ_END: 1
+    DOUT: 1
+  PLANE_CACHE_READ.DATA_OUT:
+    DOUT: 1
+  PLANE_CACHE_READ.END:
+    DOUT: 1
+  COPYBACK_READ.DATA_OUT:
+    DOUT: 1
+  COPBYBACK_READ.END:
+    DOUT: 1
+  RECOVERY_RD.DATA_OUT:
+    DOUT: 1
+  RECOVERY_RD.END:
+    DOUT: 1
+
+  # DEFAULT:
+  #   Read_Status_Enhanced_70h: 1
+  #   Block_Erase_SLC: 1
+  #   Page_Program_SLC: 1
+  #   Read_SLC: 1
+  #   DOUT: 1
+
+    # ERASE_SUSPEND: 0.0
+    # ERASE_RESUME: 0.0
+    # PROGRAM_SUSPEND: 0.0
+    # PROGRAM_RESUME: 0.0
+    
+  # op_base->value overrides for specific op_states
+  # ERASE.CORE_BUSY:
+  #   op_name1: 0.01
+  #   op_name2: 0.01
+  #   ...
