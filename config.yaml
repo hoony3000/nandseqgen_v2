@@ -1072,7 +1072,8 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   after_read: []
-    # - DEFAULT
+    # - ETC
+    # - NOP
     # - ERASE
     # - PROGRAM_SLC
     # - ALLWL_PROGRAM
@@ -2210,7 +2211,7 @@ exclusion_groups:
     - PROGRAM_RESUME
 
 exclusions_by_op_state:
- ERASE.CORE_BUSY: ['on_erase']
+  ERASE.CORE_BUSY: ['on_erase']
   ERASE.END: []
   DSL_VTH_CHECK.CORE_BUSY: ['on_busy']
   DSL_VTH_CHECK.END: []
@@ -3273,7 +3274,7 @@ op_names:
     celltype: TLC
     durations:
       ISSUE: 9.8244
-      CORE_BUSY: *oneshot_program_trans_busy
+      CORE_BUSY: *oneshot_program_tlc_busy
   One_Shot_PGM_Multi_Plane_Execution_MSB:
     base: ONESHOT_PROGRAM_EXEC_MSB
     multi: true
@@ -4751,28 +4752,20 @@ phase_conditional_overrides:
     ZQCAL: 0.0
     ODTDISABLE: 0.0
     ODTENABLE: 0.0
-    # Read_Status_Enhanced_70h: 1
-    # Block_Erase_SLC: 0.1
-    Block_Erase_TLC: 0.1
-    # Block_Erase_Multi_Plane_ONFI_SLC: 0.1
-    # Page_Program_SLC: 0.2
-    One_Shot_PGM_LSB: 0.1 
-    # One_Shot_PGM_CSB: 0.1 
-    # One_Shot_PGM_MSB: 0.1 
-    # One_Shot_PGM_MSB_23h: 0.1 
-    # Page_Program_Multi_Plane_ONFI_SLC: 0.2
-    # Read_SLC: 0.6
-    # Erase_Suspend_Reset: 0.05
-    # Erase_Resume: 0.05
-    Program_Suspend_Reset: 0.05
-    Program_Resume: 0.05
 
-    Read_LSB: 0.2
-    Read_CSB: 0.2
-    Read_MSB: 0.2
-    # Read_Multi_Plane_ONFI_SLC: 0.6
-    # Read_Status_Enhanced_70h: 0.1
-    # Enhanced_Random_Data_Output_Secondary: 1
+    Block_Erase_SLC: 0.1
+    Block_Erase_TLC: 0.1
+    Page_Program_SLC: 0.1
+    One_Shot_PGM_LSB: 0.1 
+    # One_Shot_PGM_CSB: 0.0 
+    # One_Shot_PGM_MSB: 0.0 
+    # One_Shot_PGM_MSB_23h: 0.0 
+
+    Read_SLC: 0.1
+    Read_LSB: 0.1
+    Read_CSB: 0.1
+    Read_MSB: 0.1
+
 
 
   # global:
@@ -4819,16 +4812,16 @@ phase_conditional_overrides:
   # RECOVERY_RD.END:
   #   DOUT: 1
 
-  # DEFAULT:
+  DEFAULT:
   #   Read_Status_Enhanced_70h: 1
   #   Block_Erase_SLC: 1
   #   Page_Program_SLC: 1
   #   Read_SLC: 1
   #   DOUT: 1
 
-    # ERASE_SUSPEND: 0.0
+    ERASE_SUSPEND: 0.0
     # ERASE_RESUME: 0.0
-    # PROGRAM_SUSPEND: 0.0
+    PROGRAM_SUSPEND: 0.0
     # PROGRAM_RESUME: 0.0
     
   # op_base->value overrides for specific op_states
@@ -4836,78 +4829,3 @@ phase_conditional_overrides:
   #   op_name1: 0.01
   #   op_name2: 0.01
   #   ...
-
-  # ERASE.CORE_BUSY:
-  #   NOP: 0.7
-  # DSL_VTH_CHECK.CORE_BUSY:
-  #   NOP: 0.7
-  # PROGRAM_SLC.CORE_BUSY:
-  #   NOP: 0.7
-  # ALLWL_PROGRAM.CORE_BUSY:
-  #   NOP: 0.7
-  # CACHE_PROGRAM_SLC.CORE_BUSY:
-  #   NOP: 0.7
-  # ONESHOT_PROGRAM_LSB.CORE_BUSY:
-  #   NOP: 0.7
-  # ONESHOT_PROGRAM_CSB.CORE_BUSY:
-  #   NOP: 0.7
-  # ONESHOT_PROGRAM_MSB.CORE_BUSY:
-  #   NOP: 0.7
-  # ONESHOT_PROGRAM_MSB_23h.CORE_BUSY:
-  #   NOP: 0.7
-  # ONESHOT_PROGRAM_EXEC_MSB.CORE_BUSY:
-  #   NOP: 0.7
-  # ONESHOT_CACHE_PROGRAM.CORE_BUSY:
-  #   NOP: 0.7
-  # TRANSFER_TO_CACHE_LSB.CORE_BUSY:
-  #   NOP: 0.7
-  # TRANSFER_TO_CACHE_CSB.CORE_BUSY:
-  #   NOP: 0.7
-  # TRANSFER_TO_CACHE_MSB.CORE_BUSY:
-  #   NOP: 0.7
-  # READ.CORE_BUSY:
-  #   NOP: 0.7
-  # RECOVERY_RD.CORE_BUSY:
-  #   NOP: 0.7
-  # READ4K.CORE_BUSY:
-  #   NOP: 0.7
-  # CACHE_READ.CORE_BUSY:
-  #   NOP: 0.7
-  # CACHE_READ_END.CORE_BUSY:
-  #   NOP: 0.7
-  # PLANE_READ.CORE_BUSY:
-  #   NOP: 0.7
-  # PLANE_READ4K.CORE_BUSY:
-  #   NOP: 0.7
-  # PLANE_CACHE_READ.CORE_BUSY:
-  #   NOP: 0.7
-  # PLANE_CACHE_READ_END.CORE_BUSY:
-  #   NOP: 0.7
-  # COPYBACK_READ.CORE_BUSY:
-  #   NOP: 0.7
-  # COPYBACK_PROGRAM_SLC.CORE_BUSY:
-  #   NOP: 0.7
-  # ONESHOT_COPYBACK_PROGRAM_LSB.CORE_BUSY:
-  #   NOP: 0.7
-  # ONESHOT_COPYBACK_PROGRAM_CSB.CORE_BUSY:
-  #   NOP: 0.7
-  # ONESHOT_COPYBACK_PROGRAM_MSB.CORE_BUSY:
-  #   NOP: 0.7
-  # ONESHOT_COPYBACK_PROGRAM_EXEC_MSB.CORE_BUSY:
-  #   NOP: 0.7
-  # CAMREAD.CORE_BUSY:
-  #   NOP: 0.7
-  # CAMREAD_LUN.CORE_BUSY:
-  #   NOP: 0.7
-  # ERASE_SUSPEND.CORE_BUSY:
-  #   NOP: 0.7
-  # ERASE_RESUME.CORE_BUSY:
-  #   NOP: 0.7
-  # PROGRAM_SUSPEND.CORE_BUSY:
-  #   NOP: 0.7
-  # PROGRAM_RESUME.CORE_BUSY:
-  #   NOP: 0.7
-  # RESET.CORE_BUSY:
-  #   NOP: 0.7
-  # RESET_LUN.CORE_BUSY:
-  #   NOP: 0.7

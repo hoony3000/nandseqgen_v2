@@ -416,6 +416,59 @@ def export_operation_sequence(rows: List[Dict[str, Any]], cfg: Dict[str, Any], *
     by_uid: Dict[int, List[Dict[str, Any]]] = {}
     for r in rows:
         by_uid.setdefault(int(r["op_uid"]), []).append(r)
+
+    # Build (die,plane) -> [(t, base, name)] index to recover inheritance like same_celltype
+    by_dp: Dict[Tuple[int, int], List[Tuple[float, str, str]]] = {}
+    for r in rows:
+        try:
+            d = int(r["die"]); p = int(r["plane"]); t = float(r["start_us"])
+            b = str(r["op_base"]); n = str(r["op_name"])  # type: ignore[index]
+            by_dp.setdefault((d, p), []).append((t, b, n))
+        except Exception:
+            continue
+    for k in by_dp.keys():
+        by_dp[k].sort(key=lambda x: x[0])
+
+    def _inherit_map_for(prev_base: str) -> Dict[str, List[str]]:
+        try:
+            seq = ((cfg.get("op_bases", {}) or {}).get(str(prev_base), {}) or {}).get("sequence", {}) or {}
+            inh = seq.get("inherit")
+            m: Dict[str, List[str]] = {}
+            if isinstance(inh, dict):
+                for k, v in inh.items():
+                    if isinstance(v, list):
+                        m[str(k)] = [str(x) for x in v]
+                    elif v is None:
+                        m[str(k)] = []
+            elif isinstance(inh, list):
+                for it in inh:
+                    if isinstance(it, dict):
+                        for k, v in it.items():
+                            if isinstance(v, list):
+                                m[str(k)] = [str(x) for x in v]
+                            elif v is None:
+                                m[str(k)] = []
+            return m
+        except Exception:
+            return {}
+
+    def _prev_of(d: int, p: int, t: float) -> Optional[Tuple[str, str]]:
+        lst = by_dp.get((d, p))
+        if not lst:
+            return None
+        lo, hi = 0, len(lst)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if lst[mid][0] < t:
+                lo = mid + 1
+            else:
+                hi = mid
+        i = lo - 1
+        if i >= 0:
+            _, b, n = lst[i]
+            return (str(b), str(n))
+        return None
+
     out: List[Dict[str, Any]] = []
     pef = (cfg.get("payload_by_op_base", {}) or {})
     opcode_map: Dict[str, int] = (cfg.get("pattern_export", {}) or {}).get("opcode_map", {}) or {}
@@ -428,19 +481,33 @@ def export_operation_sequence(rows: List[Dict[str, Any]], cfg: Dict[str, Any], *
         base = str(grp[0]["op_base"]) if grp else "NOP"
         # Determine payload fields for base
         fields = [str(x) for x in pef.get(base, ["die", "pl", "block", "page"])]
-        # Determine celltype from op_name spec if requested
-        cell = None
+        needs_cell = ("celltype" in fields)
+        # Determine default celltype from current op_name spec
+        def_cell = None
         try:
-            cell = ((cfg.get("op_names", {}) or {}).get(name, {}) or {}).get("celltype")
+            def_cell = ((cfg.get("op_names", {}) or {}).get(name, {}) or {}).get("celltype")
         except Exception:
-            cell = None
+            def_cell = None
         # Compose targets sorted by plane, block, page
         grp2 = sorted(grp, key=lambda r: (int(r["plane"]), int(r["block"]), int(r["page"])) )
         payload_list: List[Dict[str, Any]] = []
         for r in grp2:
             item = {"die": int(r["die"]), "pl": int(r["plane"]), "block": int(r["block"]), "page": int(r["page"]) }
-            if "celltype" in fields:
-                item["celltype"] = (None if cell in (None, "None") else str(cell))
+            cell_val = def_cell
+            if needs_cell and base in ("DOUT", "DOUT4K"):
+                # Try inherit from previous op on same (die,plane) if prev_base has same_celltype rule towards current base
+                prev = _prev_of(int(r["die"]), int(r["plane"]), float(r["start_us"]))
+                if prev is not None:
+                    prev_base, prev_name = prev
+                    inh_map = _inherit_map_for(prev_base)
+                    conds = inh_map.get(base) or []
+                    if any(str(x) == "same_celltype" for x in conds):
+                        try:
+                            cell_val = ((cfg.get("op_names", {}) or {}).get(prev_name, {}) or {}).get("celltype")
+                        except Exception:
+                            pass
+            if needs_cell:
+                item["celltype"] = (None if cell_val in (None, "None") else str(cell_val))
             # filter by requested fields order
             ordered = {k: item.get(k) for k in fields if k in item}
             payload_list.append(ordered)
