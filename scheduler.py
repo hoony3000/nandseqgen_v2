@@ -361,6 +361,18 @@ class Scheduler:
                 "phase_hook_plane": (None if hook_plane is None else int(hook_plane)),
                 "phase_hook_label": (None if hook_label is None else str(hook_label)),
             }
+            # Propagate inherit hints (e.g., celltype) for exporter
+            try:
+                meta = getattr(p, "meta", None)
+                if isinstance(meta, dict):
+                    ih = meta.get("inherit_hints")
+                    if isinstance(ih, dict):
+                        rec["inherit_hints"] = dict(ih)
+                        ct = ih.get("celltype")
+                        if ct not in (None, "None", "NONE"):
+                            rec["celltype_hint"] = str(ct)
+            except Exception:
+                pass
             # Reserved-time phase key normalization (feature-guarded, prioritize instant bases)
             try:
                 feats = (d.cfg.get("features", {}) or {})

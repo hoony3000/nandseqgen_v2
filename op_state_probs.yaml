@@ -1,585 +1,603 @@
 phase_conditional:
   NOP.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   ETC.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   ERASE.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   ERASE.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   DSL_VTH_CHECK.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   DSL_VTH_CHECK.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   PROGRAM_SLC.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   PROGRAM_SLC.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   ALLWL_PROGRAM.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   ALLWL_PROGRAM.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   CACHE_PROGRAM_SLC.CORE_BUSY:
-    Delay: 1.0
-  CACHE_PROGRAM_SLC.DATA_IN: {}
+    Read_Status_Enhanced_70h: 0.1
+  CACHE_PROGRAM_SLC.DATA_IN:
+    Read_Status_Enhanced_70h: 0.1
   CACHE_PROGRAM_SLC.END:
     Page_Program_SLC: 0.1
+    Read_Status_Enhanced_70h: 0.1
   ONESHOT_PROGRAM_LSB.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   ONESHOT_PROGRAM_LSB.END:
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   ONESHOT_PROGRAM_CSB.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   ONESHOT_PROGRAM_CSB.END:
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   ONESHOT_PROGRAM_MSB.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   ONESHOT_PROGRAM_MSB.END:
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   ONESHOT_PROGRAM_MSB_23h.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   ONESHOT_PROGRAM_MSB_23h.END:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   ONESHOT_PROGRAM_EXEC_MSB.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   ONESHOT_PROGRAM_EXEC_MSB.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   ONESHOT_CACHE_PROGRAM.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   ONESHOT_CACHE_PROGRAM.DATA_IN:
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
   ONESHOT_CACHE_PROGRAM.END:
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
   TRANSFER_TO_CACHE_LSB.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   TRANSFER_TO_CACHE_LSB.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   TRANSFER_TO_CACHE_CSB.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   TRANSFER_TO_CACHE_CSB.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   TRANSFER_TO_CACHE_MSB.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   TRANSFER_TO_CACHE_MSB.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   READ.CORE_BUSY:
-    Delay: 1.0
-  READ.DATA_OUT: {}
+    Read_Status_Enhanced_70h: 0.1
+  READ.DATA_OUT:
+    Read_Status_Enhanced_70h: 0.1
   READ.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   RECOVERY_RD.CORE_BUSY:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   RECOVERY_RD.DATA_OUT:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   RECOVERY_RD.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   READ4K.CORE_BUSY:
-    Delay: 1.0
-  READ4K.DATA_OUT: {}
+    Read_Status_Enhanced_70h: 0.1
+  READ4K.DATA_OUT:
+    Read_Status_Enhanced_70h: 0.1
   READ4K.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   CACHE_READ.CORE_BUSY:
-    Delay: 1.0
-  CACHE_READ.DATA_OUT: {}
-  CACHE_READ.END: {}
+    Read_Status_Enhanced_70h: 0.1
+  CACHE_READ.DATA_OUT:
+    Read_Status_Enhanced_70h: 0.1
+  CACHE_READ.END:
+    Read_Status_Enhanced_70h: 0.1
   CACHE_READ_END.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   CACHE_READ_END.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   PLANE_READ.CORE_BUSY:
-    Delay: 1.0
-  PLANE_READ.DATA_OUT: {}
-  PLANE_READ.END: {}
+    Read_Status_Enhanced_70h: 0.1
+  PLANE_READ.DATA_OUT:
+    Read_Status_Enhanced_70h: 0.1
+  PLANE_READ.END:
+    Read_Status_Enhanced_70h: 0.1
   PLANE_READ4K.CORE_BUSY:
-    Delay: 1.0
-  PLANE_READ4K.DATA_OUT: {}
+    Read_Status_Enhanced_70h: 0.1
+  PLANE_READ4K.DATA_OUT:
+    Read_Status_Enhanced_70h: 0.1
   PLANE_READ4K.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   PLANE_CACHE_READ.CORE_BUSY:
-    Delay: 1.0
-  PLANE_CACHE_READ.DATA_OUT: {}
-  PLANE_CACHE_READ.END: {}
+    Read_Status_Enhanced_70h: 0.1
+  PLANE_CACHE_READ.DATA_OUT:
+    Read_Status_Enhanced_70h: 0.1
+  PLANE_CACHE_READ.END:
+    Read_Status_Enhanced_70h: 0.1
   PLANE_CACHE_READ_END.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   PLANE_CACHE_READ_END.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   COPYBACK_READ.CORE_BUSY:
-    Delay: 1.0
-  COPYBACK_READ.DATA_OUT: {}
+    Read_Status_Enhanced_70h: 0.1
+  COPYBACK_READ.DATA_OUT:
+    Read_Status_Enhanced_70h: 0.1
   COPYBACK_READ.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   COPYBACK_PROGRAM_SLC.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   COPYBACK_PROGRAM_SLC.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   ONESHOT_COPYBACK_PROGRAM_LSB.CORE_BUSY:
-    Delay: 1.0
-  ONESHOT_COPYBACK_PROGRAM_LSB.END: {}
+    Read_Status_Enhanced_70h: 0.1
+  ONESHOT_COPYBACK_PROGRAM_LSB.END:
+    Read_Status_Enhanced_70h: 0.1
   ONESHOT_COPYBACK_PROGRAM_CSB.CORE_BUSY:
-    Delay: 1.0
-  ONESHOT_COPYBACK_PROGRAM_CSB.END: {}
+    Read_Status_Enhanced_70h: 0.1
+  ONESHOT_COPYBACK_PROGRAM_CSB.END:
+    Read_Status_Enhanced_70h: 0.1
   ONESHOT_COPYBACK_PROGRAM_MSB.CORE_BUSY:
-    Delay: 1.0
-  ONESHOT_COPYBACK_PROGRAM_MSB.END: {}
+    Read_Status_Enhanced_70h: 0.1
+  ONESHOT_COPYBACK_PROGRAM_MSB.END:
+    Read_Status_Enhanced_70h: 0.1
   ONESHOT_COPYBACK_PROGRAM_EXEC_MSB.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   ONESHOT_COPYBACK_PROGRAM_EXEC_MSB.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   DOUT.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   DOUT4K.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   DATAIN.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   SR.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   SR_ADD.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
-  CAMREAD.CORE_BUSY:
-    Delay: 1.0
+  CAMREAD.CORE_BUSY: {}
   CAMREAD.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
-  CAMREAD_LUN.CORE_BUSY:
-    Delay: 1.0
+  CAMREAD_LUN.CORE_BUSY: {}
   CAMREAD_LUN.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   ERASE_SUSPEND.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   ERASE_SUSPEND.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   ERASE_RESUME.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   ERASE_RESUME.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   PROGRAM_SUSPEND.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   PROGRAM_SUSPEND.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   PROGRAM_RESUME.CORE_BUSY:
-    Delay: 1.0
+    Read_Status_Enhanced_70h: 0.1
   PROGRAM_RESUME.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   TRAINING.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   READID.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   SETPARA.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   GETPARA.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   PLANE_SETPARA.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   SETFEATURE.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   GETFEATURE.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   SETFEATURE_LUN.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   GETFEATURE_LUN.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   RESET.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   RESET_LUN.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   TEMPSENSOR.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   ZQCAL.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   ODTDISABLE.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   ODTENABLE.END:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1
     Read_MSB: 0.1
   DEFAULT:
-    Delay: 0.19999999999999996
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
     One_Shot_PGM_LSB: 0.1
+    Read_Status_Enhanced_70h: 0.1
     Read_SLC: 0.1
     Read_LSB: 0.1
     Read_CSB: 0.1

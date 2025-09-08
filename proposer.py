@@ -16,6 +16,8 @@ class ProposedOp:
     targets: List[Address]
     scope: Scope
     start_us: float
+    # Optional metadata for exporter/analysis
+    meta: Optional[Dict[str, Any]] = None
 
 
 @dataclass(frozen=True)
@@ -940,7 +942,7 @@ def _expand_sequence_seq(
     hook: Dict[str, Any],
     res_view: ResourceView,
     rng: Any,
-) -> List[Tuple[str, List[Address]]]:
+) -> List[Tuple[str, List[Address], Optional[Dict[str, Any]]]]:
     """Expand a .SEQ choice key into a full op chain using generate_seq_rules.
 
     Returns list of (op_name, targets) for each step defined in the sequence rules.
@@ -987,7 +989,7 @@ def _expand_sequence_seq(
         die=die_hint,
     )
 
-    chain: List[Tuple[str, List[Address]]] = []
+    chain: List[Tuple[str, List[Address], Optional[Dict[str, Any]]]] = []
 
     def _is_program_base(b: str) -> bool:
         bb = str(b)
@@ -1025,7 +1027,17 @@ def _expand_sequence_seq(
         # Targets via inherit rules using ctx
         prev_t = ctx.last_step_targets
         t_i = _apply_inherit_rules(rules_i, prev_t, ctx)
-        chain.append((name_i, t_i))
+        # Build meta with inherit hints when applicable
+        meta_i: Optional[Dict[str, Any]] = None
+        try:
+            inherit_hints: Dict[str, Any] = {}
+            if "same_celltype" in rules_i and first_cell not in (None, "None", "NONE"):
+                inherit_hints["celltype"] = str(first_cell)
+            if inherit_hints:
+                meta_i = {"inherit_hints": inherit_hints, "inherit_from": str(first_name), "inherit_rules": list(rules_i)}
+        except Exception:
+            meta_i = None
+        chain.append((name_i, t_i, meta_i))
         # Update context
         ctx = SeqCtx(
             first_name=ctx.first_name,
@@ -1045,7 +1057,7 @@ def _expand_sequence_chain(
     hook: Dict[str, Any],
     res_view: ResourceView,
     rng: Any,
-) -> List[Tuple[str, List[Address]]]:
+) -> List[Tuple[str, List[Address], Optional[Dict[str, Any]]]]:
     """Expand sequence from the first op to full chain when applicable.
 
     - If no sequence: returns [(first_name, first_targets)]
@@ -1055,10 +1067,10 @@ def _expand_sequence_chain(
     base1 = str(((cfg.get("op_names", {}) or {}).get(first_name, {}) or {}).get("base"))
     seq = _seq_spec(cfg, base1)
     if not seq:
-        return [(first_name, first_targets)]
+        return [(first_name, first_targets, None)]
     probs = _seq_probs(seq)
     if not probs:
-        return [(first_name, first_targets)]
+        return [(first_name, first_targets, None)]
     inherit = _seq_inherit(seq)
     # Weighted pick
     keys = list(probs.keys())
@@ -1079,7 +1091,7 @@ def _expand_sequence_chain(
             choice = k
             break
 
-    chain: List[Tuple[str, List[Address]]] = [(first_name, first_targets)]
+    chain: List[Tuple[str, List[Address], Optional[Dict[str, Any]]]] = [(first_name, first_targets, None)]
     if str(choice).endswith(".SEQ"):
         chain.extend(_expand_sequence_seq(cfg, str(choice), first_name, first_targets, hook, res_view, rng))
         return chain
@@ -1096,7 +1108,16 @@ def _expand_sequence_chain(
     if not name2:
         return chain
     t2 = _targets_with_inherit(rules, first_targets)
-    chain.append((name2, t2))
+    meta2: Optional[Dict[str, Any]] = None
+    try:
+        inherit_hints: Dict[str, Any] = {}
+        if "same_celltype" in rules and cell not in (None, "None", "NONE"):
+            inherit_hints["celltype"] = str(cell)
+        if inherit_hints:
+            meta2 = {"inherit_hints": inherit_hints, "inherit_from": str(first_name), "inherit_rules": list(rules)}
+    except Exception:
+        meta2 = None
+    chain.append((name2, t2, meta2))
     return chain
 
 
@@ -1104,7 +1125,7 @@ def _preflight_schedule(
     now: float,
     cfg: Dict[str, Any],
     res_view: ResourceView,
-    ops: List[Tuple[str, List[Address]]],
+    ops: List[Tuple[str, List[Address], Optional[Dict[str, Any]]]],
 ) -> Optional[List[ProposedOp]]:
     if not ops:
         return None
@@ -1149,17 +1170,19 @@ def _preflight_schedule(
         # Fallback to original ops on any failure
         pass
     # First op determines initial start; use feasible_at with hint=now
-    name0, targets0 = ops[0]
+    name0, targets0, _meta0 = ops[0]
     op0 = _build_op(cfg, name0, targets0)
     scope0 = _base_scope(cfg, op0.base)
     t0 = res_view.feasible_at(op0, targets0, start_hint=float(now), scope=scope0)
     if t0 is None:
         return None
-    planned.append(ProposedOp(op_name=name0, base=op0.base, targets=list(targets0), scope=scope0, start_us=float(t0)))
+    planned.append(ProposedOp(op_name=name0, base=op0.base, targets=list(targets0), scope=scope0, start_us=float(t0), meta=None))
     # Chain others back-to-back with optional sequence_gap
     gap = float(_cfg_policies(cfg).get("sequence_gap", 0.0))
     tcur = float(t0) + _op_total_duration(op0)
-    for (name_i, targets_i) in ops[1:]:
+    for (_name_i, _targets_i, _meta_i) in ops[1:]:
+        name_i = _name_i
+        targets_i = _targets_i
         if gap > 0:
             tcur += gap
         opi = _build_op(cfg, name_i, targets_i)
@@ -1167,7 +1190,14 @@ def _preflight_schedule(
         ti = res_view.feasible_at(opi, targets_i, start_hint=tcur, scope=scopei)
         if ti is None:
             return None
-        planned.append(ProposedOp(op_name=name_i, base=opi.base, targets=list(targets_i), scope=scopei, start_us=float(ti)))
+        meta_i = None
+        # Pass through inherit hints to scheduler/exporter when enabled
+        try:
+            if _feature_enabled(cfg, "inherit_hint_propagation", True) and isinstance(_meta_i, dict):
+                meta_i = dict(_meta_i)
+        except Exception:
+            meta_i = None
+        planned.append(ProposedOp(op_name=name_i, base=opi.base, targets=list(targets_i), scope=scopei, start_us=float(ti), meta=meta_i))
         tcur = float(ti) + _op_total_duration(opi)
     return planned
 
@@ -1511,8 +1541,8 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
             except Exception:
                 pass
             continue
-        # Sequence expansion (multi-step for *.SEQ) + preflight plan
-        ops_chain: List[Tuple[str, List[Address]]] = _expand_sequence_chain(cfg, name, targets, hook, res_view, rng)
+        # Sequence expansion (multi-step for *.SEQ) + preflight plan (with inherit hints)
+        ops_chain = _expand_sequence_chain(cfg, name, targets, hook, res_view, rng)
         planned = _preflight_schedule(now, cfg, res_view, ops_chain)
         if not planned:
             attempts.append({"name": name, "prob": prob, "reason": "preflight_fail", "t0": float(t0)})

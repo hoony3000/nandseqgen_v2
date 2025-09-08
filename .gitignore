@@ -50,6 +50,9 @@ metrics*.csv
 bench*.csv
 out*/
 
+# tmp yaml files
+config_*.yaml
+
 # not to be included in context window
 nandsim_demo.py
 tools/

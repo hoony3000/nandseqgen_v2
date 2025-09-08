@@ -89,6 +89,9 @@ class _OpRow:
     phase_hook_plane: Optional[int] = None
     phase_hook_label: Optional[str] = None
     phase_key_time: Optional[float] = None
+    # inherit hints (flattened for convenience)
+    celltype_hint: Optional[str] = None
+    inherit_hints: Optional[Dict[str, Any]] = None
 
 
 class InstrumentedScheduler(Scheduler):
@@ -114,6 +117,9 @@ class InstrumentedScheduler(Scheduler):
         targets: List[Address] = list(rec.get("targets", []) or [])
         uid = self._next_uid
         self._next_uid += 1
+        ih = rec.get("inherit_hints") if isinstance(rec.get("inherit_hints"), dict) else None
+        cth = rec.get("celltype_hint")
+        cth = None if cth in (None, "None", "NONE") else str(cth)
         for t in targets:
             self._rows.append(
                 _OpRow(
@@ -132,6 +138,8 @@ class InstrumentedScheduler(Scheduler):
                     phase_hook_plane=(None if hk_plane in (None, "None") else int(hk_plane)),
                     phase_hook_label=(None if hk_label in (None, "None") else str(hk_label)),
                     phase_key_time=(None if pk_time in (None, "None") else float(pk_time)),
+                    celltype_hint=cth,
+                    inherit_hints=(dict(ih) if isinstance(ih, dict) else None),
                 )
             )
 
@@ -469,6 +477,29 @@ def export_operation_sequence(rows: List[Dict[str, Any]], cfg: Dict[str, Any], *
             return (str(b), str(n))
         return None
 
+    def _prev_with_inherit(d: int, p: int, t: float, target_base: str) -> Optional[Tuple[str, str]]:
+        """Scan backwards to find nearest previous (base,name) whose inherit map towards target_base includes same_celltype."""
+        lst = by_dp.get((d, p))
+        if not lst:
+            return None
+        # binary search to index before t
+        lo, hi = 0, len(lst)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if lst[mid][0] < t:
+                lo = mid + 1
+            else:
+                hi = mid
+        i = lo - 1
+        while i >= 0:
+            _, b, n = lst[i]
+            inh_map = _inherit_map_for(str(b))
+            conds = inh_map.get(str(target_base)) or []
+            if any(str(x) == "same_celltype" for x in conds):
+                return (str(b), str(n))
+            i -= 1
+        return None
+
     out: List[Dict[str, Any]] = []
     pef = (cfg.get("payload_by_op_base", {}) or {})
     opcode_map: Dict[str, int] = (cfg.get("pattern_export", {}) or {}).get("opcode_map", {}) or {}
@@ -494,18 +525,26 @@ def export_operation_sequence(rows: List[Dict[str, Any]], cfg: Dict[str, Any], *
         for r in grp2:
             item = {"die": int(r["die"]), "pl": int(r["plane"]), "block": int(r["block"]), "page": int(r["page"]) }
             cell_val = def_cell
-            if needs_cell and base in ("DOUT", "DOUT4K"):
-                # Try inherit from previous op on same (die,plane) if prev_base has same_celltype rule towards current base
-                prev = _prev_of(int(r["die"]), int(r["plane"]), float(r["start_us"]))
-                if prev is not None:
-                    prev_base, prev_name = prev
-                    inh_map = _inherit_map_for(prev_base)
-                    conds = inh_map.get(base) or []
-                    if any(str(x) == "same_celltype" for x in conds):
-                        try:
-                            cell_val = ((cfg.get("op_names", {}) or {}).get(prev_name, {}) or {}).get("celltype")
-                        except Exception:
-                            pass
+            if needs_cell:
+                # 1) Prefer proposer-propagated hint when present
+                try:
+                    hint = r.get("celltype_hint")
+                    if hint not in (None, "None", "NONE"):
+                        cell_val = str(hint)
+                except Exception:
+                    pass
+                # 2) If no hint and no explicit cell on op_name, try backref to nearest eligible previous op
+                if cell_val in (None, "None", "NONE"):
+                    prev = _prev_with_inherit(int(r["die"]), int(r["plane"]), float(r["start_us"]), base)
+                    if prev is not None:
+                        prev_base, prev_name = prev
+                        inh_map = _inherit_map_for(prev_base)
+                        conds = inh_map.get(base) or []
+                        if any(str(x) == "same_celltype" for x in conds):
+                            try:
+                                cell_val = ((cfg.get("op_names", {}) or {}).get(prev_name, {}) or {}).get("celltype")
+                            except Exception:
+                                pass
             if needs_cell:
                 item["celltype"] = (None if cell_val in (None, "None") else str(cell_val))
             # filter by requested fields order

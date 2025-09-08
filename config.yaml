@@ -2349,7 +2349,7 @@ generate_seq_rules:
       - CACHE_READ: ['same_page', 'same_celltype', 'multi']
       - DOUT: ['prev_page', 'multi', 'same_celltype', 'multi']
       - CACHE_READ_END: ['inc_page', 'same_celltype', 'multi']
-      - DOUT: ['same_page', 'multi', 'same_celltype', 'multi']
+      - DOUT: ['prev_page', 'multi', 'same_celltype', 'multi']
   COPYBACK_PROGRAM_SLC.SEQ:
     sequences:
       - COPYBACK_PROGRAM_SLC: ['none', 'same_celltype']
@@ -4752,6 +4752,7 @@ phase_conditional_overrides:
     ZQCAL: 0.0
     ODTDISABLE: 0.0
     ODTENABLE: 0.0
+    NOP: 0.0
 
     Block_Erase_SLC: 0.1
     Block_Erase_TLC: 0.1
@@ -4760,6 +4761,7 @@ phase_conditional_overrides:
     # One_Shot_PGM_CSB: 0.0 
     # One_Shot_PGM_MSB: 0.0 
     # One_Shot_PGM_MSB_23h: 0.0 
+    Read_Status_Enhanced_70h: 0.1
 
     Read_SLC: 0.1
     Read_LSB: 0.1
