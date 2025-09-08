@@ -387,14 +387,30 @@ def _candidate_blocked_by_states(
         if _blocked_by_groups(cfg, base, groups):
             return True
 
-    # Suspend (die-level)
+    # Suspend (die-level) — evaluate both axes when available
+    groups_suspend: List[str] = []
+    susp_eval_done = False
     try:
-        susp = res_view.suspend_states(die, at_us=float(now))
+        es = getattr(res_view, "erase_suspend_state")(die, at_us=float(now))  # type: ignore[attr-defined]
+        ps = getattr(res_view, "program_suspend_state")(die, at_us=float(now))  # type: ignore[attr-defined]
+        by_state = (cfg.get("exclusions_by_suspend_state", {}) or {})
+        if isinstance(es, str):
+            groups_suspend.extend(by_state.get(str(es), []) or [])
+        if isinstance(ps, str):
+            groups_suspend.extend(by_state.get(str(ps), []) or [])
+        susp_eval_done = True
     except Exception:
-        susp = None
-    if susp:
-        groups = (cfg.get("exclusions_by_suspend_state", {}) or {}).get(str(susp), [])
-        if _blocked_by_groups(cfg, base, groups):
+        susp_eval_done = False
+    if not susp_eval_done:
+        # Fallback to legacy single-axis API (no NOT_* defaults available)
+        try:
+            susp = res_view.suspend_states(die, at_us=float(now))
+        except Exception:
+            susp = None
+        if susp:
+            groups_suspend.extend((cfg.get("exclusions_by_suspend_state", {}) or {}).get(str(susp), []) or [])
+    if groups_suspend:
+        if _blocked_by_groups(cfg, base, groups_suspend):
             return True
 
     # Cache (die-level or plane-level)

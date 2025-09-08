@@ -1,35 +1,35 @@
 phase_conditional:
   ETC.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   ERASE.CORE_BUSY: {}
   ERASE.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   DSL_VTH_CHECK.CORE_BUSY: {}
   DSL_VTH_CHECK.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   PROGRAM_SLC.CORE_BUSY: {}
   PROGRAM_SLC.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   ALLWL_PROGRAM.CORE_BUSY: {}
   ALLWL_PROGRAM.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
@@ -43,17 +43,11 @@ phase_conditional:
     Read_MSB: 0.2
   ONESHOT_PROGRAM_CSB.CORE_BUSY: {}
   ONESHOT_PROGRAM_CSB.END:
-    Data_transfer_to_cache_for_1st_Page_TLC: 0.2722509191038625
-    Data_transfer_to_cache_for_2nd_Page_TLC: 0.010648914173248081
-    Data_transfer_to_cache_for_3rd_Page_TLC: 0.11710016672288932
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   ONESHOT_PROGRAM_MSB.CORE_BUSY: {}
   ONESHOT_PROGRAM_MSB.END:
-    Data_transfer_to_cache_for_1st_Page_TLC: 0.0545620312547344
-    Data_transfer_to_cache_for_2nd_Page_TLC: 0.18002433815992006
-    Data_transfer_to_cache_for_3rd_Page_TLC: 0.16541363058534542
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
@@ -62,162 +56,113 @@ phase_conditional:
   ONESHOT_PROGRAM_EXEC_MSB.CORE_BUSY: {}
   ONESHOT_PROGRAM_EXEC_MSB.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   ONESHOT_CACHE_PROGRAM.CORE_BUSY: {}
   ONESHOT_CACHE_PROGRAM.DATA_IN:
-    Data_transfer_to_cache_for_1st_Page_TLC: 0.4457585788541354
-    Data_transfer_to_cache_for_2nd_Page_TLC: 0.04343714189714189
-    Data_transfer_to_cache_for_3rd_Page_TLC: 0.21080427924872266
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
   ONESHOT_CACHE_PROGRAM.END:
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
   TRANSFER_TO_CACHE_LSB.CORE_BUSY: {}
   TRANSFER_TO_CACHE_LSB.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   TRANSFER_TO_CACHE_CSB.CORE_BUSY: {}
   TRANSFER_TO_CACHE_CSB.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   TRANSFER_TO_CACHE_MSB.CORE_BUSY: {}
   TRANSFER_TO_CACHE_MSB.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   READ.CORE_BUSY: {}
-  READ.DATA_OUT:
-    Change_Read_Column_Random_Data_Output: 0.3333333333333333
-    Enhanced_Random_Data_Output_Primary: 0.3333333333333333
-    Enhanced_Random_Data_Output_Secondary: 0.3333333333333333
+  READ.DATA_OUT: {}
   READ.END:
-    Block_Erase_TLC: 0.05
-    One_Shot_PGM_LSB: 0.15
-    Read_LSB: 0.1
-    Read_CSB: 0.1
-    Read_MSB: 0.1
-    Change_Read_Column_Random_Data_Output: 0.16666666666666666
-    Enhanced_Random_Data_Output_Primary: 0.16666666666666666
-    Enhanced_Random_Data_Output_Secondary: 0.16666666666666666
+    Block_Erase_TLC: 0.1
+    One_Shot_PGM_LSB: 0.1
+    Read_LSB: 0.2
+    Read_CSB: 0.2
+    Read_MSB: 0.2
   RECOVERY_RD.CORE_BUSY:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   RECOVERY_RD.DATA_OUT:
-    Block_Erase_TLC: 0.05
-    One_Shot_PGM_LSB: 0.15
-    Read_LSB: 0.1
-    Read_CSB: 0.1
-    Read_MSB: 0.1
-    Change_Read_Column_Random_Data_Output: 0.16666666666666666
-    Enhanced_Random_Data_Output_Primary: 0.16666666666666666
-    Enhanced_Random_Data_Output_Secondary: 0.16666666666666666
+    Block_Erase_TLC: 0.1
+    One_Shot_PGM_LSB: 0.1
+    Read_LSB: 0.2
+    Read_CSB: 0.2
+    Read_MSB: 0.2
   RECOVERY_RD.END:
-    Block_Erase_TLC: 0.05
-    One_Shot_PGM_LSB: 0.15
-    Read_LSB: 0.1
-    Read_CSB: 0.1
-    Read_MSB: 0.1
-    Change_Read_Column_Random_Data_Output: 0.16666666666666666
-    Enhanced_Random_Data_Output_Primary: 0.16666666666666666
-    Enhanced_Random_Data_Output_Secondary: 0.16666666666666666
+    Block_Erase_TLC: 0.1
+    One_Shot_PGM_LSB: 0.1
+    Read_LSB: 0.2
+    Read_CSB: 0.2
+    Read_MSB: 0.2
   READ4K.CORE_BUSY: {}
-  READ4K.DATA_OUT:
-    Change_Read_Column_Random_Data_Output: 0.3333333333333333
-    Enhanced_Random_Data_Output_Primary: 0.3333333333333333
-    Enhanced_Random_Data_Output_Secondary: 0.3333333333333333
+  READ4K.DATA_OUT: {}
   READ4K.END:
-    Block_Erase_TLC: 0.05
-    One_Shot_PGM_LSB: 0.15
-    Read_LSB: 0.1
-    Read_CSB: 0.1
-    Read_MSB: 0.1
-    Change_Read_Column_Random_Data_Output: 0.16666666666666666
-    Enhanced_Random_Data_Output_Primary: 0.16666666666666666
-    Enhanced_Random_Data_Output_Secondary: 0.16666666666666666
+    Block_Erase_TLC: 0.1
+    One_Shot_PGM_LSB: 0.1
+    Read_LSB: 0.2
+    Read_CSB: 0.2
+    Read_MSB: 0.2
   CACHE_READ.CORE_BUSY: {}
-  CACHE_READ.DATA_OUT:
-    Change_Read_Column_Random_Data_Output: 0.3333333333333333
-    Enhanced_Random_Data_Output_Primary: 0.3333333333333333
-    Enhanced_Random_Data_Output_Secondary: 0.3333333333333333
-  CACHE_READ.END:
-    Read_Cache_End: 0.5
-    Change_Read_Column_Random_Data_Output: 0.16666666666666666
-    Enhanced_Random_Data_Output_Primary: 0.16666666666666666
-    Enhanced_Random_Data_Output_Secondary: 0.16666666666666666
+  CACHE_READ.DATA_OUT: {}
+  CACHE_READ.END: {}
   CACHE_READ_END.CORE_BUSY: {}
   CACHE_READ_END.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   PLANE_READ.CORE_BUSY: {}
-  PLANE_READ.DATA_OUT:
-    Change_Read_Column_Random_Data_Output: 0.3333333333333333
-    Enhanced_Random_Data_Output_Primary: 0.3333333333333333
-    Enhanced_Random_Data_Output_Secondary: 0.3333333333333333
-  PLANE_READ.END:
-    Change_Read_Column_Random_Data_Output: 0.3333333333333333
-    Enhanced_Random_Data_Output_Primary: 0.3333333333333333
-    Enhanced_Random_Data_Output_Secondary: 0.3333333333333333
+  PLANE_READ.DATA_OUT: {}
+  PLANE_READ.END: {}
   PLANE_READ4K.CORE_BUSY: {}
-  PLANE_READ4K.DATA_OUT:
-    Change_Read_Column_Random_Data_Output: 0.3333333333333333
-    Enhanced_Random_Data_Output_Primary: 0.3333333333333333
-    Enhanced_Random_Data_Output_Secondary: 0.3333333333333333
+  PLANE_READ4K.DATA_OUT: {}
   PLANE_READ4K.END:
-    Block_Erase_TLC: 0.05
-    One_Shot_PGM_LSB: 0.15
-    Read_LSB: 0.1
-    Read_CSB: 0.1
-    Read_MSB: 0.1
-    Change_Read_Column_Random_Data_Output: 0.16666666666666666
-    Enhanced_Random_Data_Output_Primary: 0.16666666666666666
-    Enhanced_Random_Data_Output_Secondary: 0.16666666666666666
+    Block_Erase_TLC: 0.1
+    One_Shot_PGM_LSB: 0.1
+    Read_LSB: 0.2
+    Read_CSB: 0.2
+    Read_MSB: 0.2
   PLANE_CACHE_READ.CORE_BUSY: {}
-  PLANE_CACHE_READ.DATA_OUT:
-    Change_Read_Column_Random_Data_Output: 0.3333333333333333
-    Enhanced_Random_Data_Output_Primary: 0.3333333333333333
-    Enhanced_Random_Data_Output_Secondary: 0.3333333333333333
-  PLANE_CACHE_READ.END:
-    Change_Read_Column_Random_Data_Output: 0.3333333333333333
-    Enhanced_Random_Data_Output_Primary: 0.3333333333333333
-    Enhanced_Random_Data_Output_Secondary: 0.3333333333333333
+  PLANE_CACHE_READ.DATA_OUT: {}
+  PLANE_CACHE_READ.END: {}
   PLANE_CACHE_READ_END.CORE_BUSY: {}
   PLANE_CACHE_READ_END.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   COPYBACK_READ.CORE_BUSY: {}
-  COPYBACK_READ.DATA_OUT:
-    Change_Read_Column_Random_Data_Output: 0.3333333333333333
-    Enhanced_Random_Data_Output_Primary: 0.3333333333333333
-    Enhanced_Random_Data_Output_Secondary: 0.3333333333333333
+  COPYBACK_READ.DATA_OUT: {}
   COPYBACK_READ.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   COPYBACK_PROGRAM_SLC.CORE_BUSY: {}
   COPYBACK_PROGRAM_SLC.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
@@ -230,175 +175,175 @@ phase_conditional:
   ONESHOT_COPYBACK_PROGRAM_EXEC_MSB.CORE_BUSY: {}
   ONESHOT_COPYBACK_PROGRAM_EXEC_MSB.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   DOUT.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   DOUT4K.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   DATAIN.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   SR.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   SR_ADD.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   CAMREAD.CORE_BUSY: {}
   CAMREAD.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   CAMREAD_LUN.CORE_BUSY: {}
   CAMREAD_LUN.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   ERASE_SUSPEND.CORE_BUSY: {}
   ERASE_SUSPEND.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   ERASE_RESUME.CORE_BUSY: {}
   ERASE_RESUME.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   PROGRAM_SUSPEND.CORE_BUSY: {}
   PROGRAM_SUSPEND.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   PROGRAM_RESUME.CORE_BUSY: {}
   PROGRAM_RESUME.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   TRAINING.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   READID.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   SETPARA.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   GETPARA.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   PLANE_SETPARA.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   SETFEATURE.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   GETFEATURE.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   SETFEATURE_LUN.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   GETFEATURE_LUN.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   RESET.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   RESET_LUN.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   TEMPSENSOR.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   ZQCAL.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   ODTDISABLE.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   ODTENABLE.END:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
   DEFAULT:
     Block_Erase_TLC: 0.1
-    One_Shot_PGM_LSB: 0.3
+    One_Shot_PGM_LSB: 0.1
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2

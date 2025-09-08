@@ -71,7 +71,14 @@ class _CacheEntry:
 @dataclass
 class _SuspState:
     die: int
-    state: str  # 'ERASE_SUSPEND' | 'PROGRAM_SUSPEND'
+    state: str  # legacy single-axis snapshot entry (kept for compat)
+    start_us: float
+    end_us: Optional[float] = None
+
+@dataclass
+class _AxisState:
+    die: int
+    state: str  # 'ERASE_SUSPENDED' | 'PROGRAM_SUSPENDED'
     start_us: float
     end_us: Optional[float] = None
 
@@ -101,7 +108,11 @@ class ResourceManager:
         self._odt_disabled: bool = False
         self._cache_read: Dict[Tuple[int, int], _CacheEntry] = {}
         self._cache_program: Dict[int, _CacheEntry] = {}
+        # Legacy single-axis field kept for backward-compatible API only
         self._suspend_states: Dict[int, Optional[_SuspState]] = {d: None for d in range(self.dies)}
+        # Split suspend axes: ERASE and PROGRAM
+        self._erase_susp: Dict[int, Optional[_AxisState]] = {d: None for d in range(self.dies)}
+        self._pgm_susp: Dict[int, Optional[_AxisState]] = {d: None for d in range(self.dies)}
         self._ongoing_ops: Dict[int, List[_OpMeta]] = {d: [] for d in range(self.dies)}
         self._suspended_ops: Dict[int, List[_OpMeta]] = {d: [] for d in range(self.dies)}
         # --- Validator integration (skeleton, gated by config) ---
@@ -541,21 +552,21 @@ class ResourceManager:
                 ent = self._cache_program.get(die)
                 if ent and ent.end_us is None:
                     ent.end_us = end
-            # SUSPEND bookkeeping
+            # SUSPEND bookkeeping (split axes)
             if b == "ERASE_SUSPEND":
-                self._suspend_states[die] = _SuspState(die=die, state="ERASE_SUSPENDED", start_us=start)
+                self._erase_susp[die] = _AxisState(die=die, state="ERASE_SUSPENDED", start_us=start)
             elif b == "PROGRAM_SUSPEND":
-                cur = self._suspend_states.get(die)
-                # nested when ERASE_SUSPEND then PROGRAM_SUSPEND
-                if cur and cur.state == "ERASE_SUSPEND":
-                    self._suspend_states[die] = _SuspState(die=die, state="NESTED_SUSPEND", start_us=start)
-                else:
-                    self._suspend_states[die] = _SuspState(die=die, state="PRGRAM_SUSPENDED", start_us=start)
-            elif b in ("ERASE_RESUME", "PROGRAM_RESUME"):
-                st = self._suspend_states.get(die)
-                if st and st.end_us is None:
-                    st.end_us = end
-                self._suspend_states[die] = None
+                self._pgm_susp[die] = _AxisState(die=die, state="PROGRAM_SUSPENDED", start_us=start)
+            elif b == "ERASE_RESUME":
+                st_e = self._erase_susp.get(die)
+                if st_e and st_e.end_us is None:
+                    st_e.end_us = end
+                self._erase_susp[die] = None
+            elif b == "PROGRAM_RESUME":
+                st_p = self._pgm_susp.get(die)
+                if st_p and st_p.end_us is None:
+                    st_p.end_us = end
+                self._pgm_susp[die] = None
 
     def rollback(self, txn: _Txn) -> None:
         return
@@ -730,24 +741,77 @@ class ResourceManager:
             ent.end_us = quantize(end_us)
 
     def suspend_states(self, die: int, at_us: Optional[float] = None) -> Optional[str]:
-        st = self._suspend_states.get(die)
-        if not st:
-            return None
-        if at_us is None:
-            return st.state
-        t = quantize(at_us)
-        if st.start_us <= t and (st.end_us is None or t < st.end_us):
-            return st.state
+        """Legacy single-axis view of suspend state.
+
+        Returns one active state if any, preferring PROGRAM over ERASE when both
+        are active. Returns None when neither is active. Kept for backward
+        compatibility; new code should use axis-specific APIs below.
+        """
+        # program axis preferred if active
+        ps = self.program_suspend_state(die, at_us)
+        if ps == "PROGRAM_SUSPENDED":
+            return "PROGRAM_SUSPENDED"
+        es = self.erase_suspend_state(die, at_us)
+        if es == "ERASE_SUSPENDED":
+            return "ERASE_SUSPENDED"
         return None
 
+    def erase_suspend_state(self, die: int, at_us: Optional[float] = None) -> str:
+        """Return ERASE suspend axis state as symbolic string.
+
+        - Active: 'ERASE_SUSPENDED'
+        - Inactive/default: 'NOT_ERASE_SUSPENDED'
+        """
+        st = self._erase_susp.get(die)
+        if not st:
+            return "NOT_ERASE_SUSPENDED"
+        if at_us is None:
+            return "ERASE_SUSPENDED" if st.end_us is None else "NOT_ERASE_SUSPENDED"
+        t = quantize(at_us)
+        return "ERASE_SUSPENDED" if (st.start_us <= t and (st.end_us is None or t < st.end_us)) else "NOT_ERASE_SUSPENDED"
+
+    def program_suspend_state(self, die: int, at_us: Optional[float] = None) -> str:
+        """Return PROGRAM suspend axis state as symbolic string.
+
+        - Active: 'PROGRAM_SUSPENDED'
+        - Inactive/default: 'NOT_PROGRAM_SUSPENDED'
+        """
+        st = self._pgm_susp.get(die)
+        if not st:
+            return "NOT_PROGRAM_SUSPENDED"
+        if at_us is None:
+            return "PROGRAM_SUSPENDED" if st.end_us is None else "NOT_PROGRAM_SUSPENDED"
+        t = quantize(at_us)
+        return "PROGRAM_SUSPENDED" if (st.start_us <= t and (st.end_us is None or t < st.end_us)) else "NOT_PROGRAM_SUSPENDED"
+
     def set_suspend_state(self, die: int, state: Optional[str], now_us: float) -> None:
+        """Legacy helper to toggle suspend state; maps to split axes.
+
+        Accepts 'ERASE_SUSPENDED'/'PROGRAM_SUSPENDED' to activate a given axis,
+        None to clear both axes. Intended for tests/tools; normal flow uses ops.
+        """
+        t = quantize(now_us)
         if state is None:
-            cur = self._suspend_states.get(die)
-            if cur and cur.end_us is None:
-                cur.end_us = quantize(now_us)
+            # Clear both axes
+            st = self._erase_susp.get(die)
+            if st and st.end_us is None:
+                st.end_us = t
+            self._erase_susp[die] = None
+            stp = self._pgm_susp.get(die)
+            if stp and stp.end_us is None:
+                stp.end_us = t
+            self._pgm_susp[die] = None
             self._suspend_states[die] = None
-        else:
-            self._suspend_states[die] = _SuspState(die=die, state=str(state), start_us=quantize(now_us))
+            return
+        s = str(state).upper()
+        if s == "ERASE_SUSPENDED":
+            self._erase_susp[die] = _AxisState(die=die, state="ERASE_SUSPENDED", start_us=t)
+            # legacy mirror
+            self._suspend_states[die] = _SuspState(die=die, state="ERASE_SUSPENDED", start_us=t)
+        elif s == "PROGRAM_SUSPENDED":
+            self._pgm_susp[die] = _AxisState(die=die, state="PROGRAM_SUSPENDED", start_us=t)
+            # legacy mirror
+            self._suspend_states[die] = _SuspState(die=die, state="PROGRAM_SUSPENDED", start_us=t)
 
     def ongoing_ops(self, die: Optional[int] = None) -> List[Dict[str, Any]]:
         if die is None:
@@ -871,6 +935,14 @@ class ResourceManager:
                 (d, e.kind, e.start_us, e.end_us, e.celltype)
                 for (d, e) in self._cache_program.items()
             ],
+            # split suspend axes
+            "suspend_states_erase": {
+                d: (s.state, s.start_us, s.end_us) if s else None for d, s in self._erase_susp.items()
+            },
+            "suspend_states_program": {
+                d: (s.state, s.start_us, s.end_us) if s else None for d, s in self._pgm_susp.items()
+            },
+            # legacy single-axis snapshot (kept for compat)
             "suspend_states": {
                 d: (s.state, s.start_us, s.end_us) if s else None for d, s in self._suspend_states.items()
             },
@@ -924,6 +996,24 @@ class ResourceManager:
         self._cache_program = {}
         for (d, kind, s0, s1, cell) in snap.get("cache_program", []):
             self._cache_program[int(d)] = _CacheEntry(die=int(d), plane=None, kind=str(kind), start_us=float(s0), end_us=(None if s1 is None else float(s1)), celltype=(None if cell in (None, "None") else cell))
+        # Restore split suspend axes (prefer new keys; fallback to legacy)
+        self._erase_susp = {d: None for d in range(self.dies)}
+        self._pgm_susp = {d: None for d in range(self.dies)}
+        for k, v in (snap.get("suspend_states_erase", {}) or {}).items():
+            d = int(k)
+            if v is None:
+                self._erase_susp[d] = None
+            else:
+                st, s0, s1 = v
+                self._erase_susp[d] = _AxisState(die=d, state=str(st), start_us=float(s0), end_us=(None if s1 is None else float(s1)))
+        for k, v in (snap.get("suspend_states_program", {}) or {}).items():
+            d = int(k)
+            if v is None:
+                self._pgm_susp[d] = None
+            else:
+                st, s0, s1 = v
+                self._pgm_susp[d] = _AxisState(die=d, state=str(st), start_us=float(s0), end_us=(None if s1 is None else float(s1)))
+        # Legacy single-axis snapshot (kept for compat)
         self._suspend_states = {d: None for d in range(self.dies)}
         for k, v in (snap.get("suspend_states", {}) or {}).items():
             d = int(k)
@@ -1166,16 +1256,20 @@ class ResourceManager:
         return False
 
     def _rule_forbid_on_suspend(self, base: str, die: int, at_us: float) -> Optional[str]:
-        """Block operations when die-level suspend state is active per config mapping.
+        """Block operations based on split suspend axes at `at_us`.
 
-        Config keys: exclusions_by_suspend_state -> [group]
-        Groups map to blocked bases via exclusion_groups.
+        Uses exclusions_by_suspend_state mapping with four keys and applies
+        union of groups from ERASE and PROGRAM axes (including NOT_* defaults).
         """
-        state = self.suspend_states(die, at_us=at_us)
-        if not state:
-            return None
+        t = float(at_us)
+        es = self.erase_suspend_state(die, at_us=t)
+        ps = self.program_suspend_state(die, at_us=t)
         groups_by_state: Dict[str, List[str]] = (self.cfg.get("exclusions_by_suspend_state") or {})
-        groups = groups_by_state.get(state, [])
+        groups: List[str] = []
+        groups.extend(groups_by_state.get(str(es), []) or [])
+        groups.extend(groups_by_state.get(str(ps), []) or [])
+        if not groups:
+            return None
         if self._blocked_by_groups(base, groups):
             return "state_forbid_suspend"
         return None

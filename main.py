@@ -682,8 +682,17 @@ def _apply_overrides(
 def run_once(cfg: Dict[str, Any], rm: ResourceManager, am: Any, *, run_until_us: float, rng_seed: Optional[int]) -> Tuple[InstrumentedScheduler, Dict[str, Any]]:
     import random
     rng = random.Random(int(rng_seed) if rng_seed is not None else 42)
-    sched = InstrumentedScheduler(cfg=cfg, rm=rm, addrman=am, rng=rng)
-    res = sched.run(run_until_us=run_until_us)
+    # Align new run start to RM's current global time (max avail across planes)
+    snap = rm.snapshot()
+    try:
+        avail_vals = list((snap.get("avail", {}) or {}).values())
+        t0 = max(avail_vals) if avail_vals else 0.0
+    except Exception:
+        t0 = 0.0
+    t0 = quantize(float(t0))
+    t_end = quantize(t0 + float(run_until_us))
+    sched = InstrumentedScheduler(cfg=cfg, rm=rm, addrman=am, rng=rng, start_at_us=t0)
+    res = sched.run(run_until_us=t_end)
     return sched, res
 
 
@@ -709,6 +718,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--op-state-probs", dest="op_state_probs", default=None,
                    help="Path to op_state_probs.yaml (load if present; write when auto-filled)")
     p.add_argument("--validate-pc", action="store_true", help="Validate CFG.phase_conditional and log summary")
+    # Multi-site batch options (disabled by default)
+    p.add_argument("--site-count", type=int, default=0, help="Number of sites to batch (0 to disable)")
+    p.add_argument("--site-start", type=int, default=1, help="Starting site id (inclusive)")
+    p.add_argument(
+        "--site-dir-pattern",
+        default="site_{site_id:02d}",
+        help="Per-site subdir pattern; Python format string with 'site_id'",
+    )
     args = p.parse_args(argv)
 
     cfg = _load_cfg(args.config)
@@ -732,6 +749,108 @@ def main(argv: Optional[List[str]] = None) -> int:
     dies = int(topo.get("dies", 1))
     planes = int(topo.get("planes", 1))
 
+    # Multi-site batch mode
+    if int(getattr(args, "site_count", 0) or 0) > 0:
+        site_count = int(args.site_count)
+        site_start = int(args.site_start)
+        pattern = str(args.site_dir_pattern)
+
+        for offset in range(site_count):
+            site_id = site_start + offset
+            out_dir_site = os.path.join(args.out_dir, pattern.format(site_id=site_id))
+
+            # Site-local state (independent across sites)
+            rm = ResourceManager(cfg=cfg, dies=dies, planes=planes)
+            am = _mk_addrman(cfg)
+            try:
+                if hasattr(rm, "register_addr_policy") and hasattr(am, "check_epr"):
+                    rm.register_addr_policy(am.check_epr)  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
+            # Per run within the site (continuity preserved via shared RM)
+            for i in range(args.num_runs):
+                enable_boot = bool(args.bootstrap) and (i == 0) and (args.num_runs > 1)
+                cfg_run = _apply_overrides(
+                    cfg,
+                    admission_window=args.admission_window,
+                    bootstrap_enabled=enable_boot,
+                    validate_pc=bool(args.validate_pc),
+                )
+
+                # Optional phase_conditional demo override
+                if args.pc_demo is not None:
+                    pc = dict(cfg_run.get("phase_conditional", {}) or {})
+                    if args.pc_demo == "erase-only":
+                        pc["DEFAULT"] = {"Block_Erase_SLC": 1.0}
+                    elif args.pc_demo == "mix":
+                        pc["DEFAULT"] = {
+                            "Block_Erase_SLC": 0.5,
+                            "All_WL_Dummy_Program": 0.25,
+                            "4KB_Page_Read_confirm_LSB": 0.25,
+                        }
+                    elif args.pc_demo == "pgm-read":
+                        pc["DEFAULT"] = {
+                            "All_WL_Dummy_Program": 0.6,
+                            "4KB_Page_Read_confirm_LSB": 0.4,
+                        }
+                    cfg_run["phase_conditional"] = pc
+
+                # Enable proposer file logging per run (site-local dir)
+                try:
+                    os.makedirs(out_dir_site, exist_ok=True)
+                    log_path = os.path.join(out_dir_site, f"proposer_debug_{_date_stamp()}_{_run_id_str(i+1)}.log")
+                    _proposer.enable_file_log(log_path)
+                except Exception:
+                    pass
+
+                # Optional: validate phase_conditional keys and distributions
+                if args.validate_pc:
+                    try:
+                        _proposer.validate_phase_conditional(cfg_run)
+                    except Exception:
+                        pass
+
+                # Seed per site/run for proposer RNG and AddressManager RNG
+                seed_i = (int(args.seed) + offset + i) if args.seed is not None else None
+                # Re-seed AM RNG if available
+                if seed_i is not None:
+                    try:
+                        import numpy as _np  # type: ignore
+                        if hasattr(am, "_rng"):
+                            am._rng = _np.random.default_rng(int(seed_i))  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
+
+                sched, res = run_once(cfg_run, rm, am, run_until_us=float(args.run_until), rng_seed=seed_i)
+
+                # Collect timeline rows
+                rows = sched.timeline_rows()
+
+                # Exports (PRD §3)
+                os.makedirs(out_dir_site, exist_ok=True)
+                op_timeline = export_operation_timeline(rows, rm, out_dir=out_dir_site, run_idx=i)
+                opstate_timeline = export_op_state_timeline(rm, rows=rows, out_dir=out_dir_site, run_idx=i)
+                touch_cnt = export_address_touch_count(rows, cfg, out_dir=out_dir_site, run_idx=i)
+                opstate_name_input_time = export_op_state_name_input_time_count(rows, rm, out_dir=out_dir_site, run_idx=i)
+                op_sequence = export_operation_sequence(rows, cfg, out_dir=out_dir_site, run_idx=i)
+                phase_counts = export_phase_proposal_counts(rows, rm, out_dir=out_dir_site, run_idx=i)
+                snap_path = save_snapshot(rm, out_dir=out_dir_site, run_idx=i)
+
+                # Brief run summary (site-aware)
+                print(f"Site {site_id} — Run {i + 1} results:")
+                print("  hooks=", res.get("hooks_executed"), "ops_committed=", res.get("ops_committed"))
+                cmb = (res.get("metrics", {}) or {}).get("committed_by_base", {})
+                if cmb:
+                    print("  committed_by_base:")
+                    for k in sorted(cmb.keys()):
+                        print(f"    - {k}: {cmb[k]}")
+                print("  files:")
+                for pth in (op_sequence, touch_cnt, op_timeline, opstate_timeline, opstate_name_input_time, phase_counts, snap_path):
+                    print("   -", pth)
+        return 0
+
+    # Default single-site path (backward-compatible)
     # Shared state across runs for continuity
     rm = ResourceManager(cfg=cfg, dies=dies, planes=planes)
     am = _mk_addrman(cfg)
@@ -784,6 +903,15 @@ def main(argv: Optional[List[str]] = None) -> int:
                 pass
 
         seed_i = (int(args.seed) + i) if args.seed is not None else None
+        # Re-seed AM RNG if available for determinism
+        if seed_i is not None:
+            try:
+                import numpy as _np  # type: ignore
+                if hasattr(am, "_rng"):
+                    am._rng = _np.random.default_rng(int(seed_i))  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
         sched, res = run_once(cfg_run, rm, am, run_until_us=float(args.run_until), rng_seed=seed_i)
 
         # Collect timeline rows

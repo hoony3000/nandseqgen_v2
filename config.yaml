@@ -54,6 +54,14 @@ bootstrap:
     TLC: 0.8
 
 op_bases:
+  NOP:
+    scope: "DIE_WIDE"
+    affect_state: false
+    instant_resv: true
+    states:
+      - ISSUE:
+        bus: true
+        duration: 0.4
   ETC:
     scope: "DIE_WIDE"
     affect_state: false
@@ -716,6 +724,8 @@ op_bases:
         duration: 0.4
 
 payload_by_op_base:
+  NOP: []
+  ETC: []
   ERASE: [die,plane,block,page,celltype]
   DSL_VTH_CHECK: [die,plane,block,page,celltype]
   PROGRAM_SLC: [die,plane,block,page,celltype]
@@ -727,6 +737,9 @@ payload_by_op_base:
   ONESHOT_PROGRAM_MSB_23h: [die,plane,block,page,celltype]
   ONESHOT_PROGRAM_EXEC_MSB: [die,plane,block,page,celltype]
   ONESHOT_CACHE_PROGRAM: [die,plane,block,page,celltype]
+  TRANSFER_TO_CACHE_LSB: [die]
+  TRANSFER_TO_CACHE_CSB: [die]
+  TRANSFER_TO_CACHE_MSB: [die]
   READ: [die,plane,block,page,celltype]
   RECOVERY_RD: [die,plane,block,page,celltype]
   READ4K: [die,plane,block,page,celltype]
@@ -753,26 +766,27 @@ payload_by_op_base:
   ERASE_RESUME: [die]
   PROGRAM_SUSPEND: [die]
   PROGRAM_RESUME: [die]
-  TRAINING: []
-  READID: []
+  TRAINING: [die]
+  READID: [die]
   SETPARA: [die]
   GETPARA: [die]
   PLANE_SETPARA: [die,plane]
-  SETFEATURE: []
-  GETFEATURE: []
+  SETFEATURE: [die]
+  GETFEATURE: [die]
   SETFEATURE_LUN: [die]
   GETFEATURE_LUN: [die]
-  RESET: []
+  RESET: [die]
   RESET_LUN: [die]
-  TEMPSENSOR: []
-  ZQCAL: []
-  ODTDISABLE: []
-  ODTENABLE: []
+  TEMPSENSOR: [die]
+  ZQCAL: [die]
+  ODTDISABLE: [die]
+  ODTENABLE: [die]
 
 
 exclusion_groups:
   on_busy:
     - ETC
+    # - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -830,6 +844,7 @@ exclusion_groups:
     - ODTENABLE
   on_camread:
     - ETC
+    # - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -887,6 +902,7 @@ exclusion_groups:
     - ODTENABLE
   on_dout:
     - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -943,6 +959,7 @@ exclusion_groups:
     - ODTENABLE
   on_cache_dout:
     - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -999,6 +1016,7 @@ exclusion_groups:
     - ODTENABLE
   on_plane_cache_dout:
     - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -1107,6 +1125,7 @@ exclusion_groups:
     # - ODTENABLE
   after_copyback_read:
     - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -1163,6 +1182,7 @@ exclusion_groups:
     - ODTENABLE
   after_oneshot_copyback_program_lsb:
     - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -1219,6 +1239,7 @@ exclusion_groups:
     - ODTENABLE
   after_oneshot_copyback_program_csb:
     - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -1275,6 +1296,7 @@ exclusion_groups:
     - ODTENABLE
   after_oneshot_copyback_program_msb:
     - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -1331,6 +1353,7 @@ exclusion_groups:
     - ODTENABLE
   after_cache_read:
     - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -1387,6 +1410,7 @@ exclusion_groups:
     - ODTENABLE
   after_plane_cache_read:
     - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -1443,6 +1467,7 @@ exclusion_groups:
     - ODTENABLE
   on_cache_program_datain:
     - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -1481,8 +1506,8 @@ exclusion_groups:
     - CAMREAD_LUN
     - ERASE_SUSPEND
     - ERASE_RESUME
-    - PROGRAM_SUSPEND
-    - PROGRAM_RESUME
+    # - PROGRAM_SUSPEND
+    # - PROGRAM_RESUME
     - TRAINING
     - READID
     - SETPARA
@@ -1500,6 +1525,7 @@ exclusion_groups:
     - ODTENABLE
   after_cache_program:
     - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     # - PROGRAM_SLC
@@ -1556,6 +1582,7 @@ exclusion_groups:
     - ODTENABLE
   on_oneshot_cache_program_datain:
     - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -1610,6 +1637,7 @@ exclusion_groups:
     - ODTENABLE
   after_oneshot_cache_program:
     - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -1667,6 +1695,7 @@ exclusion_groups:
     - ODTENABLE
   after_oneshot_program_lsb:
     - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -1678,7 +1707,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
-    - TRANSFER_TO_CACHE_LSB
+    # - TRANSFER_TO_CACHE_LSB
     - TRANSFER_TO_CACHE_CSB
     - TRANSFER_TO_CACHE_MSB
     # - READ
@@ -1723,6 +1752,7 @@ exclusion_groups:
     - ODTENABLE
   after_oneshot_program_csb:
     - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -1734,6 +1764,9 @@ exclusion_groups:
     # - ONESHOT_PROGRAM_MSB_23h
     # - ONESHOT_PROGRAM_EXEC_MSB
     # - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    # - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
     # - READ
     # - READ4K
     - CACHE_READ
@@ -1776,6 +1809,7 @@ exclusion_groups:
     - ODTENABLE
   after_oneshot_program_msb:
     - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -1787,6 +1821,9 @@ exclusion_groups:
     - ONESHOT_PROGRAM_MSB_23h
     # - ONESHOT_PROGRAM_EXEC_MSB
     # - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    # - TRANSFER_TO_CACHE_MSB
     # - READ
     # - READ4K
     - CACHE_READ
@@ -1829,6 +1866,7 @@ exclusion_groups:
     - ODTENABLE
   on_read:
     - ETC
+    # - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -1886,63 +1924,7 @@ exclusion_groups:
     - ODTENABLE
   on_erase:
     - ETC
-    - ERASE
-    - DSL_VTH_CHECK
-    - PROGRAM_SLC
-    - ALLWL_PROGRAM
-    - CACHE_PROGRAM_SLC
-    - ONESHOT_PROGRAM_LSB
-    - ONESHOT_PROGRAM_CSB
-    - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
-    - ONESHOT_PROGRAM_EXEC_MSB
-    - ONESHOT_CACHE_PROGRAM
-    - TRANSFER_TO_CACHE_LSB
-    - TRANSFER_TO_CACHE_CSB
-    - TRANSFER_TO_CACHE_MSB
-    - READ
-    - RECOVERY_RD
-    - READ4K
-    - CACHE_READ
-    - CACHE_READ_END
-    - PLANE_READ
-    - PLANE_READ4K
-    - PLANE_CACHE_READ
-    - PLANE_CACHE_READ_END
-    - COPYBACK_READ
-    - COPYBACK_PROGRAM_SLC
-    - ONESHOT_COPYBACK_PROGRAM_LSB
-    - ONESHOT_COPYBACK_PROGRAM_CSB
-    - ONESHOT_COPYBACK_PROGRAM_MSB
-    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
-    - DOUT
-    - DOUT4K
-    - DATAIN
-    # - SR
-    # - SR_ADD
-    - CAMREAD
-    - CAMREAD_LUN
-    # - ERASE_SUSPEND
-    - ERASE_RESUME
-    # - PROGRAM_SUSPEND
-    # - PROGRAM_RESUME
-    # - TRAINING
-    - READID
-    - SETPARA
-    - GETPARA
-    - PLANE_SETPARA
-    - SETFEATURE
-    - GETFEATURE
-    - SETFEATURE_LUN
-    - GETFEATURE_LUN
-    # - RESET
-    # - RESET_LUN
-    - TEMPSENSOR
-    # - ZQCAL
-    - ODTDISABLE
-    - ODTENABLE
-  on_program:
-    - ETC
+    # - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -1982,7 +1964,65 @@ exclusion_groups:
     # - ERASE_SUSPEND
     - ERASE_RESUME
     - PROGRAM_SUSPEND
-    # - PROGRAM_RESUME
+    - PROGRAM_RESUME
+    # - TRAINING
+    - READID
+    - SETPARA
+    - GETPARA
+    - PLANE_SETPARA
+    - SETFEATURE
+    - GETFEATURE
+    - SETFEATURE_LUN
+    - GETFEATURE_LUN
+    # - RESET
+    # - RESET_LUN
+    - TEMPSENSOR
+    # - ZQCAL
+    - ODTDISABLE
+    - ODTENABLE
+  on_program:
+    - ETC
+    # - NOP
+    - ERASE
+    - DSL_VTH_CHECK
+    - PROGRAM_SLC
+    - ALLWL_PROGRAM
+    - CACHE_PROGRAM_SLC
+    - ONESHOT_PROGRAM_LSB
+    - ONESHOT_PROGRAM_CSB
+    - ONESHOT_PROGRAM_MSB
+    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_EXEC_MSB
+    - ONESHOT_CACHE_PROGRAM
+    - TRANSFER_TO_CACHE_LSB
+    - TRANSFER_TO_CACHE_CSB
+    - TRANSFER_TO_CACHE_MSB
+    - READ
+    - RECOVERY_RD
+    - READ4K
+    - CACHE_READ
+    - CACHE_READ_END
+    - PLANE_READ
+    - PLANE_READ4K
+    - PLANE_CACHE_READ
+    - PLANE_CACHE_READ_END
+    - COPYBACK_READ
+    - COPYBACK_PROGRAM_SLC
+    - ONESHOT_COPYBACK_PROGRAM_LSB
+    - ONESHOT_COPYBACK_PROGRAM_CSB
+    - ONESHOT_COPYBACK_PROGRAM_MSB
+    - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+    - DOUT
+    - DOUT4K
+    - DATAIN
+    # - SR
+    # - SR_ADD
+    - CAMREAD
+    - CAMREAD_LUN
+    - ERASE_SUSPEND
+    - ERASE_RESUME
+    # - PROGRAM_SUSPEND
+    - PROGRAM_RESUME
     # - TRAINING
     - READID
     - SETPARA
@@ -1999,7 +2039,8 @@ exclusion_groups:
     - ODTDISABLE
     - ODTENABLE
   odt_disable:
-    # - DEFAULT
+    # - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -2056,7 +2097,8 @@ exclusion_groups:
     - ODTDISABLE
     # - ODTENABLE
   erase_suspended:
-    # - DEFAULT
+    - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     # - PROGRAM_SLC
@@ -2109,7 +2151,8 @@ exclusion_groups:
   not_erase_suspended:
     - ERASE_RESUME
   program_suspended:
-    # - DEFAULT
+    - ETC
+    - NOP
     - ERASE
     - DSL_VTH_CHECK
     - PROGRAM_SLC
@@ -2163,11 +2206,11 @@ exclusion_groups:
     # - ZQCAL
     - ODTDISABLE
     - ODTENABLE
-  not_erase_suspended:
+  not_program_suspended:
     - PROGRAM_RESUME
 
 exclusions_by_op_state:
-  ERASE.CORE_BUSY: ['on_erase']
+ ERASE.CORE_BUSY: ['on_erase']
   ERASE.END: []
   DSL_VTH_CHECK.CORE_BUSY: ['on_busy']
   DSL_VTH_CHECK.END: []
@@ -2377,6 +2420,7 @@ latencies:
   program_suspend.busy: &program_suspend_busy 100.0
   program_resume.busy: &program_resume_busy 150.0
   reset.busy: &reset_busy 30.0
+  dsl_vth_check.busy: &dsl_vth_check_busy 100.0
 
 op_names:
   4KB_Page_Read_confirm_FWSLC:
@@ -2981,7 +3025,7 @@ op_names:
     durations:
       ISSUE: 2.2508
   Delay:
-    base: ETC
+    base: NOP
     multi: false
     celltype: NONE
     durations:
@@ -3001,17 +3045,17 @@ op_names:
   DSL_Vth_Check:
     base: DSL_VTH_CHECK
     multi: false
-    celltype: SLC
+    celltype: TLC
     durations:
       ISSUE: 0.085
-      CORE_BUSY: *erase_slc_busy
+      CORE_BUSY: *dsl_vth_check_busy
   DSL_Vth_Check_Multi_Plane:
     base: DSL_VTH_CHECK
     multi: true
-    celltype: SLC
+    celltype: TLC
     durations:
       ISSUE: 0.34
-      CORE_BUSY: *erase_slc_busy
+      CORE_BUSY: *dsl_vth_check_busy
   Enhanced_Random_Data_Output_Primary:
     base: DOUT
     multi: false
@@ -4663,6 +4707,9 @@ phase_conditional_overrides:
     ONESHOT_PROGRAM_MSB_23h: 0.0
     ONESHOT_PROGRAM_EXEC_MSB: 0.0
     ONESHOT_CACHE_PROGRAM: 0.0
+    TRANSFER_TO_CACHE_LSB: 0.0
+    TRANSFER_TO_CACHE_CSB: 0.0
+    TRANSFER_TO_CACHE_MSB: 0.0
     READ: 0.0
     RECOVERY_RD: 0.0
     READ4K: 0.0
@@ -4709,9 +4756,17 @@ phase_conditional_overrides:
     Block_Erase_TLC: 0.1
     # Block_Erase_Multi_Plane_ONFI_SLC: 0.1
     # Page_Program_SLC: 0.2
-    One_Shot_PGM_LSB: 0.3 
+    One_Shot_PGM_LSB: 0.1 
+    # One_Shot_PGM_CSB: 0.1 
+    # One_Shot_PGM_MSB: 0.1 
+    # One_Shot_PGM_MSB_23h: 0.1 
     # Page_Program_Multi_Plane_ONFI_SLC: 0.2
     # Read_SLC: 0.6
+    # Erase_Suspend_Reset: 0.05
+    # Erase_Resume: 0.05
+    Program_Suspend_Reset: 0.05
+    Program_Resume: 0.05
+
     Read_LSB: 0.2
     Read_CSB: 0.2
     Read_MSB: 0.2
@@ -4730,39 +4785,39 @@ phase_conditional_overrides:
   #   PLANE_READ: 0.05
   #   PLANE_READ4K: 0.05
 
-  READ.DATA_OUT:
-    DOUT: 1
-  READ.END:
-    DOUT: 1
-  READ4K.DATA_OUT:
-    DOUT: 1
-  READ4K.END:
-    DOUT: 1
-  PLANE_READ.DATA_OUT:
-    DOUT: 1
-  PLANE_READ.END:
-    DOUT: 1
-  PLANE_READ4K.DATA_OUT:
-    DOUT: 1
-  PLANE_READ4K.END:
-    DOUT: 1
-  CACHE_READ.DATA_OUT:
-    DOUT: 1
-  CACHE_READ.END:
-    CACHE_READ_END: 1
-    DOUT: 1
-  PLANE_CACHE_READ.DATA_OUT:
-    DOUT: 1
-  PLANE_CACHE_READ.END:
-    DOUT: 1
-  COPYBACK_READ.DATA_OUT:
-    DOUT: 1
-  COPBYBACK_READ.END:
-    DOUT: 1
-  RECOVERY_RD.DATA_OUT:
-    DOUT: 1
-  RECOVERY_RD.END:
-    DOUT: 1
+  # READ.DATA_OUT:
+  #   DOUT: 1
+  # READ.END:
+  #   DOUT: 1
+  # READ4K.DATA_OUT:
+  #   DOUT: 1
+  # READ4K.END:
+  #   DOUT: 1
+  # PLANE_READ.DATA_OUT:
+  #   DOUT: 1
+  # PLANE_READ.END:
+  #   DOUT: 1
+  # PLANE_READ4K.DATA_OUT:
+  #   DOUT: 1
+  # PLANE_READ4K.END:
+  #   DOUT: 1
+  # CACHE_READ.DATA_OUT:
+  #   DOUT: 1
+  # CACHE_READ.END:
+  #   CACHE_READ_END: 1
+  #   DOUT: 1
+  # PLANE_CACHE_READ.DATA_OUT:
+  #   DOUT: 1
+  # PLANE_CACHE_READ.END:
+  #   DOUT: 1
+  # COPYBACK_READ.DATA_OUT:
+  #   DOUT: 1
+  # COPBYBACK_READ.END:
+  #   DOUT: 1
+  # RECOVERY_RD.DATA_OUT:
+  #   DOUT: 1
+  # RECOVERY_RD.END:
+  #   DOUT: 1
 
   # DEFAULT:
   #   Read_Status_Enhanced_70h: 1
@@ -4781,3 +4836,78 @@ phase_conditional_overrides:
   #   op_name1: 0.01
   #   op_name2: 0.01
   #   ...
+
+  # ERASE.CORE_BUSY:
+  #   NOP: 0.7
+  # DSL_VTH_CHECK.CORE_BUSY:
+  #   NOP: 0.7
+  # PROGRAM_SLC.CORE_BUSY:
+  #   NOP: 0.7
+  # ALLWL_PROGRAM.CORE_BUSY:
+  #   NOP: 0.7
+  # CACHE_PROGRAM_SLC.CORE_BUSY:
+  #   NOP: 0.7
+  # ONESHOT_PROGRAM_LSB.CORE_BUSY:
+  #   NOP: 0.7
+  # ONESHOT_PROGRAM_CSB.CORE_BUSY:
+  #   NOP: 0.7
+  # ONESHOT_PROGRAM_MSB.CORE_BUSY:
+  #   NOP: 0.7
+  # ONESHOT_PROGRAM_MSB_23h.CORE_BUSY:
+  #   NOP: 0.7
+  # ONESHOT_PROGRAM_EXEC_MSB.CORE_BUSY:
+  #   NOP: 0.7
+  # ONESHOT_CACHE_PROGRAM.CORE_BUSY:
+  #   NOP: 0.7
+  # TRANSFER_TO_CACHE_LSB.CORE_BUSY:
+  #   NOP: 0.7
+  # TRANSFER_TO_CACHE_CSB.CORE_BUSY:
+  #   NOP: 0.7
+  # TRANSFER_TO_CACHE_MSB.CORE_BUSY:
+  #   NOP: 0.7
+  # READ.CORE_BUSY:
+  #   NOP: 0.7
+  # RECOVERY_RD.CORE_BUSY:
+  #   NOP: 0.7
+  # READ4K.CORE_BUSY:
+  #   NOP: 0.7
+  # CACHE_READ.CORE_BUSY:
+  #   NOP: 0.7
+  # CACHE_READ_END.CORE_BUSY:
+  #   NOP: 0.7
+  # PLANE_READ.CORE_BUSY:
+  #   NOP: 0.7
+  # PLANE_READ4K.CORE_BUSY:
+  #   NOP: 0.7
+  # PLANE_CACHE_READ.CORE_BUSY:
+  #   NOP: 0.7
+  # PLANE_CACHE_READ_END.CORE_BUSY:
+  #   NOP: 0.7
+  # COPYBACK_READ.CORE_BUSY:
+  #   NOP: 0.7
+  # COPYBACK_PROGRAM_SLC.CORE_BUSY:
+  #   NOP: 0.7
+  # ONESHOT_COPYBACK_PROGRAM_LSB.CORE_BUSY:
+  #   NOP: 0.7
+  # ONESHOT_COPYBACK_PROGRAM_CSB.CORE_BUSY:
+  #   NOP: 0.7
+  # ONESHOT_COPYBACK_PROGRAM_MSB.CORE_BUSY:
+  #   NOP: 0.7
+  # ONESHOT_COPYBACK_PROGRAM_EXEC_MSB.CORE_BUSY:
+  #   NOP: 0.7
+  # CAMREAD.CORE_BUSY:
+  #   NOP: 0.7
+  # CAMREAD_LUN.CORE_BUSY:
+  #   NOP: 0.7
+  # ERASE_SUSPEND.CORE_BUSY:
+  #   NOP: 0.7
+  # ERASE_RESUME.CORE_BUSY:
+  #   NOP: 0.7
+  # PROGRAM_SUSPEND.CORE_BUSY:
+  #   NOP: 0.7
+  # PROGRAM_RESUME.CORE_BUSY:
+  #   NOP: 0.7
+  # RESET.CORE_BUSY:
+  #   NOP: 0.7
+  # RESET_LUN.CORE_BUSY:
+  #   NOP: 0.7

@@ -78,7 +78,7 @@
     - 검증: 동일 실행에서 두 CSV가 op_uid 증가 순으로 정렬되는지 확인. 사양 컬럼/순서/의미 불변.
   - 평가 결과: (작성 예정)
 
-- [ ] 12. suspend_state 에 suspend 상태가 아닐때 RESUME 제한하기.
+- [x] 12. suspend_state 에 suspend 상태가 아닐때 RESUME 제한하기.
   - 문제 상황: SUSPEND operation 이 수행되기 전에는 RESUME operation 이 금지되어야 함에도 propose 되어 스케쥴에 등록되는 상황 발생
   - 개선 방향과 실험: 현재는 ERASE_SUSPEND 와 PROGRAM_SUSPEND 를 동일한 state 의 값에다 관리하는데, 따로 state 를 분리하고, exclusions_by_suspend_state 의 key 값에 NOT_ERASE_SUSPENDED, NOT_PROGRAM_SUSPENDED 를 등록해서 SUSPEND 수행되기 전 상태에서 RESUME operation 제한. NESTED_SUSPEND 삭제
   - 평가 결과:
@@ -117,11 +117,15 @@
   - 개선 방향과 실험:
   - 평가 결과:
 
-- [ ] 19. operation 생성이 중간에 멈추는 현상 개선
+- [ ] 19. operation 생성이 중간에 멈추는 현상 개선 (state 문제. commit 할 때 무언가 빠진 것 같음)
   - 문제 상황: 
   - 개선 방향과 실험:
   - 평가 결과:
 
+- [x] 20. num_runs 를 2 이상 할때 두번째 operation 부터 생성이 안되는 현상
+  - 문제 상황: 
+  - 개선 방향과 실험:
+  - 평가 결과:
 
 ## Medium Priority
 

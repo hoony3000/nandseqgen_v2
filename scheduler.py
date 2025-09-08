@@ -46,13 +46,18 @@ class Scheduler:
         validator: Optional[Any] = None,
         rng: Optional[Any] = None,
         logger: Optional[Any] = None,
+        start_at_us: Optional[float] = None,
     ) -> None:
         # Deterministic RNG (no system time)
         if rng is None:
             import random as _r
             rng = _r.Random(0)
         self._deps = _Deps(cfg=cfg, rm=rm, addrman=addrman, validator=validator, rng=rng, logger=logger)
-        self.now_us: float = 0.0
+        # Start simulation time: align with provided start_at_us if any; else 0.0
+        try:
+            self.now_us: float = quantize(float(start_at_us)) if start_at_us is not None else 0.0
+        except Exception:
+            self.now_us = 0.0
         self._hooks: int = 0
         self._ops_committed: int = 0
         # metrics (expand in milestones 3-5)
@@ -231,10 +236,10 @@ class Scheduler:
                 return "TLC"
 
         b = str(base or "").upper()
-        # Only handle ERASE and PROGRAM-like bases
+        # Only handle ERASE and PROGRAM-like bases (final-step commit whitelist for PROGRAM)
         is_erase = (b == "ERASE")
-        is_program = ("PROGRAM" in b) and ("SUSPEND" not in b) and ("RESUME" not in b)
-        if not (is_erase or is_program):
+        is_program_like = ("PROGRAM" in b) and ("SUSPEND" not in b) and ("RESUME" not in b)
+        if not (is_erase or is_program_like):
             return
         t_list = list(targets or [])
         if not t_list:
@@ -255,9 +260,30 @@ class Scheduler:
             return
         addrs = np.array(rows, dtype=int).reshape(-1, 1, 3)
         mode = _celltype_from_cfg(d.cfg, op_name)
+        # Whitelist of PROGRAM bases that are allowed to commit addr_state at OP_END
+        ALLOWED_PROGRAM_COMMIT = {
+            "PROGRAM_SLC",
+            "COPYBACK_PROGRAM_SLC",
+            "ONESHOT_PROGRAM_MSB_23H",
+            "ONESHOT_PROGRAM_EXEC_MSB",
+            "ONESHOT_CACHE_PROGRAM",
+            "ONESHOT_COPYBACK_PROGRAM_EXEC_MSB",
+        }
+        # Optional runtime extension via cfg.features.extra_allowed_program_bases
+        try:
+            feats = (d.cfg.get("features", {}) or {})
+            extra = feats.get("extra_allowed_program_bases", []) or []
+            for x in extra:
+                try:
+                    ALLOWED_PROGRAM_COMMIT.add(str(x).upper())
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        is_program_commit = b in ALLOWED_PROGRAM_COMMIT
         if is_erase and hasattr(am, "apply_erase"):
             am.apply_erase(addrs, mode=mode)
-        elif is_program and hasattr(am, "apply_pgm"):
+        elif is_program_commit and hasattr(am, "apply_pgm"):
             am.apply_pgm(addrs, mode=mode)
 
     # -----------------

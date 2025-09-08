@@ -5,6 +5,9 @@
 - NAND 내부 state에 따른 확률 기반 샘플링으로 sequence를 생성해 미세조정 가능한 시스템을 만든다.
 - 생성된 sequence를 ATE(Automatic Test Environment)가 사용 가능한 파일 형태로 출력한다.
 - 런타임 원칙: 주소 상태(AddressManager)는 OP_END 시점에 ERASE/PROGRAM 효과를 반영한다.
+  - PROGRAM(TLC one‑shot) 체인에서는 최종 단계에서 단 한 번만 커밋한다.
+    - 허용 베이스: `PROGRAM_SLC`, `COPYBACK_PROGRAM_SLC`, `ONESHOT_PROGRAM_MSB_23h`, `ONESHOT_PROGRAM_EXEC_MSB`, `ONESHOT_CACHE_PROGRAM`, `ONESHOT_COPYBACK_PROGRAM_EXEC_MSB`
+    - 그 외 PROGRAM 계열(L/CSB/MSB 중간 단계 등)은 OP_END에서 addr_state를 변경하지 않는다.
 
 ## 2. Terminology
 - op_id: operation을 schedule 할 때 생기는 고유값. log tracing을 위해 사용
@@ -366,7 +369,7 @@ class Operation:
         2) `ERASE.CORE_BUSY`/`PROGRAM.CORE_BUSY` state 중 ERASE_SUSPEND/PROGRAM_SUSPEND 동작이 `time_suspend` 시각에 등록됨
         3) `ResourceManager`가 `op_state_timeline`의 `ERASE.CORE_BUSY`/`PROGRAM.CORE_BUSY` state 를 `time_suspend` 이후부터 제거하고, `ERASE_SUSPEND` 스케쥴을 등록. `suspended_ops`에 기존 ERASE를 추가하고 `ongoing_ops`에서 제거. `suspend_states`를 'erase_suspended'로 변경
            - 규칙: ERASE_RESUME/PROGRAM_RESUME 은 state를 별도로 추가하지 않음 → 예외 루틴 처리
-        4) 이후 ERASE_RESUME 예약 시, `Scheduler`는 RESUME 동작으로 인지하여 별도 루틴으로 처리: `ERASE_RESUME.CORE_BUSY`를 timeline에 예약하고, `suspended_ops`에 있던 operation을 `ERASE_RESUME` 종료 직후에 추가
+        4) 이후 ERASE_RESUME/PROGRAM_RESUME 예약 시, `Scheduler`는 RESUME 동작으로 인지하여 별도 루틴으로 처리: `ERASE_RESUME.CORE_BUSY`를 timeline에 예약하고, `suspended_ops`에 있던 operation을 `ERASE_RESUME` 종료 직후에 추가
     - RESET/RESET_LUN 스케쥴 시: RESET/RESET_LUN 의 경우 스케쥴된 시점 이후에 예약된 operation/op_state 를 제거하고 RESET/RESET_LUN 에 의한 state 만 등록함
 - RESET/RESET_ADD 동작에 대한 후속 처리
   - RESET 수행 시 latch, suspend_state, cache_state, ongoing_ops, suspended_ops 는 모두 기본 값으로  돌아간다.
