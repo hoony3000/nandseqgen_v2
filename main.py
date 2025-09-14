@@ -332,6 +332,20 @@ def export_op_state_timeline(rm: ResourceManager, rows: Optional[List[Dict[str, 
     # From RM snapshot timeline: (die, plane, op_base, state, start_us, end_us)
     snap = rm.snapshot()
     segs = snap.get("timeline", []) or []
+    # Optional per-run scoping: when enabled, restrict to segments overlapping this run's time window
+    try:
+        feats = (rm.cfg.get("features", {}) or {})  # type: ignore[attr-defined]
+        per_run = bool(feats.get("op_state_timeline_per_run", False))
+    except Exception:
+        per_run = False
+    if per_run and rows:
+        try:
+            tmin = min(float(r["start_us"]) for r in rows)
+            tmax = max(float(r["end_us"]) for r in rows)
+            tol = float(SIM_RES_US)
+            segs = [s for s in segs if not (float(s[5]) <= (tmin - tol) or (tmax + tol) <= float(s[4]))]
+        except Exception:
+            pass
     out_rows: List[Dict[str, Any]] = []
     for (die, plane, base, state, s0, s1) in segs:
         dur = float(s1) - float(s0)

@@ -39,6 +39,8 @@ features:
   suspend_resume_chain_enabled: true
   # Build operation_timeline from state timeline cuts for ERASE/PROGRAM families
   operation_timeline_effective: true
+  # Export op_state_timeline only for segments within the current run window
+  op_state_timeline_per_run: true
 
 bootstrap:
   enabled: false
