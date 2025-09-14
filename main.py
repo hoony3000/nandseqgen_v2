@@ -147,6 +147,7 @@ class InstrumentedScheduler(Scheduler):
         return [r.__dict__.copy() for r in self._rows]
 
 
+
 # ------------------------------
 # CSV helpers (PRD §3 family)
 # ------------------------------
@@ -175,11 +176,110 @@ def _csv_write(path: str, rows: List[Dict[str, Any]], fieldnames: List[str]) -> 
             w.writerow(r)
 
 
+def _is_program_family(base: str) -> bool:
+    b = str(base).upper()
+    return ("PROGRAM" in b) and ("SUSPEND" not in b) and ("RESUME" not in b) and ("CACHE" not in b)
+
+
+def _is_effective_target_base(base: str) -> bool:
+    b = str(base).upper()
+    return (b == "ERASE") or _is_program_family(b)
+
+
+def _build_timeline_index(timeline: List[List[Any]]) -> Dict[Tuple[int, int], List[Tuple[str, str, float, float]]]:
+    idx: Dict[Tuple[int, int], List[Tuple[str, str, float, float]]] = {}
+    for ent in timeline:
+        try:
+            d, p, b, st, s0, s1 = ent
+            idx.setdefault((int(d), int(p)), []).append((str(b), str(st), float(s0), float(s1)))
+        except Exception:
+            continue
+    for k in idx.keys():
+        idx[k].sort(key=lambda x: (x[2], x[3]))
+    return idx
+
+
+def _effective_windows_for_row(row: Dict[str, Any], tl_idx: Dict[Tuple[int, int], List[Tuple[str, str, float, float]]]) -> List[Tuple[float, float]]:
+    d = int(row["die"])  # type: ignore[index]
+    p = int(row["plane"])  # type: ignore[index]
+    base = str(row["op_base"])  # type: ignore[index]
+    s = float(row["start_us"])  # type: ignore[index]
+    e = float(row["end_us"])  # type: ignore[index]
+    lst = tl_idx.get((d, p), [])
+    out: List[Tuple[float, float]] = []
+    if not lst:
+        return out
+    for (b, st, s0, s1) in lst:
+        if b != base:
+            continue
+        if st != "CORE_BUSY":
+            continue
+        a0 = max(s, s0)
+        a1 = min(e, s1)
+        if a1 > a0:
+            out.append((a0, a1))
+    # merge adjacent within quantization tolerance
+    if not out:
+        return out
+    out.sort(key=lambda x: (x[0], x[1]))
+    merged: List[Tuple[float, float]] = []
+    tol = float(SIM_RES_US)
+    cs, ce = out[0]
+    for (x0, x1) in out[1:]:
+        if x0 <= ce + tol:
+            ce = max(ce, x1)
+        else:
+            merged.append((quantize(cs), quantize(ce)))
+            cs, ce = x0, x1
+    merged.append((quantize(cs), quantize(ce)))
+    return merged
+
+
+def _build_effective_rows(rows: List[Dict[str, Any]], rm: ResourceManager) -> List[Dict[str, Any]]:
+    snap = rm.snapshot()
+    tl = snap.get("timeline", []) or []
+    tl_idx = _build_timeline_index(tl)
+    # next uid starts after max seen
+    try:
+        next_uid = max(int(r.get("op_uid", 0)) for r in rows) + 1
+    except ValueError:
+        next_uid = 1
+    eff: List[Dict[str, Any]] = []
+    for r in rows:
+        base = str(r.get("op_base", ""))
+        if not _is_effective_target_base(base):
+            eff.append(dict(r))
+            continue
+        wins = _effective_windows_for_row(r, tl_idx)
+        if not wins:
+            # fully trimmed; drop row
+            continue
+        # replace first window on the original row
+        r0 = dict(r)
+        r0["start_us"], r0["end_us"] = float(wins[0][0]), float(wins[0][1])
+        eff.append(r0)
+        # additional windows -> cloned rows with new uids
+        for (a0, a1) in wins[1:]:
+            rN = dict(r)
+            rN["start_us"], rN["end_us"] = float(a0), float(a1)
+            rN["op_uid"] = int(next_uid)
+            next_uid += 1
+            eff.append(rN)
+    return eff
+
+
 def export_operation_timeline(rows: List[Dict[str, Any]], rm: ResourceManager, *, out_dir: str, run_idx: int) -> str:
     # PRD 3.3 fields: start,end,die,plane,block,page,op_name,op_base,source,op_uid,op_state
     # Extended: phase_key_used, phase_key_virtual (proposal-time used and virtual keys)
+    # Option C: when enabled, build an effective row-set for ERASE/PROGRAM families using state timeline cuts
+    try:
+        feats = (rm.cfg.get("features", {}) or {})  # type: ignore[attr-defined]
+        effective = bool(feats.get("operation_timeline_effective", False))
+    except Exception:
+        effective = False
+    rows_used = _build_effective_rows(rows, rm) if effective else rows
     out_rows: List[Dict[str, Any]] = []
-    for r in rows:
+    for r in rows_used:
         die = int(r["die"])  # type: ignore[index]
         plane = int(r["plane"])  # type: ignore[index]
         start = float(r["start_us"])  # type: ignore[index]
@@ -418,7 +518,7 @@ def export_op_state_name_input_time_count(rows: List[Dict[str, Any]], rm: Resour
     return path
 
 
-def export_operation_sequence(rows: List[Dict[str, Any]], cfg: Dict[str, Any], *, out_dir: str, run_idx: int) -> str:
+def export_operation_sequence(rows: List[Dict[str, Any]], cfg: Dict[str, Any], rm: Optional[ResourceManager] = None, *, out_dir: str, run_idx: int) -> str:
     # PRD 3.1: seq,time,op_id,op_name,op_uid,payload (JSON)
     # Group by op_uid; time is min start_us among targets; payload schema from cfg[payload_by_op_base]
     by_uid: Dict[int, List[Dict[str, Any]]] = {}
@@ -500,6 +600,51 @@ def export_operation_sequence(rows: List[Dict[str, Any]], cfg: Dict[str, Any], *
             i -= 1
         return None
 
+    # --- SR/SR_ADD exp_val helpers (PRD §3.1) ---
+    topo = cfg.get("topology", {}) or {}
+    num_planes = int(topo.get("planes", 1))
+
+    def _die_status(die: int, t: float) -> str:
+        busy = False
+        has_io = False
+        for p in range(num_planes):
+            try:
+                st = rm.op_state(int(die), int(p), float(t))
+            except Exception:
+                st = None
+            if not st:
+                continue
+            try:
+                _, state = str(st).split(".", 1)
+            except ValueError:
+                state = str(st)
+            if state == "CORE_BUSY":
+                busy = True
+                break
+            if state in ("DATA_OUT", "DATA_IN"):
+                has_io = True
+        if busy:
+            return "busy"
+        return "extrdy" if has_io else "ready"
+
+    _PLANE_PREF_NAMES = {"Read_Status_Enhanced_72h", "Read_Status_Enhanced_7Ch"}
+    _READ_BASES = {"PLANE_READ", "PLANE_READ4K", "PLANE_CACHE_READ"}
+
+    def _expected_value_for_sr(op_name: str, die: int, plane: int, t: float) -> str:
+        if str(op_name) in _PLANE_PREF_NAMES:
+            try:
+                st = rm.op_state(int(die), int(plane), float(t))
+            except Exception:
+                st = None
+            if st:
+                try:
+                    base, state = str(st).split(".", 1)
+                except ValueError:
+                    base, state = str(st), ""
+                if state == "CORE_BUSY" and base in _READ_BASES:
+                    return "busy"
+        return _die_status(int(die), float(t))
+
     out: List[Dict[str, Any]] = []
     pef = (cfg.get("payload_by_op_base", {}) or {})
     opcode_map: Dict[str, int] = (cfg.get("pattern_export", {}) or {}).get("opcode_map", {}) or {}
@@ -510,8 +655,8 @@ def export_operation_sequence(rows: List[Dict[str, Any]], cfg: Dict[str, Any], *
         t0 = min(float(r["start_us"]) for r in grp)
         name = str(grp[0]["op_name"]) if grp else "NOP"
         base = str(grp[0]["op_base"]) if grp else "NOP"
-        # Determine payload fields for base
-        fields = [str(x) for x in pef.get(base, ["die", "pl", "block", "page"])]
+        # Determine payload fields for base (use 'plane' not 'pl')
+        fields = [str(x) for x in pef.get(base, ["die", "plane", "block", "page"])]
         needs_cell = ("celltype" in fields)
         # Determine default celltype from current op_name spec
         def_cell = None
@@ -523,7 +668,7 @@ def export_operation_sequence(rows: List[Dict[str, Any]], cfg: Dict[str, Any], *
         grp2 = sorted(grp, key=lambda r: (int(r["plane"]), int(r["block"]), int(r["page"])) )
         payload_list: List[Dict[str, Any]] = []
         for r in grp2:
-            item = {"die": int(r["die"]), "pl": int(r["plane"]), "block": int(r["block"]), "page": int(r["page"]) }
+            item = {"die": int(r["die"]), "plane": int(r["plane"]), "block": int(r["block"]), "page": int(r["page"]) }
             cell_val = def_cell
             if needs_cell:
                 # 1) Prefer proposer-propagated hint when present
@@ -547,7 +692,17 @@ def export_operation_sequence(rows: List[Dict[str, Any]], cfg: Dict[str, Any], *
                                 pass
             if needs_cell:
                 item["celltype"] = (None if cell_val in (None, "None") else str(cell_val))
-            # filter by requested fields order
+            # Inject exp_val for SR/SR_ADD per PRD §3.1 (only when RM is provided)
+            if (rm is not None) and (str(base) in ("SR", "SR_ADD")):
+                try:
+                    t_ctx = r.get("phase_key_time")
+                    t_eval = float(t_ctx) if t_ctx not in (None, "None") else float(r["start_us"])  # type: ignore[index]
+                    t_eval = quantize(t_eval)
+                except Exception:
+                    t_eval = quantize(float(r.get("start_us", 0.0)))
+                ev = _expected_value_for_sr(name, int(r["die"]), int(r["plane"]), float(t_eval))
+                item["exp_val"] = ev
+            # filter by requested fields order (no extra fields)
             ordered = {k: item.get(k) for k in fields if k in item}
             payload_list.append(ordered)
         payload_json = json.dumps(payload_list, ensure_ascii=False, separators=(",", ":"))
@@ -939,7 +1094,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 opstate_timeline = export_op_state_timeline(rm, rows=rows, out_dir=out_dir_site, run_idx=i)
                 touch_cnt = export_address_touch_count(rows, cfg, out_dir=out_dir_site, run_idx=i)
                 opstate_name_input_time = export_op_state_name_input_time_count(rows, rm, out_dir=out_dir_site, run_idx=i)
-                op_sequence = export_operation_sequence(rows, cfg, out_dir=out_dir_site, run_idx=i)
+                op_sequence = export_operation_sequence(rows, cfg, rm, out_dir=out_dir_site, run_idx=i)
                 phase_counts = export_phase_proposal_counts(rows, rm, out_dir=out_dir_site, run_idx=i)
                 snap_path = save_snapshot(rm, out_dir=out_dir_site, run_idx=i)
 
@@ -951,6 +1106,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                     print("  committed_by_base:")
                     for k in sorted(cmb.keys()):
                         print(f"    - {k}: {cmb[k]}")
+                # Optional chaining diagnostics
+                try:
+                    cs = res.get("metrics", {}).get("chained_stubs")
+                    csum = res.get("metrics", {}).get("chained_stub_total_us")
+                    if cs not in (None, 0):
+                        print(f"  chained_stubs= {int(cs)}  total_us= {float(csum):.3f}")
+                except Exception:
+                    pass
                 print("  files:")
                 for pth in (op_sequence, touch_cnt, op_timeline, opstate_timeline, opstate_name_input_time, phase_counts, snap_path):
                     print("   -", pth)
@@ -960,13 +1123,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Shared state across runs for continuity
     rm = ResourceManager(cfg=cfg, dies=dies, planes=planes)
     am = _mk_addrman(cfg)
-    # Register address-dependent policy (EPR) when available
+        # Register address-dependent policy (EPR) when available
     try:
         if hasattr(rm, "register_addr_policy") and hasattr(am, "check_epr"):
             rm.register_addr_policy(am.check_epr)  # type: ignore[attr-defined]
     except Exception:
         pass
-
+    
     # Per run
     for i in range(args.num_runs):
         enable_boot = bool(args.bootstrap) and (i == 0) and (args.num_runs > 1)
@@ -1029,7 +1192,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         opstate_timeline = export_op_state_timeline(rm, rows=rows, out_dir=args.out_dir, run_idx=i)
         touch_cnt = export_address_touch_count(rows, cfg, out_dir=args.out_dir, run_idx=i)
         opstate_name_input_time = export_op_state_name_input_time_count(rows, rm, out_dir=args.out_dir, run_idx=i)
-        op_sequence = export_operation_sequence(rows, cfg, out_dir=args.out_dir, run_idx=i)
+        op_sequence = export_operation_sequence(rows, cfg, rm, out_dir=args.out_dir, run_idx=i)
         phase_counts = export_phase_proposal_counts(rows, rm, out_dir=args.out_dir, run_idx=i)
         snap_path = save_snapshot(rm, out_dir=args.out_dir, run_idx=i)
 
@@ -1041,6 +1204,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("  committed_by_base:")
             for k in sorted(cmb.keys()):
                 print(f"    - {k}: {cmb[k]}")
+        # Optional chaining diagnostics
+        try:
+            cs = res.get("metrics", {}).get("chained_stubs")
+            csum = res.get("metrics", {}).get("chained_stub_total_us")
+            if cs not in (None, 0):
+                print(f"  chained_stubs= {int(cs)}  total_us= {float(csum):.3f}")
+        except Exception:
+            pass
         print("  files:")
         for pth in (op_sequence, touch_cnt, op_timeline, opstate_timeline, opstate_name_input_time, phase_counts, snap_path):
             print("   -", pth)

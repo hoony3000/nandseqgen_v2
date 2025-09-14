@@ -49,6 +49,8 @@ states.yaml
 metrics*.csv
 bench*.csv
 out*/
+prof.*
+*svg
 
 # tmp yaml files
 config_*.yaml

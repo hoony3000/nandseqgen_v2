@@ -82,6 +82,9 @@ class Scheduler:
             "bootstrap_stage": 0,
             # helpful debug
             "last_commit_bases": [],
+            # suspend/resume chaining diagnostics
+            "chained_stubs": 0,
+            "chained_stub_total_us": 0.0,
         }
         # Bootstrap controller (inactive by default unless cfg['bootstrap']['enabled'] is true)
         self._boot = BootstrapController(cfg)
@@ -328,6 +331,31 @@ class Scheduler:
         # Reset last reserved records for observability/testing
         self.metrics["last_reserved_records"] = []
 
+        # Feature flag: enable chaining of leftover CORE_BUSY after *_RESUME
+        def _chain_enabled(cfg: Dict[str, Any]) -> bool:
+            try:
+                return bool(((cfg.get("features", {}) or {}).get("suspend_resume_chain_enabled", False)))
+            except Exception:
+                return False
+
+        def _is_family_base(b: str, fam: str) -> bool:
+            bb = str(b).upper()
+            ff = str(fam).upper()
+            return (ff in bb) and ("SUSPEND" not in bb) and ("RESUME" not in bb)
+
+        def _build_core_busy_stub(base: str, dur_us: float):
+            class _State:
+                def __init__(self, name: str, dur: float, bus: bool = False) -> None:
+                    self.name = name
+                    self.dur_us = float(dur)
+                    self.bus = bool(bus)
+            class _Op:
+                def __init__(self, b: str, d: float) -> None:
+                    self.base = b
+                    self.states = [_State("CORE_BUSY", d, False)]
+            return _Op(str(base), float(dur_us))
+
+        chain_jobs: List[Dict[str, Any]] = []
         for idx, p in enumerate(batch.ops):
             op = _proposer._build_op(d.cfg, p.op_name, p.targets)
             instant = _is_instant_base(d.cfg, p.base)
@@ -339,6 +367,14 @@ class Scheduler:
                 self.metrics["window_exceeds"] += 1
                 break
             r = d.rm.reserve(txn, op, p.targets, p.scope)
+            # Debug: print validity snapshot and outcome
+            try:
+                snap = getattr(d.rm, "last_validation", None)
+                lv = snap() if callable(snap) else None
+                failed = (lv or {}).get("failed_rule") if isinstance(lv, dict) else None
+                print(f"[reserve] base={p.base} instant={instant} start_hint={now:.3f} -> ok={r.ok} reason={r.reason} start={r.start_us} end={r.end_us} failed_rule={failed}")
+            except Exception:
+                pass
             # print(f"{p.op_name}, {p.base}, {p.targets}, {p.scope} -> {r}") # DEBUG
             if not r.ok:
                 ok_all = False
@@ -421,6 +457,44 @@ class Scheduler:
                 # Best-effort; if quantize or end_us fails, keep txn.now_us unchanged
                 pass
 
+            # Chain leftover CORE_BUSY immediately after *_RESUME when enabled
+            try:
+                b_up = str(p.base).upper()
+                if _chain_enabled(cfg_used) and (b_up in ("ERASE_RESUME", "PROGRAM_RESUME")):
+                    # Determine die from targets (or hook fallback)
+                    die0 = int(p.targets[0].die) if p.targets else (int(hook.get("die", 0)) if isinstance(hook, dict) else 0)
+                    sus = d.rm.suspended_ops(die0)
+                    meta = sus[-1] if isinstance(sus, list) and sus else None
+                    rem = float(meta.get("remaining_us", 0.0)) if isinstance(meta, dict) else 0.0
+                    if rem > 0.0 and isinstance(meta, dict):
+                        targets2 = meta.get("targets") or []
+                        base2 = str(meta.get("base", ""))
+                        fam = "ERASE" if ("ERASE" in b_up) else "PROGRAM"
+                        if targets2 and _is_family_base(base2, fam):
+                            chain_jobs.append({
+                                "die": die0,
+                                "base": base2,
+                                "op_name": meta.get("op_name"),
+                                "targets": list(targets2),
+                                "start_at": float(r.end_us or p.start_us),
+                                "rem_us": float(rem),
+                                "op_id": meta.get("op_id"),
+                                "hook": dict(hook) if isinstance(hook, dict) else {},
+                                "phase_key": pk,
+                            })
+                        else:
+                            try:
+                                print(f"[chain] skip(pre): targets2={len(targets2) if isinstance(targets2,list) else 0} base2={base2}")
+                            except Exception:
+                                pass
+                    else:
+                        try:
+                            print(f"[chain] skip(pre): remaining_us={rem} meta_ok={isinstance(meta,dict)}")
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
         if ok_all and reserved_any:
             d.rm.commit(txn)
             nops = len(resv_records)
@@ -436,13 +510,84 @@ class Scheduler:
                 # emit OP_START/OP_END and state PHASE_HOOKs
                 self._emit_op_events(rec)
             self.metrics["last_commit_bases"] = list(bases)
+            # Register ongoing meta for freshly committed ERASE/PROGRAM (skip chained stubs)
+            try:
+                for rec in resv_records:
+                    if rec.get("_chain_stub"):
+                        continue
+                    b = str(rec.get("base", "")).upper()
+                    if (b == "ERASE") or ("PROGRAM" in b and ("SUSPEND" not in b) and ("RESUME" not in b) and ("CACHE" not in b)):
+                        tgs = rec.get("targets") or []
+                        if not tgs:
+                            continue
+                        die0 = int(getattr(tgs[0], "die", 0))
+                        d.rm.register_ongoing(
+                            die=die0,
+                            op_id=None,
+                            op_name=str(rec.get("op_name", "")) if rec.get("op_name") is not None else None,
+                            base=str(rec.get("base")),
+                            targets=list(tgs),
+                            start_us=float(rec.get("start_us")),
+                            end_us=float(rec.get("end_us")),
+                        )
+            except Exception:
+                # Best-effort; ongoing meta is observability aid and should not break scheduling
+                pass
             # Bootstrap progress + possible stage advancement
             self._boot.record_committed(bases, batch)
             topo = (d.cfg.get("topology", {}) or {})
             self._boot.maybe_advance(self._boot.progress_snapshot(topo))
             self.metrics["bootstrap_active"] = self._boot.active()
             self.metrics["bootstrap_stage"] = self._boot.stage()
-            return (nops, False, None)
+            # Post-commit chaining of leftover CORE_BUSY (now that *_SUSPENDED axis state is cleared)
+            n_chain = 0
+            if chain_jobs:
+                for job in chain_jobs:
+                    try:
+                        t0 = quantize(float(job["start_at"]))
+                        txn2 = d.rm.begin(t0)
+                        # Build stub op and reserve
+                        stub = _build_core_busy_stub(job["base"], float(job["rem_us"]))
+                        r2 = d.rm.reserve(txn2, stub, job["targets"], Scope.PLANE_SET)
+                        if r2.ok:
+                            d.rm.commit(txn2)
+                            rec2 = {
+                                "base": job["base"],
+                                "op_name": job.get("op_name"),
+                                "targets": list(job["targets"]),
+                                "scope": Scope.PLANE_SET,
+                                "start_us": float(r2.start_us or t0),
+                                "end_us": float(r2.end_us or (r2.start_us or t0)),
+                                "op": stub,
+                                "phase_key": job.get("phase_key"),
+                                "propose_now": float(now),
+                                "phase_hook_die": job.get("hook", {}).get("die"),
+                                "phase_hook_plane": job.get("hook", {}).get("plane"),
+                                "phase_hook_label": job.get("hook", {}).get("label"),
+                                "_chain_stub": True,
+                            }
+                            # Emit events and update metrics
+                            self._emit_op_events(rec2)
+                            self.metrics["ckpt_ops_committed"] += 1
+                            self._ops_committed += 1
+                            b2 = str(rec2["base"])  # type: ignore[index]
+                            self.metrics["committed_by_base"][b2] = int(self.metrics["committed_by_base"].get(b2, 0)) + 1
+                            self.metrics["chained_stubs"] = int(self.metrics.get("chained_stubs", 0)) + 1
+                            self.metrics["chained_stub_total_us"] = float(self.metrics.get("chained_stub_total_us", 0.0)) + float(job["rem_us"])
+                            n_chain += 1
+                            # Reflect meta move back to ongoing
+                            try:
+                                d.rm.resume_from_suspended(int(job["die"]), op_id=job.get("op_id"))
+                            except Exception:
+                                pass
+                        else:
+                            try:
+                                print(f"[chain] post-commit reserve_fail reason={r2.reason}")
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+            return (nops + n_chain, False, None)
         else:
             d.rm.rollback(txn)
             self.metrics["ckpt_rollback_batches"] += 1

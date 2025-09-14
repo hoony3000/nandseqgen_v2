@@ -26,19 +26,13 @@
 - 파일형태: `operation_sequence_yymmdd_0000001.csv`
 - 필수 필드: `seq,time,op_id,op_name,op_uid,payload`
 - payload는 op_name에 따라 다르며, CFG[payload_by_op_base] 에 명시
-  - SR/SR_ADD 는 특별히 `expected_value` 라는 payload 로 가짐. SR/SR_ADD 이 예약될 당시의 op_name(of SR/SR_ADD), target die, plane(s) 의 진행 중인 op_state(s), op_name(on timeline at target plane(s)) 에 따라 기대 값이 달라짐.
-    - Read_Status_Enhanced_70h: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
-    - Read_Status_Enhanced_71h: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
-    - Read_Status_Enhanced_7Ah: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
-    - Read_Status_Enhanced_7Bh: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
-    - Read_Status_Enhanced_7Dh: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
-    - Read_Status_Enhanced_7Eh: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
-    - Read_Status_Enhanced_72h: target plane 이 예약된 op_state 가 있다면 'busy' / 그 외 'ready'
-    - Read_Status_Enhanced_7Ch: target plane 이 예약된 op_state 가 있다면 'busy' / 그 외 'ready'
-    - LUN_Status_Read_for_LUN0: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
-    - LUN_Status_Read_for_LUN1: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
-    - LUN_Status_Read_for_LUN2: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
-    - LUN_Status_Read_for_LUN3: die-wide 하게 예약된 op_state 가 하나라도 있다면 'busy' / 그 외 'ready'
+  - SR/SR_ADD 는 특별히 `exp_val` 라는 payload 로 가짐. SR/SR_ADD 이 예약될 당시의 op_name(of SR/SR_ADD), target die, plane(s) 의 진행 중인 op_state(s), op_name(on timeline at target plane(s)) 에 따라 기대 값이 달라짐.
+    - Read_Status_Enhanced_70h/Read_Status_Enhanced_71h/Read_Status_Enhanced_78h/Read_Status_Enhanced_7Ah/Read_Status_Enhanced_7Bh/Read_Status_Enhanced_7Dh/Read_Status_Enhanced_7Eh: target die 의 모든 plane 에 대해서 하나라도 CORE_BUSY state 가 하나라도 있으면 'busy', state 가 DATA_OUT 또는 DATA_IN 만 있다면 'extrdy', CORE_BUSY/DATA_OUT/DATA_IN 중 아무것도 없다면 'ready'
+    - Read_Status_Enhanced_72h/Read_Status_Enhanced_7Ch: target plane 에 대해서 PLANE_READ/PLANE_READ4K/PLANE_CACHE_READ 의 CORE_BUSY state 가 진행중이면 'busy', 그렇지 않으면 target die 의 모든 plane 에 대해서 하나라도 CORE_BUSY state 가 하나라도 있으면 'busy', state 가 DATA_OUT 또는 DATA_IN 만 있다면 'extrdy', CORE_BUSY/DATA_OUT/DATA_IN 중 아무것도 없다면 'ready'
+    - LUN_Status_Read_for_LUN0: die address 0 의 모든 plane 에 대해서 하나라도 CORE_BUSY state 가 하나라도 있으면 'busy', state 가 DATA_OUT 또는 DATA_IN 만 있다면 'extrdy', CORE_BUSY/DATA_OUT/DATA_IN 중 아무것도 없다면 'ready'
+    - LUN_Status_Read_for_LUN1: die address 1 의 모든 plane 에 대해서 하나라도 CORE_BUSY state 가 하나라도 있으면 'busy', state 가 DATA_OUT 또는 DATA_IN 만 있다면 'extrdy', CORE_BUSY/DATA_OUT/DATA_IN 중 아무것도 없다면 'ready'
+    - LUN_Status_Read_for_LUN2: die address 2 의 모든 plane 에 대해서 하나라도 CORE_BUSY state 가 하나라도 있으면 'busy', state 가 DATA_OUT 또는 DATA_IN 만 있다면 'extrdy', CORE_BUSY/DATA_OUT/DATA_IN 중 아무것도 없다면 'ready'
+    - LUN_Status_Read_for_LUN3: die address 3 의 모든 plane 에 대해서 하나라도 CORE_BUSY state 가 하나라도 있으면 'busy', state 가 DATA_OUT 또는 DATA_IN 만 있다면 'extrdy', CORE_BUSY/DATA_OUT/DATA_IN 중 아무것도 없다면 'ready'
 
 - 예시:
 ```

@@ -446,19 +446,27 @@ def _build_states_from_cfg(cfg: Dict[str, Any], op_name: str, base: str) -> List
 
     out: List[_StateSeg] = []
     for st in states_meta:
-        # st may be mapping like { 'ISSUE': {bus: true, duration: 0.4} } or { 'name': 'ISSUE', 'bus': true, 'duration': 0.4 }
+        # Support multiple YAML shapes:
+        # 1) { 'name': 'ISSUE', 'bus': true }
+        # 2) { 'ISSUE': { 'bus': true } }
+        # 3) { 'ISSUE': None, 'bus': true }  (flattened form seen in config)
         if isinstance(st, dict) and "name" in st:
             name = str(st.get("name"))
             bus = bool(st.get("bus", False))
         else:
-            # YAML as key -> nested mapping form
             items = list(st.items()) if isinstance(st, dict) else []
-            if items:
-                name = str(items[0][0])
-                v = items[0][1] or {}
-                bus = bool(v.get("bus", False))
-            else:
+            if not items:
                 continue
+            key0, val0 = items[0][0], items[0][1]
+            name = str(key0)
+            if isinstance(val0, dict) and ("bus" in val0):
+                bus = bool(val0.get("bus", False))
+            else:
+                # flattened form: bus sits at same level as key
+                try:
+                    bus = bool(st.get("bus", False))  # type: ignore[attr-defined]
+                except Exception:
+                    bus = False
         # Duration strictly from op_names[op_name].durations
         if name in durations:
             dur = float(durations[name])

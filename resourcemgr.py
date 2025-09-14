@@ -47,6 +47,40 @@ class _StateTimeline:
             if seg.start_us<end and start<seg.end_us and (pred is None or pred(seg)): return True
             i+=1
         return False
+    def truncate_after(self, die:int, plane:int, at_us:float, pred=None) -> None:
+        """Truncate or remove segments at/after at_us that match pred.
+
+        - If a matching segment straddles at_us, set its end_us to at_us.
+        - Remove any subsequent matching segments with start_us >= at_us.
+        - Non‑matching segments are left untouched.
+        """
+        key=(die,plane); lst=self.by_plane.get(key,[])
+        if not lst: return
+        t=float(at_us)
+        starts=self._starts_by_plane.get(key)
+        if starts is None or len(starts)!=len(lst):
+            starts=[s.start_us for s in lst]; self._starts_by_plane[key]=starts
+        import bisect as b
+        j=b.bisect_left(starts,t) if starts else 0
+        i=j-1
+        # Adjust straddling segment strictly before t
+        if 0<=i<len(lst):
+            seg=lst[i]
+            if seg.start_us < t < seg.end_us and (pred is None or pred(seg)):
+                seg.end_us = t
+        # Remove following matching segments that start at or after t
+        k=j
+        while k < len(lst):
+            seg=lst[k]
+            if seg.start_us >= t and (pred is None or pred(seg)):
+                k+=1
+            else:
+                break
+        # delete lst[j:k]
+        if j < k:
+            del lst[j:k]
+        # rebuild starts
+        self._starts_by_plane[key]=[s.start_us for s in lst]
 @dataclass
 class _Txn:
     now_us: float
@@ -237,20 +271,45 @@ class ResourceManager:
             planes = [plane_set[0]] if plane_set else [0]
         return max(self._avail[(die, p)] for p in planes)
 
-    def _planescope_ok(self, die: int, scope: Scope, plane_set: List[int], start: float, end: float) -> bool:
+    def _planescope_ok(
+        self,
+        die: int,
+        scope: Scope,
+        plane_set: List[int],
+        start: float,
+        end: float,
+        pending: Optional[Dict[Tuple[int, int], List[Tuple[float, float]]]] = None,
+    ) -> bool:
+        """Check plane reservation overlap including committed and pending windows.
+
+        pending: current-transaction plane windows (keyed by (die, plane)).
+        """
         planes = list(range(self.planes)) if scope == Scope.DIE_WIDE else plane_set
         for p in planes:
+            # committed windows
             for (s, e) in self._plane_resv[(die, p)]:
                 if not (end <= s or e <= start):
                     return False
+            # pending windows in this txn
+            if pending:
+                for (s, e) in pending.get((die, p), []) or []:
+                    if not (end <= s or e <= start):
+                        return False
         return True
 
-    def _bus_ok(self, op: Any, start: float) -> bool:
+    def _bus_ok(self, op: Any, start: float, pending: Optional[List[Tuple[float, float]]] = None) -> bool:
+        """Check bus segment overlap including committed and pending windows."""
         for (off0, off1) in self._bus_segments(op):
             a0, a1 = quantize(start + off0), quantize(start + off1)
+            # committed bus windows
             for (s, e) in self._bus_resv:
                 if not (a1 <= s or e <= a0):
                     return False
+            # pending bus windows in this txn
+            if pending:
+                for (s, e) in pending:
+                    if not (a1 <= s or e <= a0):
+                        return False
         return True
 
     # --- single/multi exclusion and single×single allowance (die-level) ---
@@ -431,9 +490,11 @@ class ResourceManager:
         base = self._op_base(op)
         # instant path: schedule at txn.now_us with bus/latch/rules only; skip plane/die windows
         if self._base_instant(base) and self._instant_scope_ok(scope, base):
-            start = quantize(txn.now_us)
+            # minimal serialization guard within txn: avoid overlapping pending bus windows
+            last_bus_end = max((e for (_s, e) in (txn.bus_resv or [])), default=0.0)
+            start = quantize(max(txn.now_us, last_bus_end))
             end = quantize(start + dur)
-            if not self._bus_ok(op, start):
+            if not self._bus_ok(op, start, pending=txn.bus_resv):
                 return Reservation(False, "bus", op, targets, None, None)
             if not self._latch_ok(op, targets, start, scope):
                 return Reservation(False, "latch", op, targets, None, None)
@@ -460,9 +521,9 @@ class ResourceManager:
         # normal path
         start = quantize(max(txn.now_us, self._earliest_planescope(die, scope, plane_set)))
         end = quantize(start + dur)
-        if not self._planescope_ok(die, scope, plane_set, start, end):
+        if not self._planescope_ok(die, scope, plane_set, start, end, pending=txn.plane_resv):
             return Reservation(False, "planescope", op, targets, None, None)
-        if not self._bus_ok(op, start):
+        if not self._bus_ok(op, start, pending=txn.bus_resv):
             return Reservation(False, "bus", op, targets, None, None)
         # die-level single×multi, multi×multi exclusion including pending windows in txn
         kind = self._multiplicity_kind(op, scope, plane_set)
@@ -506,6 +567,9 @@ class ResourceManager:
         return Reservation(True, None, op, targets, start, end)
 
     def commit(self, txn: _Txn) -> None:
+        # Track processed SUSPEND handling per die to avoid duplicate work when txn includes
+        # multiple st_ops entries referencing the same die/operation.
+        _susp_processed: Set[Tuple[str, int]] = set()
         for (key, lst) in txn.plane_resv.items():
             self._plane_resv[key].extend(lst)
             if lst:
@@ -521,7 +585,16 @@ class ResourceManager:
         for (die, plane, base, st_list, start) in txn.st_ops:
             # PRD v2 §5.4: skip op_state timeline segments for affect_state == false
             if self._affects_state(base):
-                self._st.reserve_op(die, plane, base, st_list, start)
+                # PRD v2 §5.5 (SUSPEND/RESUME rule): do not add ISSUE for *_RESUME in timeline
+                b_up = str(base).upper()
+                st_for_tl = st_list
+                if b_up in ("ERASE_RESUME", "PROGRAM_RESUME"):
+                    try:
+                        st_for_tl = [(n, d) for (n, d) in st_list if str(n).upper() != "ISSUE"]
+                    except Exception:
+                        st_for_tl = st_list
+                if st_for_tl:
+                    self._st.reserve_op(die, plane, base, st_for_tl, start)
             # Opportunistic minimal state hooks for ODT/CACHE/SUSPEND bookkeeping
             end = quantize(start + sum(float(d) for (_, d) in st_list))
             b = str(base).upper()
@@ -552,11 +625,47 @@ class ResourceManager:
                 ent = self._cache_program.get(die)
                 if ent and ent.end_us is None:
                     ent.end_us = end
-            # SUSPEND bookkeeping (split axes)
-            if b == "ERASE_SUSPEND":
-                self._erase_susp[die] = _AxisState(die=die, state="ERASE_SUSPENDED", start_us=start)
-            elif b == "PROGRAM_SUSPEND":
-                self._pgm_susp[die] = _AxisState(die=die, state="PROGRAM_SUSPENDED", start_us=start)
+            # SUSPEND bookkeeping (split axes) + timeline truncation + meta move
+            if b in ("ERASE_SUSPEND", "PROGRAM_SUSPEND"):
+                fam = "ERASE" if b == "ERASE_SUSPEND" else "PROGRAM"
+                # Open axis state at suspend time
+                if b == "ERASE_SUSPEND":
+                    self._erase_susp[die] = _AxisState(die=die, state="ERASE_SUSPENDED", start_us=start)
+                else:
+                    self._pgm_susp[die] = _AxisState(die=die, state="PROGRAM_SUSPENDED", start_us=start)
+                # Guard: handle once per die per suspend base within this commit
+                key_s = (b, int(die))
+                if key_s not in _susp_processed:
+                    _susp_processed.add(key_s)
+                    # Move latest ongoing op of this die to suspended and compute remaining
+                    try:
+                        self.move_to_suspended(int(die), op_id=None, now_us=float(start))
+                    except Exception:
+                        # best-effort; continue even if no ongoing meta
+                        pass
+                    # Determine planes to truncate based on just-moved meta when available
+                    planes_to_cut: List[int]
+                    try:
+                        meta_list = self._suspended_ops.get(int(die), [])
+                        meta = meta_list[-1] if meta_list else None
+                        if meta and meta.targets:
+                            planes_to_cut = sorted({int(t.plane) for t in meta.targets})
+                        else:
+                            planes_to_cut = list(range(self.planes))
+                    except Exception:
+                        planes_to_cut = list(range(self.planes))
+                    # Predicate: cut only CORE_BUSY segments of the target family
+                    def _pred(seg: _StateInterval) -> bool:
+                        try:
+                            return (seg.state == "CORE_BUSY") and (fam in str(seg.op_base)) and ("SUSPEND" not in str(seg.op_base)) and ("RESUME" not in str(seg.op_base))
+                        except Exception:
+                            return False
+                    for p in planes_to_cut:
+                        try:
+                            self._st.truncate_after(int(die), int(p), float(start), pred=_pred)
+                        except Exception:
+                            # continue per-plane to avoid partial failure
+                            continue
             elif b == "ERASE_RESUME":
                 st_e = self._erase_susp.get(die)
                 if st_e and st_e.end_us is None:

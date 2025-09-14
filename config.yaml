@@ -35,6 +35,10 @@ features:
   # Use uniform (or name_weights) sampling for subsequent op_name selection in sequences
   # If false, fall back to legacy first-match selection
   uniform_subseq_sampling: true
+  # Enable chaining of leftover CORE_BUSY immediately after *_RESUME
+  suspend_resume_chain_enabled: true
+  # Build operation_timeline from state timeline cuts for ERASE/PROGRAM families
+  operation_timeline_effective: true
 
 bootstrap:
   enabled: false
@@ -758,8 +762,8 @@ payload_by_op_base:
   DOUT: [die,plane,block,page,celltype]
   DOUT4K: [die,plane,block,page,celltype]
   DATAIN: [die,plane,block,page,celltype]
-  SR: [die,plane,expected_value]
-  SR_ADD: [die,plane,expected_value]
+  SR: [die,exp_val]
+  SR_ADD: [die,plane,exp_val]
   CAMREAD: []
   CAMREAD_LUN: [die]
   ERASE_SUSPEND: [die]
@@ -2228,8 +2232,8 @@ exclusions_by_op_state:
   ONESHOT_PROGRAM_CSB.END: ['after_oneshot_program_csb']
   ONESHOT_PROGRAM_MSB.CORE_BUSY: ['on_busy']
   ONESHOT_PROGRAM_MSB.END: ['after_oneshot_program_msb']
-  ONESHOT_PROGRAM_MSB_23h.CORE_BUSY: ['on_busy']
-  ONESHOT_PROGRAM_MSB_23h.END: ['on_program']
+  ONESHOT_PROGRAM_MSB_23h.CORE_BUSY: ['on_program']
+  ONESHOT_PROGRAM_MSB_23h.END: []
   ONESHOT_PROGRAM_EXEC_MSB.CORE_BUSY: ['on_program']
   ONESHOT_PROGRAM_EXEC_MSB.END: []
   ONESHOT_CACHE_PROGRAM.CORE_BUSY: ['on_program']
@@ -4761,7 +4765,13 @@ phase_conditional_overrides:
     # One_Shot_PGM_CSB: 0.0 
     # One_Shot_PGM_MSB: 0.0 
     # One_Shot_PGM_MSB_23h: 0.0 
-    Read_Status_Enhanced_70h: 0.1
+    # Read_Status_Enhanced_70h: 0.1
+    # Read_Status_Enhanced_7Ch: 0.1
+    # Read_Status_Enhanced_78h: 0.1
+    # ERASE_SUSPEND: 0.0
+    ERASE_RESUME: 0.1
+    # PROGRAM_SUSPEND: 0.1
+    # PROGRAM_RESUME: 0.1
 
     Read_SLC: 0.1
     Read_LSB: 0.1
@@ -4825,7 +4835,13 @@ phase_conditional_overrides:
     # ERASE_RESUME: 0.0
     PROGRAM_SUSPEND: 0.0
     # PROGRAM_RESUME: 0.0
-    
+  
+  ERASE.CORE_BUSY:
+    NOP: 0.5
+    ERASE_SUSPEND: 0.01
+  PROGRAM.CORE_BUSY:
+    NOP: 0.5
+    PROGRAM_SUSPEND: 0.01
   # op_base->value overrides for specific op_states
   # ERASE.CORE_BUSY:
   #   op_name1: 0.01
