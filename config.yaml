@@ -3,7 +3,7 @@
 topology:
   dies: 1
   planes: 4
-  blocks_per_die: 1000
+  blocks_per_die: 4
   pages_per_block: 2564
 
 celltypes:
@@ -2337,8 +2337,8 @@ generate_seq_rules:
   #       Change_Read_Column_Random_Data_Output: 0.0
   CACHE_PROGRAM_SLC.SEQ:
     sequences:
-      - CACHE_PROGRAM_SLC: ['inc_page', 'same_celltype'] # inheritance conditions
-      - PROGRAM_SLC: ['inc_page', 'same_celltype']
+      - CACHE_PROGRAM_SLC: ['inc_page', 'same_celltype', 'multi'] # inheritance conditions
+      - PROGRAM_SLC: ['inc_page', 'same_celltype', 'multi']
   ONESHOT_PROGRAM_CSB.SEQ:
     sequences:
       - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype', 'multi']
@@ -2353,28 +2353,28 @@ generate_seq_rules:
   CACHE_READ.SEQ:
     sequences:
       - CACHE_READ: ['same_page', 'same_celltype', 'multi']
-      - DOUT: ['prev_page', 'multi', 'same_celltype', 'multi']
+      - DOUT: ['prev_page', 'same_celltype', 'multi']
       - CACHE_READ_END: ['inc_page', 'same_celltype', 'multi']
-      - DOUT: ['prev_page', 'multi', 'same_celltype', 'multi']
+      - DOUT: ['prev_page', 'same_celltype', 'multi']
   COPYBACK_PROGRAM_SLC.SEQ:
     sequences:
       - COPYBACK_PROGRAM_SLC: ['none', 'same_celltype']
   ONESHOT_COPYBACK_PROGRAM_LSB.SEQ:
     sequences:
-      - ONESHOT_COPYBACK_PROGRAM_LSB: ['pgm_same_page']
-      - COPYBACK_READ: ['none']
-      - ONESHOT_COPYBACK_PROGRAM_CSB: ['pgm_same_page']
-      - COPYBACK_READ: ['none']
-      - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB: ['pgm_same_page']
+      - ONESHOT_COPYBACK_PROGRAM_LSB: ['pgm_same_page', 'multi']
+      - COPYBACK_READ: ['none', 'multi']
+      - ONESHOT_COPYBACK_PROGRAM_CSB: ['pgm_same_page', 'multi']
+      - COPYBACK_READ: ['none', 'multi']
+      - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB: ['pgm_same_page', 'multi']
   RECOVERY_RD.SEQ:
     sequences:
-      - COPYBACK_READ: ['same_page_from_program_suspend']
-      - DOUT: ['prev_page', 'multi', 'same_celltype']
+      - COPYBACK_READ: ['same_page_from_program_suspend', 'multi']
+      - DOUT: ['prev_page', 'same_celltype', 'multi']
 
 latencies:
   erase.slc.busy: &erase_slc_busy 7000.0
   erase.tlc.busy: &erase_tlc_busy 7000.0
-  program.slc.busy: &program_slc_busy 7000.0
+  program.slc.busy: &program_slc_busy 300.0
   oneshot_program.trans.busy: &oneshot_program_trans_busy 20.0
   oneshot_program.tlc.busy: &oneshot_program_tlc_busy 2000.0
   cache_program.slc.busy: &cache_program_slc_busy 300.0
@@ -4630,6 +4630,11 @@ constraints:
     # READ offset guard; when unset, AddressManager.offset is used.
     # Example: 0
     offset_guard:
+    # Enable verbose EPR debug logs (alternative to EPR_DEBUG env)
+    debug: true
+    # Disable specific EPR checks (use with care)
+    # When true, allows PROGRAM on blocks that are not ERASE(-1)
+    disable_program_before_erase: true
     # Enumerate EPR subcodes produced by the policy
     subcodes:
       - epr_reserved_at_past_addr_state
@@ -4695,6 +4700,12 @@ phase_conditional: {}
   #   op_name1: 0.01
   #   op_name2: 0.01
   #   ...
+
+# CSV export options (pattern_export)
+pattern_export:
+  # When true, exclude ERASE/PROGRAM leftovers resumed via RESUME chain
+  # from operation_sequence_*.csv (PRD §5.5, line 366).
+  skip_resume_chained_ops: true
   # ERASE.END:
   #   op_name1: 0.01
   #   op_name2: 0.01
@@ -4702,67 +4713,363 @@ phase_conditional: {}
 phase_conditional_overrides:
   # op_base->value overrides for all op_states
   global:
-    ETC: 0.0
-    ERASE: 0.0
-    DSL_VTH_CHECK: 0.0
-    PROGRAM_SLC: 0.0
-    ALLWL_PROGRAM: 0.0
-    CACHE_PROGRAM_SLC: 0.0
-    ONESHOT_PROGRAM_LSB: 0.0
-    ONESHOT_PROGRAM_CSB: 0.0
-    ONESHOT_PROGRAM_MSB: 0.0
-    ONESHOT_PROGRAM_MSB_23h: 0.0
-    ONESHOT_PROGRAM_EXEC_MSB: 0.0
-    ONESHOT_CACHE_PROGRAM: 0.0
-    TRANSFER_TO_CACHE_LSB: 0.0
-    TRANSFER_TO_CACHE_CSB: 0.0
-    TRANSFER_TO_CACHE_MSB: 0.0
-    READ: 0.0
-    RECOVERY_RD: 0.0
-    READ4K: 0.0
-    CACHE_READ: 0.0
-    CACHE_READ_END: 0.0
-    PLANE_READ: 0.0
-    PLANE_READ4K: 0.0
-    PLANE_CACHE_READ: 0.0
-    PLANE_CACHE_READ_END: 0.0
-    COPYBACK_READ: 0.0
-    COPYBACK_PROGRAM_SLC: 0.0
-    ONESHOT_COPYBACK_PROGRAM_LSB: 0.0
-    ONESHOT_COPYBACK_PROGRAM_CSB: 0.0
-    ONESHOT_COPYBACK_PROGRAM_MSB: 0.0
-    ONESHOT_COPYBACK_PROGRAM_EXEC_MSB: 0.0
-    DOUT: 0.0
-    DOUT4K: 0.0
-    DATAIN: 0.0
-    SR: 0.0
-    SR_ADD: 0.0
-    CAMREAD: 0.0
-    CAMREAD_LUN: 0.0
-    ERASE_SUSPEND: 0.0
-    ERASE_RESUME: 0.0
-    PROGRAM_SUSPEND: 0.0
-    PROGRAM_RESUME: 0.0
-    TRAINING: 0.0
-    READID: 0.0
-    SETPARA: 0.0
-    GETPARA: 0.0
-    PLANE_SETPARA: 0.0
-    SETFEATURE: 0.0
-    GETFEATURE: 0.0
-    SETFEATURE_LUN: 0.0
-    GETFEATURE_LUN: 0.0
-    RESET: 0.0
-    RESET_LUN: 0.0
-    TEMPSENSOR: 0.0
-    ZQCAL: 0.0
-    ODTDISABLE: 0.0
-    ODTENABLE: 0.0
-    NOP: 0.0
+    # ETC: 0.0
+    # ERASE: 0.0
+    # DSL_VTH_CHECK: 0.0
+    # PROGRAM_SLC: 0.0
+    # ALLWL_PROGRAM: 0.0
+    # CACHE_PROGRAM_SLC: 0.0
+    # ONESHOT_PROGRAM_LSB: 0.0
+    # ONESHOT_PROGRAM_CSB: 0.0
+    # ONESHOT_PROGRAM_MSB: 0.0
+    # ONESHOT_PROGRAM_MSB_23h: 0.0
+    # ONESHOT_PROGRAM_EXEC_MSB: 0.0
+    # ONESHOT_CACHE_PROGRAM: 0.0
+    # TRANSFER_TO_CACHE_LSB: 0.0
+    # TRANSFER_TO_CACHE_CSB: 0.0
+    # TRANSFER_TO_CACHE_MSB: 0.0
+    # READ: 0.0
+    # RECOVERY_RD: 0.0
+    # READ4K: 0.0
+    # CACHE_READ: 0.0
+    # CACHE_READ_END: 0.0
+    # PLANE_READ: 0.0
+    # PLANE_READ4K: 0.0
+    # PLANE_CACHE_READ: 0.0
+    # PLANE_CACHE_READ_END: 0.0
+    # COPYBACK_READ: 0.0
+    # COPYBACK_PROGRAM_SLC: 0.0
+    # ONESHOT_COPYBACK_PROGRAM_LSB: 0.0
+    # ONESHOT_COPYBACK_PROGRAM_CSB: 0.0
+    # ONESHOT_COPYBACK_PROGRAM_MSB: 0.0
+    # ONESHOT_COPYBACK_PROGRAM_EXEC_MSB: 0.0
+    # DOUT: 0.0
+    # DOUT4K: 0.0
+    # DATAIN: 0.0
+    # SR: 0.0
+    # SR_ADD: 0.0
+    # CAMREAD: 0.0
+    # CAMREAD_LUN: 0.0
+    # ERASE_SUSPEND: 0.0
+    # ERASE_RESUME: 0.0
+    # PROGRAM_SUSPEND: 0.0
+    # PROGRAM_RESUME: 0.0
+    # TRAINING: 0.0
+    # READID: 0.0
+    # SETPARA: 0.0
+    # GETPARA: 0.0
+    # PLANE_SETPARA: 0.0
+    # SETFEATURE: 0.0
+    # GETFEATURE: 0.0
+    # SETFEATURE_LUN: 0.0
+    # GETFEATURE_LUN: 0.0
+    # RESET: 0.0
+    # RESET_LUN: 0.0
+    # TEMPSENSOR: 0.0
+    # ZQCAL: 0.0
+    # ODTDISABLE: 0.0
+    # ODTENABLE: 0.0
+    # NOP: 0.0
 
-    Block_Erase_SLC: 0.1
+    # 4KB_Page_Read_confirm_FWSLC: 0.0
+    # 4KB_Page_Read_confirm_AESLC_AARV: 0.0
+    # 4KB_Page_Read_confirm_AESLC: 0.0
+    # 4KB_Page_Read_confirm_AESLC_Fast_tR_AARV: 0.0
+    # 4KB_Page_Read_confirm_AESLC_Fast_tR: 0.0
+    # 4KB_Page_Read_confirm_CSB_AARV: 0.0
+    # 4KB_Page_Read_confirm_CSB: 0.0
+    # 4KB_Page_Read_confirm_CSB_Fast_tR_AARV: 0.0
+    # 4KB_Page_Read_confirm_CSB_Fast_tR: 0.0
+    # 4KB_Page_Read_confirm_LSB_AARV: 0.0
+    # 4KB_Page_Read_confirm_LSB: 0.0
+    # 4KB_Page_Read_confirm_LSB_Fast_tR_AARV: 0.0
+    # 4KB_Page_Read_confirm_LSB_Fast_tR: 0.0
+    # 4KB_Page_Read_confirm_MSB_AARV: 0.0
+    # 4KB_Page_Read_confirm_MSB: 0.0
+    # 4KB_Page_Read_confirm_MSB_Fast_tR_AARV: 0.0
+    # 4KB_Page_Read_confirm_MSB_Fast_tR: 0.0
+    # 4KB_Page_Read_confirm_SLC_AARV: 0.0
+    # 4KB_Page_Read_confirm_SLC: 0.0
+    # 4KB_Page_Read_confirm_SLC_Fast_tR_AARV: 0.0
+    # 4KB_Page_Read_confirm_SLC_Fast_tR: 0.0
+    All_WL_Dummy_Program: 0.0
+    All_WL_Dummy_Program_Multi_Plane: 0.0
+    # Auto_Read_by_38h_Cmd_Target_Level: 0.0
+    # Auto_Read_by_39h_Cmd_LUN_Level: 0.0
+    # Auto_Read_by_FDh_Cmd_LUN_Level: 0.0
+    # Block_Erase_TLC: 0.0
+    # Block_Erase_AESLC: 0.0
+    # Block_Erase_SLC: 0.0
+    Block_Erase_Multi_Plane_Legacy_TLC: 0.0
+    Block_Erase_Multi_Plane_Legacy_AESLC: 0.0
+    Block_Erase_Multi_Plane_Legacy_SLC: 0.0
+    Block_Erase_Multi_Plane_ONFI_TLC: 0.0
+    Block_Erase_Multi_Plane_ONFI_AESLC: 0.0
+    Block_Erase_Multi_Plane_ONFI_SLC: 0.0
+    # Cache_Program_A0SLC: 0.0
+    # Cache_Program_ACSLC: 0.0
+    # Cache_Program_AESLC: 0.0
+    # Cache_Program_SLC: 0.0
+    # Cache_Program_MSB: 0.0
+    Cache_Program_Multi_Plane_Legacy_A0SLC: 0.0
+    Cache_Program_Multi_Plane_Legacy_ACSLC: 0.0
+    Cache_Program_Multi_Plane_Legacy_AESLC: 0.0
+    Cache_Program_Multi_Plane_Legacy_SLC: 0.0
+    Cache_Program_Multi_Plane_Legacy_MSB: 0.0
+    Cache_Program_Multi_Plane_ONFI_A0SLC: 0.0
+    Cache_Program_Multi_Plane_ONFI_ACSLC: 0.0
+    Cache_Program_Multi_Plane_ONFI_AESLC: 0.0
+    Cache_Program_Multi_Plane_ONFI_SLC: 0.0
+    Cache_Program_Multi_Plane_ONFI_MSB: 0.0
+    Change_Read_Column_Random_Data_Output: 0.0
+    Change_Row_Address: 0.0
+    Change_Write_Column: 0.0
+    Copyback_Program_A0SLC: 0.0
+    Copyback_Program_ACSLC: 0.0
+    Copyback_Program_AESLC: 0.0
+    Copyback_Program_SLC: 0.0
+    Copyback_Program_Multi_Plane_A0SLC_Legacy: 0.0
+    Copyback_Program_Multi_Plane_A0SLC_ONFI: 0.0
+    Copyback_Program_Multi_Plane_ACSLC_Legacy: 0.0
+    Copyback_Program_Multi_Plane_ACSLC_ONFI: 0.0
+    Copyback_Program_Multi_Plane_AESLC_Legacy: 0.0
+    Copyback_Program_Multi_Plane_AESLC_ONFI: 0.0
+    Copyback_Program_Multi_Plane_SLC_Legacy: 0.0
+    Copyback_Program_Multi_Plane_SLC_ONFI: 0.0
+    Copyback_Read_SLC: 0.0
+    Copyback_Read_AESLC: 0.0
+    Copyback_Read_CSB: 0.0
+    Copyback_Read_LSB: 0.0
+    Copyback_Read_MSB: 0.0
+    Copyback_Read_Multi_Plane_ONFI_AESLC: 0.0
+    Copyback_Read_Multi_Plane_ONFI_SLC: 0.0
+    Copyback_Read_Multi_Plane_ONFI_CSB: 0.0
+    Copyback_Read_Multi_Plane_ONFI_LSB: 0.0
+    Copyback_Read_Multi_Plane_ONFI_MSB: 0.0
+    Data_Out_Termination: 0.0
+    Data_transfer_to_cache_for_1st_Page_TLC: 0.0
+    Data_transfer_to_cache_for_2nd_Page_TLC: 0.0
+    Data_transfer_to_cache_for_3rd_Page_TLC: 0.0
+    # DCC_training: 0.0
+    # Delay: 0.0
+    Device_Identification_Table_Read: 0.0
+    Disable_Cache_PGM_Flag: 0.0
+    DSL_Vth_Check: 0.0
+    DSL_Vth_Check_Multi_Plane: 0.0
+    Enhanced_Random_Data_Output_Primary: 0.0
+    Enhanced_Random_Data_Output_Secondary: 0.0
+    Enhanced_Random_Data_Output_4K_Secondary: 0.0
+    Erase_Suspend_Reset: 0.0
+    # Get_Parameter: 0.0
+    LUN_Status_Read_for_LUN1: 0.0
+    # LUN_Status_Read_for_LUN3: 0.0
+    ODT_Reenable: 0.0
+    One_Shot_Copyback_Program_LSB: 0.0
+    One_Shot_Copyback_Program_Multi_Plane_CSB: 0.0
+    One_Shot_PGM_Execution_MSB: 0.0
+    One_Shot_PGM_Multi_Plane_CSB: 0.0
+    One_Shot_PGM_Multi_Plane_CSB_Legacy: 0.0
+    One_Shot_PGM_Multi_Plane_LSB: 0.0
+    One_Shot_PGM_Multi_Plane_MSB: 0.0
+    One_Shot_PGM_Multi_Plane_MSB_23h: 0.0
+    Page_Program_A0SLC: 0.0
+    Page_Program_AESLC: 0.0
+    Plane_Level_4KB_Page_Read_AESLC: 0.0
+    Erase_Resume: 0.0
+    # Get_Features: 0.0
+    Get_Features_LUN_Level: 0.0
+    LUN_Status_Read_for_LUN0: 0.0
+    # LUN_Status_Read_for_LUN2: 0.0
+    ODT_Disable: 0.0
+    One_Shot_Copyback_Program_CSB: 0.0
+    One_Shot_Copyback_Program_Execution_MSB: 0.0
+    One_Shot_Copyback_Program_Multi_Plane_Execution_MSB: 0.0
+    One_Shot_Copyback_Program_Multi_Plane_LSB: 0.0
+    One_Shot_PGM_CSB: 0.0
+    # One_Shot_PGM_LSB: 0.0
+    One_Shot_PGM_MSB: 0.0
+    One_Shot_PGM_MSB_23h: 0.0
+    One_Shot_PGM_Multi_Plane_Execution_MSB: 0.0
+    One_Shot_PGM_Multi_Plane_Execution_MSB_Legacy: 0.0
+    One_Shot_PGM_Multi_Plane_LSB_Legacy: 0.0
+    One_Shot_PGM_Multi_Plane_MSB_Legacy: 0.0
+    One_Shot_PGM_Multi_Plane_MSB_23h_Legacy: 0.0
+    # Page_Program_ACSLC: 0.0
+    Page_Program_Multi_Plane_Legacy_A0SLC: 0.0
+    Page_Program_Multi_Plane_Legacy_ACSLC: 0.0
+    Page_Program_Multi_Plane_Legacy_AESLC: 0.0
+    Page_Program_Multi_Plane_Legacy_SLC: 0.0
+    # Page_Program_SLC: 0.0
+    Read_write_conflict_Fire_N_Forget_CSB_AARV: 0.0
+    Read_write_conflict_Fire_N_Forget_CSB: 0.0
+    Read_write_conflict_Fire_N_Forget_LSB_AARV: 0.0
+    Read_write_conflict_Fire_N_Forget_LSB: 0.0
+    Read_write_conflict_Fire_N_Forget_MSB_AARV: 0.0
+    Read_write_conflict_Fire_N_Forget_MSB: 0.0
+    Read_write_conflict_Fire_N_Forget_Multi_Plane_CSB_AARV: 0.0
+    Read_write_conflict_Fire_N_Forget_Multi_Plane_CSB: 0.0
+    Read_write_conflict_Fire_N_Forget_Multi_Plane_LSB_AARV: 0.0
+    Read_write_conflict_Fire_N_Forget_Multi_Plane_LSB: 0.0
+    Read_write_conflict_Fire_N_Forget_Multi_Plane_MSB_AARV: 0.0
+    Read_write_conflict_Fire_N_Forget_Multi_Plane_MSB: 0.0
+    Reset_LUN: 0.0
+    # Set_Features: 0.0
+    # Set_Features_LUN_Level: 0.0
+    # Set_Parameter: 0.0
+    # Soft_Read_AESLC: 0.0
+    # Soft_Read_CSB: 0.0
+    # Soft_Read_LSB: 0.0
+    # Soft_Read_MSB: 0.0
+    Soft_Read_Multi_Plane_AESLC: 0.0
+    Soft_Read_Multi_Plane_CSB: 0.0
+    Soft_Read_Multi_Plane_LSB: 0.0
+    Soft_Read_Multi_Plane_MSB: 0.0
+    Soft_Read_Multi_Plane_SLC: 0.0
+    # Soft_Read_SLC: 0.0
+    Super_Reset: 0.0
+    Synchronous_Reset: 0.0
+    # Temperature_Sensor_Fast_mode: 0.0
+    # Temperature_Sensor_Slow_mode: 0.0
+    VPP_Parameter_Read_Target_Level: 0.0
+    Write_Protect_Operation: 0.0
+    # Write_training_din: 0.0
+    # Write_training_dout: 0.0
+    # ZQ_Calibration_Long: 0.0
+    # ZQ_Calibration_Short: 0.0
+    # Plane_Level_Page_Read_MSB_AARV: 0.0
+    # Plane_Level_Page_Read_SLC_AARV: 0.0
+    Plane_Level_Read_Column_Enhanced: 0.0
+    Progressive_Suspend: 0.0
+    # Read_AESLC: 0.0
+    Read_Cache_Random_AESLC_AARV: 0.0
+    Read_Cache_Random_CSB_AARV: 0.0
+    Read_Cache_Random_CSB_Fast_tR_AARV: 0.0
+    # Read_CSB_AARV: 0.0
+    Page_Program_Multi_Plane_ONFI_A0SLC: 0.0
+    Page_Program_Multi_Plane_ONFI_ACSLC: 0.0
+    Page_Program_Multi_Plane_ONFI_AESLC: 0.0
+    Page_Program_Multi_Plane_ONFI_SLC: 0.0
+    # Plane_Level_4KB_Page_Read_AESLC_AARV: 0.0
+    # Plane_Level_4KB_Page_Read_AESLC_Fast_tR: 0.0
+    # Plane_Level_4KB_Page_Read_CSB_AARV: 0.0
+    # Plane_Level_4KB_Page_Read_CSB: 0.0
+    # Plane_Level_4KB_Page_Read_CSB_Fast_tR: 0.0
+    # Plane_Level_4KB_Page_Read_LSB_AARV: 0.0
+    # Plane_Level_4KB_Page_Read_LSB: 0.0
+    # Plane_Level_4KB_Page_Read_LSB_Fast_tR: 0.0
+    # Plane_Level_4KB_Page_Read_MSB_AARV: 0.0
+    # Plane_Level_4KB_Page_Read_MSB: 0.0
+    # Plane_Level_4KB_Page_Read_MSB_Fast_tR: 0.0
+    # Plane_Level_4KB_Page_Read_SLC_AARV: 0.0
+    # Plane_Level_4KB_Page_Read_SLC: 0.0
+    # Plane_Level_4KB_Page_Read_SLC_Fast_tR: 0.0
+    # Plane_Level_Cache_Read_AESLC_AARV: 0.0
+    # Plane_Level_Cache_Read_AESLC: 0.0
+    # Plane_Level_Cache_Read_AESLC_Fast_tR: 0.0
+    # Plane_Level_Cache_Read_CSB_AARV: 0.0
+    # Plane_Level_Cache_Read_CSB: 0.0
+    # Plane_Level_Cache_Read_CSB_Fast_tR: 0.0
+    # Plane_Level_Cache_Read_End: 0.0
+    # Plane_Level_Cache_Read_LSB_AARV: 0.0
+    # Plane_Level_Cache_Read_LSB: 0.0
+    # Plane_Level_Cache_Read_LSB_Fast_tR: 0.0
+    # Plane_Level_Cache_Read_MSB_AARV: 0.0
+    # Plane_Level_Cache_Read_MSB: 0.0
+    # Plane_Level_Cache_Read_MSB_Fast_tR: 0.0
+    # Plane_Level_Cache_Read_SLC_AARV: 0.0
+    # Plane_Level_Cache_Read_SLC: 0.0
+    # Plane_Level_Cache_Read_SLC_Fast_tR: 0.0
+    # Plane_Level_Page_Read_AESLC_AARV: 0.0
+    # Plane_Level_Page_Read_AESLC: 0.0
+    # Plane_Level_Page_Read_CSB_AARV: 0.0
+    # Plane_Level_Page_Read_CSB: 0.0
+    # Plane_Level_Page_Read_CSB_Fast_tR: 0.0
+    # Plane_Level_Page_Read_LSB_AARV: 0.0
+    # Plane_Level_Page_Read_LSB: 0.0
+    # Plane_Level_Page_Read_LSB_Fast_tR: 0.0
+    # Plane_Level_Page_Read_MSB: 0.0
+    # Plane_Level_Page_Read_MSB_Fast_tR: 0.0
+    # Plane_Level_Page_Read_SLC: 0.0
+    # Plane_Level_Set_Parameter: 0.0
+    Program_Resume: 0.0
+    Program_Suspend_Reset: 0.0
+    # Read_AESLC_AARV: 0.0
+    Read_Cache_End: 0.0
+    Read_Cache_Random_AESLC: 0.0
+    Read_Cache_Random_CSB: 0.0
+    Read_Cache_Random_CSB_Fast_tR: 0.0
+    # Read_CSB: 0.0
+    Read_Cache_Random_MSB_Fast_tR_AARV: 0.0
+    Read_Cache_Random_Multi_Plane_ONFI_AESLC_AARV: 0.0
+    Read_Cache_Random_Multi_Plane_ONFI_CSB_AARV: 0.0
+    Read_Cache_Random_Multi_Plane_ONFI_LSB_AARV: 0.0
+    Read_Cache_Random_Multi_Plane_ONFI_MSB_AARV: 0.0
+    Read_Cache_Random_Multi_Plane_ONFI_SLC_AARV: 0.0
+    Read_Cache_Random_SLC_AARV: 0.0
+    Read_Cache_Sequential: 0.0
+    # Read_CSB_Fast_tR: 0.0
+    # Read_FWSLC: 0.0
+    # Read_ID_JEDEC_Manufacturer_ID: 0.0
+    # Read_LSB: 0.0
+    # Read_LSB_Fast_tR: 0.0
+    # Read_MSB: 0.0
+    # Read_MSB_Fast_tR: 0.0
+    Read_Multi_Plane_ONFI_AESLC: 0.0
+    Read_Multi_Plane_ONFI_AESLC_AARV: 0.0
+    Read_Multi_Plane_ONFI_FWSLC: 0.0
+    Read_Multi_Plane_ONFI_SLC: 0.0
+    Read_Multi_Plane_ONFI_SLC_AARV: 0.0
+    Read_Multi_Plane_ONFI_CSB: 0.0
+    Read_Multi_Plane_ONFI_CSB_AARV: 0.0
+    Read_Multi_Plane_ONFI_CSB_Fast_tR: 0.0
+    Read_Multi_Plane_ONFI_LSB: 0.0
+    Read_Multi_Plane_ONFI_LSB_AARV: 0.0
+    Read_Multi_Plane_ONFI_LSB_Fast_tR: 0.0
+    Read_Multi_Plane_ONFI_MSB: 0.0
+    Read_Multi_Plane_ONFI_MSB_AARV: 0.0
+    Read_Multi_Plane_ONFI_MSB_Fast_tR: 0.0
+    # Read_SLC_AARV: 0.0
+    # Read_Status_Enhanced_70h: 0.0
+    # Read_Status_Enhanced_71h: 0.0
+    # Read_Status_Enhanced_72h: 0.0
+    # Read_Status_Enhanced_78h: 0.0
+    # Read_Status_Enhanced_7Ah: 0.0
+    # Read_Status_Enhanced_7Bh: 0.0
+    # Read_Status_Enhanced_7Ch: 0.0
+    # Read_Status_Enhanced_7Dh: 0.0
+    # Read_Status_Enhanced_7Eh: 0.0
+    # Read_training: 0.0
+    Read_Cache_Random_FWSLC: 0.0
+    Read_Cache_Random_LSB_AARV: 0.0
+    Read_Cache_Random_LSB: 0.0
+    Read_Cache_Random_LSB_Fast_tR_AARV: 0.0
+    Read_Cache_Random_LSB_Fast_tR: 0.0
+    Read_Cache_Random_MSB_AARV: 0.0
+    Read_Cache_Random_MSB: 0.0
+    Read_Cache_Random_MSB_Fast_tR: 0.0
+    Read_Cache_Random_Multi_Plane_ONFI_AESLC: 0.0
+    Read_Cache_Random_Multi_Plane_ONFI_CSB: 0.0
+    Read_Cache_Random_Multi_Plane_ONFI_CSB_Fast_tR: 0.0
+    Read_Cache_Random_Multi_Plane_ONFI_FWSLC: 0.0
+    Read_Cache_Random_Multi_Plane_ONFI_LSB: 0.0
+    Read_Cache_Random_Multi_Plane_ONFI_LSB_Fast_tR: 0.0
+    Read_Cache_Random_Multi_Plane_ONFI_MSB: 0.0
+    Read_Cache_Random_Multi_Plane_ONFI_MSB_Fast_tR: 0.0
+    Read_Cache_Random_Multi_Plane_ONFI_SLC: 0.0
+    Read_Cache_Random_SLC: 0.0
+    # Read_CSB_Fast_tR_AARV: 0.0
+    Read_Dout_Resume_After_tR: 0.0
+    # Read_ID_JEDEC: 0.0
+    # Read_LSB_AARV: 0.0
+    # Read_LSB_Fast_tR_AARV: 0.0
+    # Read_MSB_AARV: 0.0
+    # Read_MSB_Fast_tR_AARV: 0.0
+    # Read_SLC: 0.0
+
+
+    # Block_Erase_SLC: 0.1
     # Block_Erase_TLC: 0.1
-    Page_Program_SLC: 0.1
+    # Page_Program_SLC: 0.5
     # One_Shot_PGM_LSB: 0.1 
     # One_Shot_PGM_CSB: 0.0 
     # One_Shot_PGM_MSB: 0.0 
@@ -4773,12 +5080,12 @@ phase_conditional_overrides:
     # ERASE_SUSPEND: 0.0
     # ERASE_RESUME: 0.1
     # PROGRAM_SUSPEND: 0.1
-    PROGRAM_RESUME: 0.1
+    # PROGRAM_RESUME: 0.1
 
-    Read_SLC: 0.1
-    Read_LSB: 0.1
-    Read_CSB: 0.1
-    Read_MSB: 0.1
+    # Read_SLC: 0.1
+    # Read_LSB: 0.1
+    # Read_CSB: 0.1
+    # Read_MSB: 0.1
 
 
 
@@ -4826,24 +5133,19 @@ phase_conditional_overrides:
   # RECOVERY_RD.END:
   #   DOUT: 1
 
-  DEFAULT:
-  #   Read_Status_Enhanced_70h: 1
-  #   Block_Erase_SLC: 1
-  #   Page_Program_SLC: 1
-  #   Read_SLC: 1
-  #   DOUT: 1
+  # DEFAULT:
 
-    ERASE_SUSPEND: 0.0
+    # ERASE_SUSPEND: 0.0
     # ERASE_RESUME: 0.0
-    PROGRAM_SUSPEND: 0.0
+    # PROGRAM_SUSPEND: 0.0
     # PROGRAM_RESUME: 0.0
   
   # ERASE.CORE_BUSY:
   #   NOP: 0.5
   #   ERASE_SUSPEND: 0.1
-  PROGRAM_SLC.CORE_BUSY:
-    NOP: 0.1
-    PROGRAM_SUSPEND: 0.1
+  # PROGRAM_SLC.CORE_BUSY:
+  #   NOP: 0.5
+  #   PROGRAM_SUSPEND: 0.1
   # ONESHOT_PROGRAM_MSB_23h.CORE_BUSY:
   #   NOP: 0.5
   #   PROGRAM_SUSPEND: 0.1

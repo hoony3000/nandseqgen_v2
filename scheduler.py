@@ -267,7 +267,7 @@ class Scheduler:
         ALLOWED_PROGRAM_COMMIT = {
             "PROGRAM_SLC",
             "COPYBACK_PROGRAM_SLC",
-            "ONESHOT_PROGRAM_MSB_23H",
+            "ONESHOT_PROGRAM_MSB_23h",
             "ONESHOT_PROGRAM_EXEC_MSB",
             "ONESHOT_CACHE_PROGRAM",
             "ONESHOT_COPYBACK_PROGRAM_EXEC_MSB",
@@ -463,13 +463,18 @@ class Scheduler:
                 if _chain_enabled(cfg_used) and (b_up in ("ERASE_RESUME", "PROGRAM_RESUME")):
                     # Determine die from targets (or hook fallback)
                     die0 = int(p.targets[0].die) if p.targets else (int(hook.get("die", 0)) if isinstance(hook, dict) else 0)
-                    sus = d.rm.suspended_ops(die0)
+                    # Select axis-specific suspended list
+                    if b_up == "ERASE_RESUME":
+                        sus = d.rm.suspended_ops_erase(die0)
+                        fam = "ERASE"
+                    else:
+                        sus = d.rm.suspended_ops_program(die0)
+                        fam = "PROGRAM"
                     meta = sus[-1] if isinstance(sus, list) and sus else None
                     rem = float(meta.get("remaining_us", 0.0)) if isinstance(meta, dict) else 0.0
                     if rem > 0.0 and isinstance(meta, dict):
                         targets2 = meta.get("targets") or []
                         base2 = str(meta.get("base", ""))
-                        fam = "ERASE" if ("ERASE" in b_up) else "PROGRAM"
                         if targets2 and _is_family_base(base2, fam):
                             chain_jobs.append({
                                 "die": die0,
@@ -481,6 +486,7 @@ class Scheduler:
                                 "op_id": meta.get("op_id"),
                                 "hook": dict(hook) if isinstance(hook, dict) else {},
                                 "phase_key": pk,
+                                "axis": fam,
                             })
                         else:
                             try:
@@ -565,6 +571,8 @@ class Scheduler:
                                 "phase_hook_plane": job.get("hook", {}).get("plane"),
                                 "phase_hook_label": job.get("hook", {}).get("label"),
                                 "_chain_stub": True,
+                                # Tag resume-chained stub for downstream exporters
+                                "source": "RESUME_CHAIN",
                             }
                             # Emit events and update metrics
                             self._emit_op_events(rec2)
@@ -577,12 +585,27 @@ class Scheduler:
                             n_chain += 1
                             # Reflect meta move back to ongoing
                             try:
-                                d.rm.resume_from_suspended(int(job["die"]), op_id=job.get("op_id"))
+                                ax = str(job.get("axis", "")).upper()
+                                if ax in ("ERASE", "PROGRAM"):
+                                    d.rm.resume_from_suspended_axis(int(job["die"]), op_id=job.get("op_id"), axis=ax)
+                                else:
+                                    d.rm.resume_from_suspended(int(job["die"]), op_id=job.get("op_id"))
                             except Exception:
                                 pass
                         else:
                             try:
-                                print(f"[chain] post-commit reserve_fail reason={r2.reason}")
+                                # Enrich diagnostics with last_validation snapshot when available
+                                lv = None
+                                try:
+                                    snap = getattr(d.rm, "last_validation", None)
+                                    lv = snap() if callable(snap) else None
+                                except Exception:
+                                    lv = None
+                                if isinstance(lv, dict):
+                                    sub = lv.get("epr_failures")
+                                    print(f"[chain] post-commit reserve_fail reason={r2.reason} failed_rule={lv.get('failed_rule')} epr_failures={sub}")
+                                else:
+                                    print(f"[chain] post-commit reserve_fail reason={r2.reason}")
                             except Exception:
                                 pass
                     except Exception:
@@ -660,7 +683,7 @@ class Scheduler:
                         hook["targets"] = list(hook_targets_payload)
                     self._eq.push(pre_t, "PHASE_HOOK", payload={"hook": hook})
                 # also immediately after state end to drive next-stage proposals
-                post_t = quantize(t_end)
+                post_t = quantize(t_end + 0.6)
                 for tgt in targets:
                     hook = {"die": int(tgt.die), "plane": int(tgt.plane), "label": f"{base}.{name}"}
                     if enrich_hook and plane_set_sorted is not None and hook_targets_payload is not None:

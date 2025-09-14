@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
+import os
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Set, Callable
 SIM_RES_US = 0.01
@@ -148,6 +149,10 @@ class ResourceManager:
         self._erase_susp: Dict[int, Optional[_AxisState]] = {d: None for d in range(self.dies)}
         self._pgm_susp: Dict[int, Optional[_AxisState]] = {d: None for d in range(self.dies)}
         self._ongoing_ops: Dict[int, List[_OpMeta]] = {d: [] for d in range(self.dies)}
+        # Axis-specific suspended op stacks
+        self._suspended_ops_erase: Dict[int, List[_OpMeta]] = {d: [] for d in range(self.dies)}
+        self._suspended_ops_program: Dict[int, List[_OpMeta]] = {d: [] for d in range(self.dies)}
+        # Backward-compat container (legacy snapshots); not used for new writes
         self._suspended_ops: Dict[int, List[_OpMeta]] = {d: [] for d in range(self.dies)}
         # --- Validator integration (skeleton, gated by config) ---
         # External address-dependent policy callback (e.g., AddressManager.check_epr)
@@ -637,16 +642,19 @@ class ResourceManager:
                 key_s = (b, int(die))
                 if key_s not in _susp_processed:
                     _susp_processed.add(key_s)
-                    # Move latest ongoing op of this die to suspended and compute remaining
+                    # Move latest ongoing op of this die to the matching-axis suspended and compute remaining
                     try:
-                        self.move_to_suspended(int(die), op_id=None, now_us=float(start))
+                        self.move_to_suspended_axis(int(die), op_id=None, now_us=float(start), axis=str(fam))
                     except Exception:
                         # best-effort; continue even if no ongoing meta
                         pass
                     # Determine planes to truncate based on just-moved meta when available
                     planes_to_cut: List[int]
                     try:
-                        meta_list = self._suspended_ops.get(int(die), [])
+                        if fam == "ERASE":
+                            meta_list = self._suspended_ops_erase.get(int(die), [])
+                        else:
+                            meta_list = self._suspended_ops_program.get(int(die), [])
                         meta = meta_list[-1] if meta_list else None
                         if meta and meta.targets:
                             planes_to_cut = sorted({int(t.plane) for t in meta.targets})
@@ -953,24 +961,9 @@ class ResourceManager:
         ]
 
     def suspended_ops(self, die: Optional[int] = None) -> List[Dict[str, Any]]:
-        if die is None:
-            lst: List[Dict[str, Any]] = []
-            for d, ops in self._suspended_ops.items():
-                for o in ops:
-                    lst.append({
-                        "die": d,
-                        "op_id": o.op_id,
-                        "op_name": o.op_name,
-                        "base": o.base,
-                        "targets": [Address(t.die, t.plane, t.block, t.page) for t in o.targets],
-                        "start_us": o.start_us,
-                        "end_us": o.end_us,
-                        "remaining_us": o.remaining_us,
-                    })
-            return lst
-        return [
-            {
-                "die": die,
+        def _pub(d: int, o: _OpMeta) -> Dict[str, Any]:
+            return {
+                "die": d,
                 "op_id": o.op_id,
                 "op_name": o.op_name,
                 "base": o.base,
@@ -979,8 +972,69 @@ class ResourceManager:
                 "end_us": o.end_us,
                 "remaining_us": o.remaining_us,
             }
-            for o in self._suspended_ops.get(die, [])
-        ]
+        # Merge ERASE/PROGRAM axes into a legacy single list (sorted by start_us)
+        if die is None:
+            acc: List[Dict[str, Any]] = []
+            for d in range(self.dies):
+                for o in self._suspended_ops_erase.get(d, []):
+                    acc.append(_pub(d, o))
+                for o in self._suspended_ops_program.get(d, []):
+                    acc.append(_pub(d, o))
+            try:
+                acc.sort(key=lambda m: float(m.get("start_us", 0.0)))
+            except Exception:
+                pass
+            return acc
+        acc: List[Dict[str, Any]] = []
+        for o in self._suspended_ops_erase.get(int(die), []):
+            acc.append(_pub(int(die), o))
+        for o in self._suspended_ops_program.get(int(die), []):
+            acc.append(_pub(int(die), o))
+        try:
+            acc.sort(key=lambda m: float(m.get("start_us", 0.0)))
+        except Exception:
+            pass
+        return acc
+
+    def suspended_ops_erase(self, die: Optional[int] = None) -> List[Dict[str, Any]]:
+        def _pub(d: int, o: _OpMeta) -> Dict[str, Any]:
+            return {
+                "die": d,
+                "op_id": o.op_id,
+                "op_name": o.op_name,
+                "base": o.base,
+                "targets": [Address(t.die, t.plane, t.block, t.page) for t in o.targets],
+                "start_us": o.start_us,
+                "end_us": o.end_us,
+                "remaining_us": o.remaining_us,
+            }
+        if die is None:
+            lst: List[Dict[str, Any]] = []
+            for d, ops in self._suspended_ops_erase.items():
+                for o in ops:
+                    lst.append(_pub(d, o))
+            return lst
+        return [_pub(int(die), o) for o in self._suspended_ops_erase.get(int(die), [])]
+
+    def suspended_ops_program(self, die: Optional[int] = None) -> List[Dict[str, Any]]:
+        def _pub(d: int, o: _OpMeta) -> Dict[str, Any]:
+            return {
+                "die": d,
+                "op_id": o.op_id,
+                "op_name": o.op_name,
+                "base": o.base,
+                "targets": [Address(t.die, t.plane, t.block, t.page) for t in o.targets],
+                "start_us": o.start_us,
+                "end_us": o.end_us,
+                "remaining_us": o.remaining_us,
+            }
+        if die is None:
+            lst: List[Dict[str, Any]] = []
+            for d, ops in self._suspended_ops_program.items():
+                for o in ops:
+                    lst.append(_pub(d, o))
+            return lst
+        return [_pub(int(die), o) for o in self._suspended_ops_program.get(int(die), [])]
 
     def register_ongoing(self, die: int, op_id: Optional[int], op_name: Optional[str], base: str, targets: List[Address], start_us: float, end_us: float) -> None:
         self._ongoing_ops.setdefault(die, []).append(
@@ -988,10 +1042,13 @@ class ResourceManager:
         )
 
     def move_to_suspended(self, die: int, op_id: Optional[int], now_us: float) -> None:
+        """Backward-compatible wrapper. Infers axis from op base and delegates.
+
+        New code should call move_to_suspended_axis(..., axis).
+        """
         ops = self._ongoing_ops.get(die, [])
         if not ops:
             return
-        # choose the latest matching op_id; if op_id is None, take the last ongoing
         idx = None
         if op_id is not None:
             for i in range(len(ops) - 1, -1, -1):
@@ -1002,27 +1059,93 @@ class ResourceManager:
             idx = len(ops) - 1
         if idx < 0:
             return
+        # Peek to choose axis; do not mutate ongoing here
+        meta = ops[idx]
+        b = str(meta.base).upper()
+        axis = "ERASE" if "ERASE" in b else ("PROGRAM" if "PROGRAM" in b else None)
+        if axis is None:
+            return
+        self.move_to_suspended_axis(die, op_id=meta.op_id, now_us=now_us, axis=axis)
+
+    def move_to_suspended_axis(self, die: int, op_id: Optional[int], now_us: float, axis: str) -> None:
+        """Move the latest ongoing op to axis-specific suspended list when family matches.
+
+        axis: 'ERASE' | 'PROGRAM'
+        """
+        ops = self._ongoing_ops.get(die, [])
+        if not ops:
+            return
+        fam = str(axis).upper()
+        idx = None
+        if op_id is not None:
+            for i in range(len(ops) - 1, -1, -1):
+                if ops[i].op_id == op_id:
+                    idx = i
+                    break
+        if idx is None:
+            idx = len(ops) - 1
+        if idx < 0:
+            return
+        meta = ops[idx]
+        b = str(meta.base).upper()
+        # Only move when the meta family matches the given axis
+        is_match = ((fam == "ERASE" and "ERASE" in b) or (fam == "PROGRAM" and ("PROGRAM" in b) and ("SUSPEND" not in b) and ("RESUME" not in b)))
+        if not is_match:
+            return
+        # pop and move
         meta = ops.pop(idx)
         now_q = quantize(now_us)
         rem = max(0.0, meta.end_us - now_q)
         meta.remaining_us = rem
-        self._suspended_ops.setdefault(die, []).append(meta)
+        if fam == "ERASE":
+            self._suspended_ops_erase.setdefault(die, []).append(meta)
+        else:
+            self._suspended_ops_program.setdefault(die, []).append(meta)
 
     def resume_from_suspended(self, die: int, op_id: Optional[int]) -> None:
-        ops = self._suspended_ops.get(die, [])
-        if not ops:
+        """Backward-compatible wrapper. Picks the most recent across axes when op_id is None.
+
+        New code should call resume_from_suspended_axis(..., axis).
+        """
+        # Determine candidate from both axes
+        lst_e = self._suspended_ops_erase.get(die, [])
+        lst_p = self._suspended_ops_program.get(die, [])
+        if not lst_e and not lst_p:
+            return
+        # If op_id specified, prefer matching in program, then erase
+        if op_id is not None:
+            for i in range(len(lst_p) - 1, -1, -1):
+                if lst_p[i].op_id == op_id:
+                    self._ongoing_ops.setdefault(die, []).append(lst_p.pop(i))
+                    return
+            for i in range(len(lst_e) - 1, -1, -1):
+                if lst_e[i].op_id == op_id:
+                    self._ongoing_ops.setdefault(die, []).append(lst_e.pop(i))
+                    return
+        # No op_id or not found: choose the one with latest start_us
+        cand_p = lst_p[-1] if lst_p else None
+        cand_e = lst_e[-1] if lst_e else None
+        if cand_p and (not cand_e or cand_p.start_us >= cand_e.start_us):
+            self._ongoing_ops.setdefault(die, []).append(lst_p.pop())
+        elif cand_e:
+            self._ongoing_ops.setdefault(die, []).append(lst_e.pop())
+
+    def resume_from_suspended_axis(self, die: int, op_id: Optional[int], axis: str) -> None:
+        fam = str(axis).upper()
+        lst = self._suspended_ops_program.get(die, []) if fam == "PROGRAM" else self._suspended_ops_erase.get(die, [])
+        if not lst:
             return
         idx = None
         if op_id is not None:
-            for i in range(len(ops) - 1, -1, -1):
-                if ops[i].op_id == op_id:
+            for i in range(len(lst) - 1, -1, -1):
+                if lst[i].op_id == op_id:
                     idx = i
                     break
         if idx is None:
-            idx = len(ops) - 1
+            idx = len(lst) - 1
         if idx < 0:
             return
-        meta = ops.pop(idx)
+        meta = lst.pop(idx)
         self._ongoing_ops.setdefault(die, []).append(meta)
 
     def snapshot(self) -> Dict[str, Any]:
@@ -1070,7 +1193,8 @@ class ResourceManager:
                 ]
                 for d, lst in self._ongoing_ops.items()
             },
-            "suspended_ops": {
+            # axis-specific suspended ops
+            "suspended_ops_erase": {
                 d: [
                     {
                         "op_id": m.op_id,
@@ -1083,7 +1207,38 @@ class ResourceManager:
                     }
                     for m in lst
                 ]
-                for d, lst in self._suspended_ops.items()
+                for d, lst in self._suspended_ops_erase.items()
+            },
+            "suspended_ops_program": {
+                d: [
+                    {
+                        "op_id": m.op_id,
+                        "op_name": m.op_name,
+                        "base": m.base,
+                        "targets": [(t.die, t.plane, t.block, t.page) for t in m.targets],
+                        "start_us": m.start_us,
+                        "end_us": m.end_us,
+                        "remaining_us": m.remaining_us,
+                    }
+                    for m in lst
+                ]
+                for d, lst in self._suspended_ops_program.items()
+            },
+            # legacy single-axis union view (for backward-compat consumers)
+            "suspended_ops": {
+                d: [
+                    {
+                        "op_id": m.op_id,
+                        "op_name": m.op_name,
+                        "base": m.base,
+                        "targets": [(t.die, t.plane, t.block, t.page) for t in m.targets],
+                        "start_us": m.start_us,
+                        "end_us": m.end_us,
+                        "remaining_us": m.remaining_us,
+                    }
+                    for m in (self._suspended_ops_erase.get(d, []) + self._suspended_ops_program.get(d, []))
+                ]
+                for d in range(self.dies)
             },
         }
 
@@ -1147,8 +1302,11 @@ class ResourceManager:
                     remaining_us=(None if m.get("remaining_us") in (None, "None") else float(m.get("remaining_us"))),
                 ))
             self._ongoing_ops[d] = acc
-        self._suspended_ops = {d: [] for d in range(self.dies)}
-        for k, lst in (snap.get("suspended_ops", {}) or {}).items():
+        # Restore suspended ops (axis-specific preferred, legacy fallback)
+        self._suspended_ops_erase = {d: [] for d in range(self.dies)}
+        self._suspended_ops_program = {d: [] for d in range(self.dies)}
+        # New fields
+        for k, lst in (snap.get("suspended_ops_erase", {}) or {}).items():
             d = int(k)
             acc: List[_OpMeta] = []
             for m in lst:
@@ -1162,7 +1320,45 @@ class ResourceManager:
                     end_us=float(m.get("end_us", 0.0)),
                     remaining_us=(None if m.get("remaining_us") in (None, "None") else float(m.get("remaining_us"))),
                 ))
-            self._suspended_ops[d] = acc
+            self._suspended_ops_erase[d] = acc
+        for k, lst in (snap.get("suspended_ops_program", {}) or {}).items():
+            d = int(k)
+            acc: List[_OpMeta] = []
+            for m in lst:
+                acc.append(_OpMeta(
+                    die=d,
+                    op_id=m.get("op_id"),
+                    op_name=m.get("op_name"),
+                    base=str(m.get("base")),
+                    targets=[Address(int(t[0]), int(t[1]), int(t[2]), (None if t[3] in (None, "None") else int(t[3]))) for t in m.get("targets", [])],
+                    start_us=float(m.get("start_us", 0.0)),
+                    end_us=float(m.get("end_us", 0.0)),
+                    remaining_us=(None if m.get("remaining_us") in (None, "None") else float(m.get("remaining_us"))),
+                ))
+            self._suspended_ops_program[d] = acc
+        # Legacy field fallback
+        if not any(self._suspended_ops_erase.values()) and not any(self._suspended_ops_program.values()):
+            for k, lst in (snap.get("suspended_ops", {}) or {}).items():
+                d = int(k)
+                for m in lst:
+                    meta = _OpMeta(
+                        die=d,
+                        op_id=m.get("op_id"),
+                        op_name=m.get("op_name"),
+                        base=str(m.get("base")),
+                        targets=[Address(int(t[0]), int(t[1]), int(t[2]), (None if t[3] in (None, "None") else int(t[3]))) for t in m.get("targets", [])],
+                        start_us=float(m.get("start_us", 0.0)),
+                        end_us=float(m.get("end_us", 0.0)),
+                        remaining_us=(None if m.get("remaining_us") in (None, "None") else float(m.get("remaining_us"))),
+                    )
+                    b = str(meta.base).upper()
+                    if "ERASE" in b:
+                        self._suspended_ops_erase.setdefault(d, []).append(meta)
+                    elif "PROGRAM" in b and ("SUSPEND" not in b) and ("RESUME" not in b):
+                        self._suspended_ops_program.setdefault(d, []).append(meta)
+                    else:
+                        # Unknown base; skip to avoid misclassification
+                        continue
     # minimal exclusion window derivation from cfg
     def _derive_excl(self, op: Any, start: float, die: int) -> List[ExclWindow]:
         rules=(self.cfg or {}).get("constraints",{}).get("exclusions",[])
@@ -1316,6 +1512,7 @@ class ResourceManager:
                     ]
                     epr_cfg = rcfg.get("epr", {}) or {}
                     offset_guard = epr_cfg.get("offset_guard")
+                    disable_pbe = bool(epr_cfg.get("disable_program_before_erase", False))
                     # Derive celltype for this op (if any) from cfg.op_names
                     cell = None
                     try:
@@ -1332,6 +1529,7 @@ class ResourceManager:
                         as_of_us=start,
                         pending=pending,
                         offset_guard=offset_guard,
+                        disable_program_before_erase=disable_pbe,
                     )
                     ok = getattr(res, "ok", None)
                     if ok is None and isinstance(res, dict):
@@ -1347,6 +1545,22 @@ class ResourceManager:
                                 for f in (failures or [])
                             ],
                         })
+                        # Optional detailed debug for EPR
+                        try:
+                            dbg_env = os.getenv("EPR_DEBUG", "").lower() not in ("", "0", "false")
+                            dbg_cfg = bool((rcfg.get("epr", {}) or {}).get("debug", False))
+                            if dbg_env or dbg_cfg:
+                                tg_str = ",".join([f"({d},{b},{p})" for (d,b,p) in simple_targets])
+                                keys = list((pending or {}).keys()) if isinstance(pending, dict) else []
+                                print(f"[epr-debug] epr_dep base={self._op_base(op)} op={self._op_name(op)} start={start} targets=[{tg_str}] epr_failures={[getattr(f, 'code', None) if not isinstance(f, dict) else f.get('code') for f in (failures or [])]} pending_keys={keys}")
+                                # Show per-target pending overlay values when available
+                                if pending:
+                                    for (d,b,p) in simple_targets:
+                                        ov = pending.get((int(d), int(b)))
+                                        if isinstance(ov, dict) and ("addr_state" in ov):
+                                            print(f"[epr-debug] pending_overlay die={d} block={b} addr_state={ov.get('addr_state')}")
+                        except Exception:
+                            pass
                         return False, "epr_dep"
                 except Exception as e:
                     # Defensive: treat as allow but record

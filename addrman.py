@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import itertools
 from dataclasses import dataclass
@@ -1109,7 +1110,18 @@ def check_epr(
 
 
 # Bind check_epr as an AddressManager method with access to "self"
-def _addrman_check_epr(self: "AddressManager", base: str, targets: List[Any], *, op_name: Optional[str] = None, op_celltype: Optional[str] = None, as_of_us: Optional[float] = None, pending: Optional[Dict[Tuple[int, int], Dict[str, Any]]] = None, offset_guard: Optional[int] = None) -> EprResult:  # noqa: E501
+def _addrman_check_epr(
+    self: "AddressManager",
+    base: str,
+    targets: List[Any],
+    *,
+    op_name: Optional[str] = None,
+    op_celltype: Optional[str] = None,
+    as_of_us: Optional[float] = None,
+    pending: Optional[Dict[Tuple[int, int], Dict[str, Any]]] = None,
+    offset_guard: Optional[int] = None,
+    disable_program_before_erase: Optional[bool] = None,
+) -> EprResult:  # noqa: E501
     checked: List[str] = []
     failures: List[EprFailure] = []
     warnings: List[EprFailure] = []
@@ -1119,7 +1131,7 @@ def _addrman_check_epr(self: "AddressManager", base: str, targets: List[Any], *,
         return EprResult(ok=True, failures=[], warnings=[], checked_rules=[])
 
     # program_before_erase
-    if _is_program_base(base):
+    if _is_program_base(base) and not bool(disable_program_before_erase):
         checked.append("epr_program_before_erase")
         viol_pairs = []
         for (die, block, page) in norm:
@@ -1127,11 +1139,35 @@ def _addrman_check_epr(self: "AddressManager", base: str, targets: List[Any], *,
             if st != ERASE:
                 viol_pairs.append((die, block))
         if viol_pairs:
+            # Debug: explain why program_before_erase fired (effective vs base vs pending)
+            try:
+                dbg = os.getenv("EPR_DEBUG", "").lower() not in ("", "0", "false")
+                if dbg:
+                    for (die, block) in viol_pairs:
+                        # base (without overlay)
+                        idx = die * self._blocks_per_die + block
+                        base_state = int(self.addrstates[idx])
+                        eff = _effective_state(self, die, block, pending)
+                        pend_state = None
+                        if pending is not None:
+                            ov = pending.get((die, block))
+                            if ov is not None and isinstance(ov.get("addr_state"), int):
+                                pend_state = int(ov["addr_state"]) 
+                        print(f"[epr-debug] program_before_erase die={die} block={block} base_state={base_state} eff_state={eff} pending_state={pend_state} op={op_name} cell={op_celltype}")
+            except Exception:
+                pass
             failures.append(EprFailure(
                 code="epr_program_before_erase",
                 message="Cannot program on non-erased block",
                 evidence={"pairs": viol_pairs},
             ))
+    elif _is_program_base(base) and bool(disable_program_before_erase):
+        try:
+            dbg = os.getenv("EPR_DEBUG", "").lower() not in ("", "0", "false")
+            if dbg:
+                print("[epr-debug] epr_program_before_erase disabled via config")
+        except Exception:
+            pass
 
     # read_before_program_with_offset_guard
     if _is_read_base(base):
@@ -1174,6 +1210,13 @@ def _addrman_check_epr(self: "AddressManager", base: str, targets: List[Any], *,
                 if ov and isinstance(ov.get("addr_state"), int) and int(ov["addr_state"]) == int(page):
                     dup.append((die, block, int(page)))
         if dup:
+            # Debug: show duplicate triplets detected, include pending implication
+            try:
+                dbg = os.getenv("EPR_DEBUG", "").lower() not in ("", "0", "false")
+                if dbg:
+                    print(f"[epr-debug] programs_on_same_page dup={dup} op={op_name} cell={op_celltype}")
+            except Exception:
+                pass
             failures.append(EprFailure(
                 code="epr_programs_on_same_page",
                 message="Multiple programs on the same page are forbidden",

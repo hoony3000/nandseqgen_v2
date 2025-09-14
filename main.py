@@ -120,6 +120,9 @@ class InstrumentedScheduler(Scheduler):
         ih = rec.get("inherit_hints") if isinstance(rec.get("inherit_hints"), dict) else None
         cth = rec.get("celltype_hint")
         cth = None if cth in (None, "None", "NONE") else str(cth)
+        # Normalize source tag (e.g., for RESUME-chained stubs)
+        src = rec.get("source")
+        src = None if src in (None, "None") else str(src)
         for t in targets:
             self._rows.append(
                 _OpRow(
@@ -131,7 +134,7 @@ class InstrumentedScheduler(Scheduler):
                     page=int(getattr(t, "page", 0) if getattr(t, "page", None) is not None else 0),
                     op_name=name,
                     op_base=base,
-                    source=None,
+                    source=src,
                     op_uid=uid,
                     phase_key=(None if phase_key in (None, "None") else str(phase_key)),
                     phase_hook_die=(None if hk_die in (None, "None") else int(hk_die)),
@@ -539,6 +542,13 @@ def export_op_state_name_input_time_count(rows: List[Dict[str, Any]], rm: Resour
 def export_operation_sequence(rows: List[Dict[str, Any]], cfg: Dict[str, Any], rm: Optional[ResourceManager] = None, *, out_dir: str, run_idx: int) -> str:
     # PRD 3.1: seq,time,op_id,op_name,op_uid,payload (JSON)
     # Group by op_uid; time is min start_us among targets; payload schema from cfg[payload_by_op_base]
+    # Optional filter: skip RESUME-chained ERASE/PROGRAM leftovers when enabled
+    try:
+        if ((cfg.get("pattern_export", {}) or {}).get("skip_resume_chained_ops", True)):
+            rows = [r for r in rows if str(r.get("source")) != "RESUME_CHAIN"]
+    except Exception:
+        # Best-effort: if cfg access fails, keep default behavior (skip by default)
+        rows = [r for r in rows if str(r.get("source")) != "RESUME_CHAIN"]
     by_uid: Dict[int, List[Dict[str, Any]]] = {}
     for r in rows:
         by_uid.setdefault(int(r["op_uid"]), []).append(r)
@@ -871,6 +881,11 @@ def save_snapshot(rm: ResourceManager, *, out_dir: str, run_idx: int) -> str:
     snap2["suspend_states"] = snap.get("suspend_states")
     snap2["ongoing_ops"] = snap.get("ongoing_ops")
     snap2["suspended_ops"] = snap.get("suspended_ops")
+    # axis-specific suspended ops (new)
+    if isinstance(snap.get("suspended_ops_erase"), dict):
+        snap2["suspended_ops_erase"] = snap.get("suspended_ops_erase")
+    if isinstance(snap.get("suspended_ops_program"), dict):
+        snap2["suspended_ops_program"] = snap.get("suspended_ops_program")
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     fname = f"snapshots/state_snapshot_{ts}_{_run_id_str(run_idx+1)}.json"
     path_tmp = os.path.join(out_dir, fname + ".tmp")
@@ -932,6 +947,7 @@ def _ensure_min_cfg(cfg: Dict[str, Any]) -> Dict[str, Any]:
     pe.setdefault("time", {"scale": 1.0, "round_decimals": 3, "out_col": "time"})
     pe.setdefault("columns", ["seq", "time", "op_id", "op_name", "op_uid", "payload"])
     pe.setdefault("opcode_map", {})
+    pe.setdefault("skip_resume_chained_ops", True)
     c["pattern_export"] = pe
     return c
 
@@ -954,6 +970,7 @@ def _apply_overrides(
     pe.setdefault("time", {"scale": 1.0, "round_decimals": 3, "out_col": "time"})
     pe.setdefault("columns", ["seq", "time", "op_id", "op_name", "op_uid", "payload"])
     pe.setdefault("opcode_map", {})
+    pe.setdefault("skip_resume_chained_ops", True)
     c["pattern_export"] = pe
     return c
 
