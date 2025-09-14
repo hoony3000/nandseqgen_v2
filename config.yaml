@@ -2139,7 +2139,7 @@ exclusion_groups:
     - ERASE_SUSPEND
     # - ERASE_RESUME
     # - PROGRAM_SUSPEND
-    - PROGRAM_RESUME
+    # - PROGRAM_RESUME
     # - TRAINING
     # - READID
     # - SETPARA
@@ -2374,7 +2374,7 @@ generate_seq_rules:
 latencies:
   erase.slc.busy: &erase_slc_busy 7000.0
   erase.tlc.busy: &erase_tlc_busy 7000.0
-  program.slc.busy: &program_slc_busy 300.0
+  program.slc.busy: &program_slc_busy 7000.0
   oneshot_program.trans.busy: &oneshot_program_trans_busy 20.0
   oneshot_program.tlc.busy: &oneshot_program_tlc_busy 2000.0
   cache_program.slc.busy: &cache_program_slc_busy 300.0
@@ -4761,9 +4761,9 @@ phase_conditional_overrides:
     NOP: 0.0
 
     Block_Erase_SLC: 0.1
-    Block_Erase_TLC: 0.1
+    # Block_Erase_TLC: 0.1
     Page_Program_SLC: 0.1
-    One_Shot_PGM_LSB: 0.1 
+    # One_Shot_PGM_LSB: 0.1 
     # One_Shot_PGM_CSB: 0.0 
     # One_Shot_PGM_MSB: 0.0 
     # One_Shot_PGM_MSB_23h: 0.0 
@@ -4771,9 +4771,9 @@ phase_conditional_overrides:
     # Read_Status_Enhanced_7Ch: 0.1
     # Read_Status_Enhanced_78h: 0.1
     # ERASE_SUSPEND: 0.0
-    ERASE_RESUME: 0.1
+    # ERASE_RESUME: 0.1
     # PROGRAM_SUSPEND: 0.1
-    # PROGRAM_RESUME: 0.1
+    PROGRAM_RESUME: 0.1
 
     Read_SLC: 0.1
     Read_LSB: 0.1
@@ -4838,12 +4838,18 @@ phase_conditional_overrides:
     PROGRAM_SUSPEND: 0.0
     # PROGRAM_RESUME: 0.0
   
-  ERASE.CORE_BUSY:
-    NOP: 0.5
-    ERASE_SUSPEND: 0.01
-  PROGRAM.CORE_BUSY:
-    NOP: 0.5
-    PROGRAM_SUSPEND: 0.01
+  # ERASE.CORE_BUSY:
+  #   NOP: 0.5
+  #   ERASE_SUSPEND: 0.1
+  PROGRAM_SLC.CORE_BUSY:
+    NOP: 0.1
+    PROGRAM_SUSPEND: 0.1
+  # ONESHOT_PROGRAM_MSB_23h.CORE_BUSY:
+  #   NOP: 0.5
+  #   PROGRAM_SUSPEND: 0.1
+  # ONESHOT_PROGRAM_EXEC_MSB.CORE_BUSY:
+  #   NOP: 0.5
+  #   PROGRAM_SUSPEND: 0.1
   # op_base->value overrides for specific op_states
   # ERASE.CORE_BUSY:
   #   op_name1: 0.01
