@@ -283,14 +283,16 @@ def export_operation_timeline(rows: List[Dict[str, Any]], rm: ResourceManager, *
         die = int(r["die"])  # type: ignore[index]
         plane = int(r["plane"])  # type: ignore[index]
         start = float(r["start_us"])  # type: ignore[index]
-        # Used: prefer the exact phase_key used by proposer; fallback to RM lookup
+        # Derive op_state at operation start (state key for this (die,plane) at start time)
+        # Prefer RM virtual key to get consistent boundary handling (END on exact boundary)
+        state_at_start = rm.phase_key_at(die, plane, start)
+        if not state_at_start or str(state_at_start).strip() == "":
+            state_at_start = "DEFAULT"
+        # Used: prefer the exact phase_key used by proposer; fallback to start-time state
         used_fk = r.get("phase_key")
         if used_fk is None or str(used_fk).strip() == "":
-            # Fallback to RM state at start
-            op_state = rm.op_state(die, plane, start) or "NONE"
-            phase_key_used = str(op_state)
+            phase_key_used = str(state_at_start)
         else:
-            op_state = str(used_fk)
             phase_key_used = str(used_fk)
         # Virtual: derive proposal-time virtual key using preserved context when available
         d_ctx = r.get("phase_hook_die")
@@ -300,6 +302,8 @@ def export_operation_timeline(rows: List[Dict[str, Any]], rm: ResourceManager, *
         vp = int(p_ctx) if p_ctx not in (None, "None") else plane
         vt = float(t_ctx) if t_ctx not in (None, "None") else start
         phase_key_virtual = rm.phase_key_at(int(vd), int(vp), float(vt))
+        if not phase_key_virtual or str(phase_key_virtual).strip() == "":
+            phase_key_virtual = "DEFAULT"
         out_rows.append(
             {
                 "start": float(r["start_us"]),
@@ -312,7 +316,7 @@ def export_operation_timeline(rows: List[Dict[str, Any]], rm: ResourceManager, *
                 "op_base": str(r["op_base"]),
                 "source": r.get("source"),
                 "op_uid": int(r["op_uid"]),
-                "op_state": str(op_state),
+                "op_state": str(state_at_start),
                 "phase_key_used": str(phase_key_used),
                 "phase_key_virtual": str(phase_key_virtual),
             }

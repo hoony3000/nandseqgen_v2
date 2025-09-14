@@ -1274,9 +1274,15 @@ def _phase_key(cfg: Optional[Dict[str, Any]], hook: Dict[str, Any], res: Resourc
 
 def _phase_dist(cfg: Dict[str, Any], key: str) -> Dict[str, float]:
     pc = cfg.get("phase_conditional", {}) or {}
-    dist = pc.get(key)
-    if not dist:
+    # Semantics (Option A):
+    # - If key is missing: fall back to DEFAULT
+    # - If key exists but is an empty mapping: DO NOT fall back (no candidates)
+    sentry = object()
+    dist_any = pc.get(key, sentry)
+    if dist_any is sentry:
         dist = pc.get("DEFAULT", {}) or {}
+    else:
+        dist = dist_any if isinstance(dist_any, dict) else {}
     # coerce to name->float
     out: Dict[str, float] = {}
     try:
