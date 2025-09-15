@@ -4750,9 +4750,9 @@ phase_conditional_overrides:
     Block_Erase_Multi_Plane_ONFI_TLC: 0.0
     Block_Erase_Multi_Plane_ONFI_AESLC: 0.0
     Block_Erase_Multi_Plane_ONFI_SLC: 0.0
-    Cache_Program_A0SLC: 0.0
-    Cache_Program_ACSLC: 0.0
-    Cache_Program_AESLC: 0.0
+    # Cache_Program_A0SLC: 0.0
+    # Cache_Program_ACSLC: 0.0
+    # Cache_Program_AESLC: 0.0
     # Cache_Program_SLC: 0.0
     Cache_Program_MSB: 0.0
     Cache_Program_Multi_Plane_Legacy_A0SLC: 0.0
