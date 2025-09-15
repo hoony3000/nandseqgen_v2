@@ -17,7 +17,7 @@ celltypes:
 
 policies:
   admission_window: 0.5
-  queue_refill_period_us: 500.0
+  queue_refill_period_us: 100.0
   topN: 4
   epsilon_greedy: 0.0
   maxplanes: 4
@@ -29,7 +29,7 @@ policies:
 # Feature flags (safe defaults)
 features:
   # Use ResourceManager.virtual END key fallback when op_state is None on QUEUE_REFILL
-  phase_key_rm_fallback: true
+  phase_key_rm_fallback: false
   # Normalize reserved-time phase key for instant reservations
   phase_key_used_reserved_time: true
   # Use uniform (or name_weights) sampling for subsequent op_name selection in sequences
@@ -41,6 +41,8 @@ features:
   operation_timeline_effective: true
   # Export op_state_timeline only for segments within the current run window
   op_state_timeline_per_run: true
+  # Skip reservation/commit and event emission when first proposed op is 'Delay'
+  skip_delay_in_proposal: true
 
 bootstrap:
   enabled: false
@@ -126,8 +128,8 @@ op_bases:
     instant_resv: false
     sequence: 
       probs:
-        - NONE: 0.9
-        - CACHE_PROGRAM_SLC.SEQ: 0.1
+        - NONE: 1.0
+        - CACHE_PROGRAM_SLC.SEQ: 0.0
       inherit:
         - CACHE_PROGRAM_SLC.SEQ: ['inc_page']
     states:
@@ -146,8 +148,8 @@ op_bases:
     instant_resv: false
     sequence:
       probs:
-        - ONESHOT_PROGRAM_CSB.SEQ: 0.9
-        - ONESHOT_PROGRAM_CSB_CACHE.SEQ: 0.1
+        - ONESHOT_PROGRAM_CSB.SEQ: 1.0
+        - ONESHOT_PROGRAM_CSB_CACHE.SEQ: 0.0
       inherit:
         - ONESHOT_PROGRAM_CSB.SEQ: ['same_page']
         - ONESHOT_PROGRAM_CSB_CACHE.SEQ: ['same_page']
@@ -255,8 +257,8 @@ op_bases:
     instant_resv: false
     sequence:
       probs:
-        - DOUT: 0.9
-        - CACHE_READ.SEQ: 0.1
+        - DOUT: 1.0
+        - CACHE_READ.SEQ: 0.0
       inherit:
         - DOUT: ['same_page', 'multi', 'same_celltype']
         - CACHE_READ.SEQ: ['same_celltype']
@@ -276,8 +278,8 @@ op_bases:
     instant_resv: false
     sequence:
       probs:
-        - DOUT: 0.9
-        - CACHE_READ.SEQ: 0.1
+        - DOUT: 1.0
+        - CACHE_READ.SEQ: 0.0
       inherit:
         - DOUT: ['same_page', 'multi', 'same_celltype']
         - CACHE_READ.SEQ: ['same_celltype']
@@ -341,8 +343,8 @@ op_bases:
     instant_resv: false
     sequence:
       probs:
-        - DOUT: 0.9
-        - CACHE_READ.SEQ: 0.1
+        - DOUT: 1.0
+        - CACHE_READ.SEQ: 0.0
       inherit:
         - DOUT: ['same_page', 'multi', 'same_celltype']
         - CACHE_READ.SEQ: ['same_celltype']
@@ -4713,64 +4715,6 @@ pattern_export:
 phase_conditional_overrides:
   # op_base->value overrides for all op_states
   global:
-    # ETC: 0.0
-    # ERASE: 0.0
-    # DSL_VTH_CHECK: 0.0
-    # PROGRAM_SLC: 0.0
-    # ALLWL_PROGRAM: 0.0
-    # CACHE_PROGRAM_SLC: 0.0
-    # ONESHOT_PROGRAM_LSB: 0.0
-    # ONESHOT_PROGRAM_CSB: 0.0
-    # ONESHOT_PROGRAM_MSB: 0.0
-    # ONESHOT_PROGRAM_MSB_23h: 0.0
-    # ONESHOT_PROGRAM_EXEC_MSB: 0.0
-    # ONESHOT_CACHE_PROGRAM: 0.0
-    # TRANSFER_TO_CACHE_LSB: 0.0
-    # TRANSFER_TO_CACHE_CSB: 0.0
-    # TRANSFER_TO_CACHE_MSB: 0.0
-    # READ: 0.0
-    # RECOVERY_RD: 0.0
-    # READ4K: 0.0
-    # CACHE_READ: 0.0
-    # CACHE_READ_END: 0.0
-    # PLANE_READ: 0.0
-    # PLANE_READ4K: 0.0
-    # PLANE_CACHE_READ: 0.0
-    # PLANE_CACHE_READ_END: 0.0
-    # COPYBACK_READ: 0.0
-    # COPYBACK_PROGRAM_SLC: 0.0
-    # ONESHOT_COPYBACK_PROGRAM_LSB: 0.0
-    # ONESHOT_COPYBACK_PROGRAM_CSB: 0.0
-    # ONESHOT_COPYBACK_PROGRAM_MSB: 0.0
-    # ONESHOT_COPYBACK_PROGRAM_EXEC_MSB: 0.0
-    # DOUT: 0.0
-    # DOUT4K: 0.0
-    # DATAIN: 0.0
-    # SR: 0.0
-    # SR_ADD: 0.0
-    # CAMREAD: 0.0
-    # CAMREAD_LUN: 0.0
-    # ERASE_SUSPEND: 0.0
-    # ERASE_RESUME: 0.0
-    # PROGRAM_SUSPEND: 0.0
-    # PROGRAM_RESUME: 0.0
-    # TRAINING: 0.0
-    # READID: 0.0
-    # SETPARA: 0.0
-    # GETPARA: 0.0
-    # PLANE_SETPARA: 0.0
-    # SETFEATURE: 0.0
-    # GETFEATURE: 0.0
-    # SETFEATURE_LUN: 0.0
-    # GETFEATURE_LUN: 0.0
-    # RESET: 0.0
-    # RESET_LUN: 0.0
-    # TEMPSENSOR: 0.0
-    # ZQCAL: 0.0
-    # ODTDISABLE: 0.0
-    # ODTENABLE: 0.0
-    # NOP: 0.0
-
     # 4KB_Page_Read_confirm_FWSLC: 0.0
     # 4KB_Page_Read_confirm_AESLC_AARV: 0.0
     # 4KB_Page_Read_confirm_AESLC: 0.0
@@ -5067,6 +5011,64 @@ phase_conditional_overrides:
     # Read_SLC: 0.0
 
 
+    ETC: 0.0
+    # ERASE: 0.0
+    DSL_VTH_CHECK: 0.0
+    # PROGRAM_SLC: 0.0
+    ALLWL_PROGRAM: 0.0
+    CACHE_PROGRAM_SLC: 0.0
+    ONESHOT_PROGRAM_LSB: 0.0
+    ONESHOT_PROGRAM_CSB: 0.0
+    ONESHOT_PROGRAM_MSB: 0.0
+    ONESHOT_PROGRAM_EXEC_MSB: 0.0
+    ONESHOT_PROGRAM_MSB_23h: 0.0
+    ONESHOT_CACHE_PROGRAM: 0.0
+    TRANSFER_TO_CACHE_LSB: 0.0
+    TRANSFER_TO_CACHE_CSB: 0.0
+    TRANSFER_TO_CACHE_MSB: 0.0
+    # READ: 0.0
+    RECOVERY_RD: 0.0
+    READ4K: 0.0
+    CACHE_READ: 0.0
+    CACHE_READ_END: 0.0
+    PLANE_READ: 0.0
+    PLANE_READ4K: 0.0
+    PLANE_CACHE_READ: 0.0
+    PLANE_CACHE_READ_END: 0.0
+    COPYBACK_READ: 0.0
+    COPYBACK_PROGRAM_SLC: 0.0
+    ONESHOT_COPYBACK_PROGRAM_LSB: 0.0
+    ONESHOT_COPYBACK_PROGRAM_CSB: 0.0
+    ONESHOT_COPYBACK_PROGRAM_MSB: 0.0
+    ONESHOT_COPYBACK_PROGRAM_EXEC_MSB: 0.0
+    DOUT: 0.0
+    DOUT4K: 0.0
+    DATAIN: 0.0
+    SR: 0.0
+    SR_ADD: 0.0
+    CAMREAD: 0.0
+    CAMREAD_LUN: 0.0
+    ERASE_SUSPEND: 0.0
+    ERASE_RESUME: 0.0
+    PROGRAM_SUSPEND: 0.0
+    PROGRAM_RESUME: 0.0
+    TRAINING: 0.0
+    READID: 0.0
+    SETPARA: 0.0
+    GETPARA: 0.0
+    PLANE_SETPARA: 0.0
+    SETFEATURE: 0.0
+    GETFEATURE: 0.0
+    SETFEATURE_LUN: 0.0
+    GETFEATURE_LUN: 0.0
+    RESET: 0.0
+    RESET_LUN: 0.0
+    TEMPSENSOR: 0.0
+    ZQCAL: 0.0
+    ODTDISABLE: 0.0
+    ODTENABLE: 0.0
+    NOP: 0.0
+
     # Block_Erase_SLC: 0.1
     # Block_Erase_TLC: 0.1
     # Page_Program_SLC: 0.5
@@ -5140,15 +5142,15 @@ phase_conditional_overrides:
     # PROGRAM_SUSPEND: 0.0
     # PROGRAM_RESUME: 0.0
   
-  # ERASE.CORE_BUSY:
-  #   NOP: 0.5
-  #   ERASE_SUSPEND: 0.1
-  # PROGRAM_SLC.CORE_BUSY:
-  #   NOP: 0.5
-  #   PROGRAM_SUSPEND: 0.1
-  # ONESHOT_PROGRAM_MSB_23h.CORE_BUSY:
-  #   NOP: 0.5
-  #   PROGRAM_SUSPEND: 0.1
+  ERASE.CORE_BUSY:
+    NOP: 0.5
+    # ERASE_SUSPEND: 0.1
+  PROGRAM_SLC.CORE_BUSY:
+    NOP: 0.5
+    # PROGRAM_SUSPEND: 0.1
+  ONESHOT_PROGRAM_MSB_23h.CORE_BUSY:
+    NOP: 0.5
+    # PROGRAM_SUSPEND: 0.1
   # ONESHOT_PROGRAM_EXEC_MSB.CORE_BUSY:
   #   NOP: 0.5
   #   PROGRAM_SUSPEND: 0.1

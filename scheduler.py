@@ -305,6 +305,22 @@ class Scheduler:
             self.metrics["last_reason"] = "no_candidate"
             return (0, False, "no_candidate")
 
+        # Feature: Skip Delay in proposal — do not reserve/commit or emit events; advance to next hook.
+        def _skip_delay_enabled(cfg: Dict[str, Any]) -> bool:
+            try:
+                return bool(((cfg.get("features", {}) or {}).get("skip_delay_in_proposal", True)))
+            except Exception:
+                return True
+
+        try:
+            first = batch.ops[0] if getattr(batch, "ops", None) else None
+            if first is not None and str(getattr(first, "op_name", "")) == "Delay" and _skip_delay_enabled(cfg_used):
+                self.metrics["last_reason"] = "skip_delay"
+                return (0, False, "skip_delay")
+        except Exception:
+            # Best-effort guard; fall through to normal scheduling if any error
+            pass
+
         # Admission window and atomic reservation
         W = float((d.cfg.get("policies", {}) or {}).get("admission_window", 0.0))
         txn = d.rm.begin(now)
@@ -372,7 +388,7 @@ class Scheduler:
                 snap = getattr(d.rm, "last_validation", None)
                 lv = snap() if callable(snap) else None
                 failed = (lv or {}).get("failed_rule") if isinstance(lv, dict) else None
-                print(f"[reserve] base={p.base} instant={instant} start_hint={now:.3f} -> ok={r.ok} reason={r.reason} start={r.start_us} end={r.end_us} failed_rule={failed}")
+                # print(f"[reserve] base={p.base} instant={instant} start_hint={now:.3f} -> ok={r.ok} reason={r.reason} start={r.start_us} end={r.end_us} failed_rule={failed}")
             except Exception:
                 pass
             # print(f"{p.op_name}, {p.base}, {p.targets}, {p.scope} -> {r}") # DEBUG

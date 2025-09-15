@@ -136,6 +136,12 @@
   - 문제 상황: 
   - 개선 방향과 실험:
   - 평가 결과:
+
+- [ ] 23. operation sequence 사전 검사 항목 만들기
+  - 문제 상황: 생성된 sequence 가 epr dependency rule 에 맞지 않는 항목 전재함
+  - 개선 방향과 실험:
+  - 평가 결과:
+
    
 
 ## Medium Priority
