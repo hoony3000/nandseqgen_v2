@@ -55,6 +55,9 @@ prof.*
 # tmp yaml files
 config_*.yaml
 
+# specific yaml file
+op_state_probs.yaml
+
 # not to be included in context window
 nandsim_demo.py
 tools/

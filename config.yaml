@@ -128,8 +128,8 @@ op_bases:
     instant_resv: false
     sequence: 
       probs:
-        - NONE: 1.0
-        - CACHE_PROGRAM_SLC.SEQ: 0.0
+        - NONE: 0.0
+        - CACHE_PROGRAM_SLC.SEQ: 1.0
       inherit:
         - CACHE_PROGRAM_SLC.SEQ: ['inc_page']
     states:
@@ -182,7 +182,7 @@ op_bases:
       - CORE_BUSY:
         bus: false
         duration: 8.0
-  ONESHOT_PROGRAM_MSB_23h:
+  ONESHOT_PROGRAM_MSB_23H:
     scope: "DIE_WIDE"
     affect_state: true
     instant_resv: false
@@ -742,7 +742,7 @@ payload_by_op_base:
   ONESHOT_PROGRAM_LSB: [die,plane,block,page,celltype]
   ONESHOT_PROGRAM_CSB: [die,plane,block,page,celltype]
   ONESHOT_PROGRAM_MSB: [die,plane,block,page,celltype]
-  ONESHOT_PROGRAM_MSB_23h: [die,plane,block,page,celltype]
+  ONESHOT_PROGRAM_MSB_23H: [die,plane,block,page,celltype]
   ONESHOT_PROGRAM_EXEC_MSB: [die,plane,block,page,celltype]
   ONESHOT_CACHE_PROGRAM: [die,plane,block,page,celltype]
   TRANSFER_TO_CACHE_LSB: [die]
@@ -803,7 +803,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -861,7 +861,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -919,7 +919,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -976,7 +976,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -1033,7 +1033,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -1089,7 +1089,7 @@ exclusion_groups:
     # - ONESHOT_PROGRAM_LSB
     # - ONESHOT_PROGRAM_CSB
     # - ONESHOT_PROGRAM_MSB
-    # - ONESHOT_PROGRAM_MSB_23h
+    # - ONESHOT_PROGRAM_MSB_23H
     # - ONESHOT_PROGRAM_EXEC_MSB
     # - ONESHOT_CACHE_PROGRAM
     # - READ
@@ -1143,7 +1143,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -1200,7 +1200,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -1257,7 +1257,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -1314,7 +1314,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -1371,7 +1371,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -1428,7 +1428,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -1485,7 +1485,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -1542,7 +1542,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -1600,7 +1600,7 @@ exclusion_groups:
     # - ONESHOT_PROGRAM_LSB
     # - ONESHOT_PROGRAM_CSB
     # - ONESHOT_PROGRAM_MSB
-    # - ONESHOT_PROGRAM_MSB_23h
+    # - ONESHOT_PROGRAM_MSB_23H
     # - ONESHOT_PROGRAM_EXEC_MSB
     # - ONESHOT_CACHE_PROGRAM
     - READ
@@ -1655,7 +1655,7 @@ exclusion_groups:
     # - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -1713,7 +1713,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     # - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     # - TRANSFER_TO_CACHE_LSB
@@ -1770,7 +1770,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     # - ONESHOT_PROGRAM_MSB
-    # - ONESHOT_PROGRAM_MSB_23h
+    # - ONESHOT_PROGRAM_MSB_23H
     # - ONESHOT_PROGRAM_EXEC_MSB
     # - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -1827,7 +1827,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     # - ONESHOT_PROGRAM_EXEC_MSB
     # - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -1884,7 +1884,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -1942,7 +1942,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -2000,7 +2000,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -2058,7 +2058,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -2115,7 +2115,7 @@ exclusion_groups:
     # - ONESHOT_PROGRAM_LSB
     # - ONESHOT_PROGRAM_CSB
     # - ONESHOT_PROGRAM_MSB
-    # - ONESHOT_PROGRAM_MSB_23h
+    # - ONESHOT_PROGRAM_MSB_23H
     # - ONESHOT_PROGRAM_EXEC_MSB
     # - ONESHOT_CACHE_PROGRAM
     # - READ
@@ -2170,7 +2170,7 @@ exclusion_groups:
     - ONESHOT_PROGRAM_LSB
     - ONESHOT_PROGRAM_CSB
     - ONESHOT_PROGRAM_MSB
-    - ONESHOT_PROGRAM_MSB_23h
+    - ONESHOT_PROGRAM_MSB_23H
     - ONESHOT_PROGRAM_EXEC_MSB
     - ONESHOT_CACHE_PROGRAM
     - TRANSFER_TO_CACHE_LSB
@@ -2236,8 +2236,8 @@ exclusions_by_op_state:
   ONESHOT_PROGRAM_CSB.END: ['after_oneshot_program_csb']
   ONESHOT_PROGRAM_MSB.CORE_BUSY: ['on_busy']
   ONESHOT_PROGRAM_MSB.END: ['after_oneshot_program_msb']
-  ONESHOT_PROGRAM_MSB_23h.CORE_BUSY: ['on_program']
-  ONESHOT_PROGRAM_MSB_23h.END: []
+  ONESHOT_PROGRAM_MSB_23H.CORE_BUSY: ['on_program']
+  ONESHOT_PROGRAM_MSB_23H.END: []
   ONESHOT_PROGRAM_EXEC_MSB.CORE_BUSY: ['on_program']
   ONESHOT_PROGRAM_EXEC_MSB.END: []
   ONESHOT_CACHE_PROGRAM.CORE_BUSY: ['on_program']
@@ -2344,14 +2344,14 @@ generate_seq_rules:
   ONESHOT_PROGRAM_CSB.SEQ:
     sequences:
       - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype', 'multi']
-      - ONESHOT_PROGRAM_MSB_23h: ['same_page', 'same_celltype', 'multi']
+      - ONESHOT_PROGRAM_MSB_23H: ['same_page', 'same_celltype', 'multi']
   ONESHOT_PROGRAM_CSB_CACHE.SEQ:
     sequences:
       - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype', 'multi']
       - ONESHOT_CACHE_PROGRAM: ['same_page', 'same_celltype', 'multi']
       - ONESHOT_PROGRAM_LSB: ['inc_page', 'same_celltype', 'multi']
       - ONESHOT_PROGRAM_CSB: ['same_page', 'same_celltype', 'multi']
-      - ONESHOT_PROGRAM_MSB_23h: ['same_page', 'same_celltype', 'multi']
+      - ONESHOT_PROGRAM_MSB_23H: ['same_page', 'same_celltype', 'multi']
   CACHE_READ.SEQ:
     sequences:
       - CACHE_READ: ['same_page', 'same_celltype', 'multi']
@@ -3164,7 +3164,7 @@ op_names:
       ISSUE: 39.2976
       CORE_BUSY: *oneshot_program_tlc_busy
   One_Shot_PGM_Multi_Plane_MSB_23h:
-    base: ONESHOT_PROGRAM_MSB_23h
+    base: ONESHOT_PROGRAM_MSB_23H
     multi: true
     celltype: TLC
     durations:
@@ -3277,7 +3277,7 @@ op_names:
       ISSUE: 9.8244
       CORE_BUSY: *oneshot_program_trans_busy
   One_Shot_PGM_MSB_23h:
-    base: ONESHOT_PROGRAM_MSB_23h
+    base: ONESHOT_PROGRAM_MSB_23H
     multi: false
     celltype: TLC
     durations:
@@ -4742,19 +4742,19 @@ phase_conditional_overrides:
     # Auto_Read_by_39h_Cmd_LUN_Level: 0.0
     # Auto_Read_by_FDh_Cmd_LUN_Level: 0.0
     # Block_Erase_TLC: 0.0
-    # Block_Erase_AESLC: 0.0
-    # Block_Erase_SLC: 0.0
+    Block_Erase_AESLC: 0.0
+    Block_Erase_SLC: 0.0
     Block_Erase_Multi_Plane_Legacy_TLC: 0.0
     Block_Erase_Multi_Plane_Legacy_AESLC: 0.0
     Block_Erase_Multi_Plane_Legacy_SLC: 0.0
     Block_Erase_Multi_Plane_ONFI_TLC: 0.0
     Block_Erase_Multi_Plane_ONFI_AESLC: 0.0
     Block_Erase_Multi_Plane_ONFI_SLC: 0.0
-    # Cache_Program_A0SLC: 0.0
-    # Cache_Program_ACSLC: 0.0
-    # Cache_Program_AESLC: 0.0
+    Cache_Program_A0SLC: 0.0
+    Cache_Program_ACSLC: 0.0
+    Cache_Program_AESLC: 0.0
     # Cache_Program_SLC: 0.0
-    # Cache_Program_MSB: 0.0
+    Cache_Program_MSB: 0.0
     Cache_Program_Multi_Plane_Legacy_A0SLC: 0.0
     Cache_Program_Multi_Plane_Legacy_ACSLC: 0.0
     Cache_Program_Multi_Plane_Legacy_AESLC: 0.0
@@ -4838,7 +4838,7 @@ phase_conditional_overrides:
     One_Shot_PGM_Multi_Plane_LSB_Legacy: 0.0
     One_Shot_PGM_Multi_Plane_MSB_Legacy: 0.0
     One_Shot_PGM_Multi_Plane_MSB_23h_Legacy: 0.0
-    # Page_Program_ACSLC: 0.0
+    Page_Program_ACSLC: 0.0
     Page_Program_Multi_Plane_Legacy_A0SLC: 0.0
     Page_Program_Multi_Plane_Legacy_ACSLC: 0.0
     Page_Program_Multi_Plane_Legacy_AESLC: 0.0
@@ -4860,16 +4860,16 @@ phase_conditional_overrides:
     # Set_Features: 0.0
     # Set_Features_LUN_Level: 0.0
     # Set_Parameter: 0.0
-    # Soft_Read_AESLC: 0.0
-    # Soft_Read_CSB: 0.0
-    # Soft_Read_LSB: 0.0
-    # Soft_Read_MSB: 0.0
+    Soft_Read_AESLC: 0.0
+    Soft_Read_CSB: 0.0
+    Soft_Read_LSB: 0.0
+    Soft_Read_MSB: 0.0
     Soft_Read_Multi_Plane_AESLC: 0.0
     Soft_Read_Multi_Plane_CSB: 0.0
     Soft_Read_Multi_Plane_LSB: 0.0
     Soft_Read_Multi_Plane_MSB: 0.0
     Soft_Read_Multi_Plane_SLC: 0.0
-    # Soft_Read_SLC: 0.0
+    Soft_Read_SLC: 0.0
     Super_Reset: 0.0
     Synchronous_Reset: 0.0
     # Temperature_Sensor_Fast_mode: 0.0
@@ -5016,12 +5016,12 @@ phase_conditional_overrides:
     DSL_VTH_CHECK: 0.0
     # PROGRAM_SLC: 0.0
     ALLWL_PROGRAM: 0.0
-    CACHE_PROGRAM_SLC: 0.0
-    ONESHOT_PROGRAM_LSB: 0.0
+    # CACHE_PROGRAM_SLC: 0.0
+    # ONESHOT_PROGRAM_LSB: 0.0
     ONESHOT_PROGRAM_CSB: 0.0
     ONESHOT_PROGRAM_MSB: 0.0
     ONESHOT_PROGRAM_EXEC_MSB: 0.0
-    ONESHOT_PROGRAM_MSB_23h: 0.0
+    # ONESHOT_PROGRAM_MSB_23H: 0.0
     ONESHOT_CACHE_PROGRAM: 0.0
     TRANSFER_TO_CACHE_LSB: 0.0
     TRANSFER_TO_CACHE_CSB: 0.0
@@ -5044,8 +5044,8 @@ phase_conditional_overrides:
     DOUT: 0.0
     DOUT4K: 0.0
     DATAIN: 0.0
-    SR: 0.0
-    SR_ADD: 0.0
+    # SR: 0.0
+    # SR_ADD: 0.0
     CAMREAD: 0.0
     CAMREAD_LUN: 0.0
     ERASE_SUSPEND: 0.0
@@ -5148,7 +5148,7 @@ phase_conditional_overrides:
   PROGRAM_SLC.CORE_BUSY:
     NOP: 0.5
     # PROGRAM_SUSPEND: 0.1
-  ONESHOT_PROGRAM_MSB_23h.CORE_BUSY:
+  ONESHOT_PROGRAM_MSB_23H.CORE_BUSY:
     NOP: 0.5
     # PROGRAM_SUSPEND: 0.1
   # ONESHOT_PROGRAM_EXEC_MSB.CORE_BUSY:

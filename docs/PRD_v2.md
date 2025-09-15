@@ -6,7 +6,7 @@
 - 생성된 sequence를 ATE(Automatic Test Environment)가 사용 가능한 파일 형태로 출력한다.
 - 런타임 원칙: 주소 상태(AddressManager)는 OP_END 시점에 ERASE/PROGRAM 효과를 반영한다.
   - PROGRAM(TLC one‑shot) 체인에서는 최종 단계에서 단 한 번만 커밋한다.
-    - 허용 베이스: `PROGRAM_SLC`, `COPYBACK_PROGRAM_SLC`, `ONESHOT_PROGRAM_MSB_23h`, `ONESHOT_PROGRAM_EXEC_MSB`, `ONESHOT_CACHE_PROGRAM`, `ONESHOT_COPYBACK_PROGRAM_EXEC_MSB`
+    - 허용 베이스: `PROGRAM_SLC`, `COPYBACK_PROGRAM_SLC`, `ONESHOT_PROGRAM_MSB_23H`, `ONESHOT_PROGRAM_EXEC_MSB`, `ONESHOT_CACHE_PROGRAM`, `ONESHOT_COPYBACK_PROGRAM_EXEC_MSB`
     - 그 외 PROGRAM 계열(L/CSB/MSB 중간 단계 등)은 OP_END에서 addr_state를 변경하지 않는다.
 
 ## 2. Terminology
@@ -384,7 +384,7 @@ class Operation:
       - PROGRAM 계열(ONESHOT): LSB/CSB/MSB 완료 시 해당 die의 모든 plane에 각각 `LATCH_ON_LSB`/`LATCH_ON_CSB`/`LATCH_ON_MSB` 설정
     - 해제 조건(API)
       - READ 계열: DOUT 종료 시 대상 plane 해제 → `ResourceManager.release_on_dout_end(targets, now)`
-      - PROGRAM 계열: ONESHOT_PROGRAM_MSB_23h 또는 ONESHOT_PROGRAM_EXEC_MSB 종료 시 해당 die 전체 해제 → `ResourceManager.release_on_exec_msb_end(die, now)`
+      - PROGRAM 계열: ONESHOT_PROGRAM_MSB_23H 또는 ONESHOT_PROGRAM_EXEC_MSB 종료 시 해당 die 전체 해제 → `ResourceManager.release_on_exec_msb_end(die, now)`
   - `op_state_timeline`: (die,plane) target. logic_state timeline 등록. state에 따른 `exclusions_by_op_state` list
   - 분석용 phase key 유틸: `phase_key_at(die:int, plane:int, t:float, default="DEFAULT") -> str`
     - 내부 의미: 세그먼트 내부면 `BASE.STATE`; 세그먼트 밖이면 직전 세그먼트의 `<BASE>.END`를 반환. 세그먼트 경계(t == 다음 세그먼트 시작)에서는 직전 `<BASE>.END`를 우선한다. `.ISSUE` 내부에서의 제안은 분석상 직전 `<BASE>.END`로 간주(선행 세그먼트가 없으면 `DEFAULT`).

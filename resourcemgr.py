@@ -693,7 +693,7 @@ class ResourceManager:
             self._latch.pop((t.die, t.plane), None)
 
     def release_on_exec_msb_end(self, die: int, now_us: float) -> None:
-        """Release program-related latches after ONESHOT_PROGRAM_MSB_23h or ONESHOT_PROGRAM_EXEC_MSB completion for a die."""
+        """Release program-related latches after ONESHOT_PROGRAM_MSB_23H or ONESHOT_PROGRAM_EXEC_MSB completion for a die."""
         for p in range(self.planes):
             self._latch.pop((die, p), None)
 

@@ -205,7 +205,7 @@ class Scheduler:
         # Release policies
         if base in ("DOUT", "DOUT4K", "CACHE_READ_END", "PLANE_CACHE_READ_END"):
             self._deps.rm.release_on_dout_end(targets, now_us=self.now_us)
-        if base in ("ONESHOT_PROGRAM_MSB_23h", "ONESHOT_PROGRAM_EXEC_MSB"):
+        if base in ("ONESHOT_PROGRAM_MSB_23H", "ONESHOT_PROGRAM_EXEC_MSB"):
             if targets:
                 die = int(getattr(targets[0], "die", 0))
             else:
@@ -266,8 +266,9 @@ class Scheduler:
         # Whitelist of PROGRAM bases that are allowed to commit addr_state at OP_END
         ALLOWED_PROGRAM_COMMIT = {
             "PROGRAM_SLC",
+            "CACHE_PROGRAM_SLC",
             "COPYBACK_PROGRAM_SLC",
-            "ONESHOT_PROGRAM_MSB_23h",
+            "ONESHOT_PROGRAM_MSB_23H",
             "ONESHOT_PROGRAM_EXEC_MSB",
             "ONESHOT_CACHE_PROGRAM",
             "ONESHOT_COPYBACK_PROGRAM_EXEC_MSB",

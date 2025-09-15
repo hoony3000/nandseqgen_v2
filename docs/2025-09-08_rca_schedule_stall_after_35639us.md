@@ -24,7 +24,7 @@
 - 해당 그룹에는 `READ`, `DOUT` 뿐 아니라 체인의 `ONESHOT_PROGRAM_CSB/MSB`도 포함되어 있어, LSB 이후 체인 확장에서 preflight 시 차단이 발생.
 
 ## 원인 분석 (Root Cause)
-- ResourceManager가 `ONESHOT_CACHE_PROGRAM` 시작을 기록하지만, oneshot program 완료 시점(예: `ONESHOT_PROGRAM_MSB_23h` 또는 `ONESHOT_PROGRAM_EXEC_MSB`)에
+- ResourceManager가 `ONESHOT_CACHE_PROGRAM` 시작을 기록하지만, oneshot program 완료 시점(예: `ONESHOT_PROGRAM_MSB_23H` 또는 `ONESHOT_PROGRAM_EXEC_MSB`)에
   die‑level cache‑program 상태를 종료(end_us 세팅)하지 않음.
 - 그 결과 cache‑program 상태가 무기한 지속되어 대부분의 후보가 캐시 상태 기반 exclusion에 의해 차단됨.
 - 구현 세부: `commit()` 단계에서 베이스 문자열을 대문자로 비교함. 따라서 종료 조건 매칭도 대문자 키를 사용해야 함.
