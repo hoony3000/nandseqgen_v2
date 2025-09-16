@@ -362,8 +362,8 @@ class Operation:
         1) ERASE/PROGRAM 동작이 `Scheduler`에 의해 예약됨. 이때 `ongoing_ops` 배열에 해당 operation을 복사하여 추가
         2) `ERASE.CORE_BUSY`/`PROGRAM.CORE_BUSY` state 중 ERASE_SUSPEND/PROGRAM_SUSPEND 동작이 `time_suspend` 시각에 등록됨
         3) `ResourceManager`가 `op_state_timeline`의 `ERASE.CORE_BUSY`/`PROGRAM.CORE_BUSY` state 를 `time_suspend` 이후부터 제거하고, `ERASE_SUSPEND` 스케쥴을 등록. `suspended_ops`에 기존 ERASE를 추가하고 `ongoing_ops`에서 제거. `suspend_states`를 'erase_suspended'로 변경
-           - 규칙: ERASE_RESUME/PROGRAM_RESUME 은 state를 별도로 추가하지 않고 bus 등록만 → 예외 루틴 처리
-        4) 이후 ERASE_RESUME/PROGRAM_RESUME 예약 시, `Scheduler`는 RESUME 동작으로 인지하여 별도 루틴으로 처리: ERASE_RESUME.CORE_BUSY/PROGRAM_RESUME 을 timeline에 예약하고, suspended_ops_erase/suspended_ops_program 에 있던 operation을 ERASE_RESUME/PROGRAM_RESUME 종료 직후에 추가. RESUME 으로 다시 추가된 operation 은 `operation_sequence_yymmdd_0000001.csv` 에 추가하지 않는다.
+           - 규칙: ERASE_RESUME/PROGRAM_RESUME 은 ISSUE/CORE_BUSY state 를 timeline에 그대로 추가하고 bus 도 기록한다.
+        4) 이후 ERASE_RESUME/PROGRAM_RESUME 예약 시, `Scheduler`는 RESUME 동작으로 인지하여 별도 루틴으로 처리: ERASE_RESUME.ISSUE/CORE_BUSY, PROGRAM_RESUME.ISSUE/CORE_BUSY 를 timeline에 예약하고, suspended_ops_erase/suspended_ops_program 에 있던 operation을 ERASE_RESUME/PROGRAM_RESUME 종료 직후에 추가. RESUME 으로 다시 추가된 operation 은 `operation_sequence_yymmdd_0000001.csv` 에 추가하지 않는다.
     - RESET/RESET_LUN 스케쥴 시: RESET/RESET_LUN 의 경우 스케쥴된 시점 이후에 예약된 operation/op_state 를 제거하고 RESET/RESET_LUN 에 의한 state 만 등록함
 - RESET/RESET_ADD 동작에 대한 후속 처리
   - RESET 수행 시 latch, suspend_state, cache_state, ongoing_ops, suspended_ops 는 모두 기본 값으로  돌아간다.

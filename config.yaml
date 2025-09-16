@@ -3,7 +3,7 @@
 topology:
   dies: 1
   planes: 4
-  blocks_per_die: 100
+  blocks_per_die: 4
   pages_per_block: 2564
 
 celltypes:
@@ -2378,7 +2378,7 @@ generate_seq_rules:
 latencies:
   erase.slc.busy: &erase_slc_busy 7000.0
   erase.tlc.busy: &erase_tlc_busy 7000.0
-  program.slc.busy: &program_slc_busy 300.0
+  program.slc.busy: &program_slc_busy 3000.0
   oneshot_program.trans.busy: &oneshot_program_trans_busy 20.0
   oneshot_program.tlc.busy: &oneshot_program_tlc_busy 2000.0
   cache_program.slc.busy: &cache_program_slc_busy 300.0
@@ -4743,8 +4743,8 @@ phase_conditional_overrides:
     # Auto_Read_by_38h_Cmd_Target_Level: 0.0
     # Auto_Read_by_39h_Cmd_LUN_Level: 0.0
     # Auto_Read_by_FDh_Cmd_LUN_Level: 0.0
-    # Block_Erase_TLC: 0.0
-    # Block_Erase_AESLC: 0.0
+    Block_Erase_TLC: 0.0
+    Block_Erase_AESLC: 0.0
     # Block_Erase_SLC: 0.0
     Block_Erase_Multi_Plane_Legacy_TLC: 0.0
     Block_Erase_Multi_Plane_Legacy_AESLC: 0.0
@@ -4837,9 +4837,9 @@ phase_conditional_overrides:
     One_Shot_PGM_Multi_Plane_LSB_Legacy: 0.0
     One_Shot_PGM_Multi_Plane_MSB_Legacy: 0.0
     One_Shot_PGM_Multi_Plane_MSB_23h_Legacy: 0.0
-    # Page_Program_A0SLC: 0.0
-    # Page_Program_ACSLC: 0.0
-    # Page_Program_AESLC: 0.0
+    Page_Program_A0SLC: 0.0
+    Page_Program_ACSLC: 0.0
+    Page_Program_AESLC: 0.0
     # Page_Program_SLC: 0.0
     Page_Program_Multi_Plane_Legacy_A0SLC: 0.0
     Page_Program_Multi_Plane_Legacy_ACSLC: 0.0
@@ -4937,8 +4937,8 @@ phase_conditional_overrides:
     # Plane_Level_Page_Read_MSB_Fast_tR: 0.0
     # Plane_Level_Page_Read_SLC: 0.0
     # Plane_Level_Set_Parameter: 0.0
-    Program_Resume: 0.0
-    Program_Suspend_Reset: 0.0
+    # Program_Resume: 0.0
+    # Program_Suspend_Reset: 0.0
     # Read_AESLC_AARV: 0.0
     Read_Cache_End: 0.0
     Read_Cache_Random_AESLC: 0.0
@@ -5018,8 +5018,8 @@ phase_conditional_overrides:
     DSL_VTH_CHECK: 0.0
     # PROGRAM_SLC: 0.0
     ALLWL_PROGRAM: 0.0
-    # CACHE_PROGRAM_SLC: 0.0
-    # ONESHOT_PROGRAM_LSB: 0.0
+    CACHE_PROGRAM_SLC: 0.0
+    ONESHOT_PROGRAM_LSB: 0.0
     ONESHOT_PROGRAM_CSB: 0.0
     ONESHOT_PROGRAM_MSB: 0.0
     ONESHOT_PROGRAM_EXEC_MSB: 0.0
@@ -5028,13 +5028,13 @@ phase_conditional_overrides:
     TRANSFER_TO_CACHE_LSB: 0.0
     TRANSFER_TO_CACHE_CSB: 0.0
     TRANSFER_TO_CACHE_MSB: 0.0
-    # READ: 0.0
+    READ: 0.0
     RECOVERY_RD: 0.0
-    # READ4K: 0.0
+    READ4K: 0.0
     CACHE_READ: 0.0
     CACHE_READ_END: 0.0
-    # PLANE_READ: 0.0
-    # PLANE_READ4K: 0.0
+    PLANE_READ: 0.0
+    PLANE_READ4K: 0.0
     PLANE_CACHE_READ: 0.0
     PLANE_CACHE_READ_END: 0.0
     COPYBACK_READ: 0.0
@@ -5046,27 +5046,27 @@ phase_conditional_overrides:
     DOUT: 0.0
     DOUT4K: 0.0
     DATAIN: 0.0
-    # SR: 0.0
-    # SR_ADD: 0.0
-    # CAMREAD: 0.0
-    # CAMREAD_LUN: 0.0
+    SR: 0.0
+    SR_ADD: 0.0
+    CAMREAD: 0.0
+    CAMREAD_LUN: 0.0
     ERASE_SUSPEND: 0.0
     ERASE_RESUME: 0.0
-    PROGRAM_SUSPEND: 0.0
-    PROGRAM_RESUME: 0.0
-    # TRAINING: 0.0
-    # READID: 0.0
-    # SETPARA: 0.0
-    # GETPARA: 0.0
-    # PLANE_SETPARA: 0.0
-    # SETFEATURE: 0.0
-    # GETFEATURE: 0.0
-    # SETFEATURE_LUN: 0.0
-    # GETFEATURE_LUN: 0.0
+    # PROGRAM_SUSPEND: 0.0
+    # PROGRAM_RESUME: 0.0
+    TRAINING: 0.0
+    READID: 0.0
+    SETPARA: 0.0
+    GETPARA: 0.0
+    PLANE_SETPARA: 0.0
+    SETFEATURE: 0.0
+    GETFEATURE: 0.0
+    SETFEATURE_LUN: 0.0
+    GETFEATURE_LUN: 0.0
     RESET: 0.0
     RESET_LUN: 0.0
-    # TEMPSENSOR: 0.0
-    # ZQCAL: 0.0
+    TEMPSENSOR: 0.0
+    ZQCAL: 0.0
     ODTDISABLE: 0.0
     ODTENABLE: 0.0
     NOP: 0.0
@@ -5081,10 +5081,11 @@ phase_conditional_overrides:
     # Read_Status_Enhanced_70h: 0.1
     # Read_Status_Enhanced_7Ch: 0.1
     # Read_Status_Enhanced_78h: 0.1
+    ERASE: 0.01
     # ERASE_SUSPEND: 0.0
     # ERASE_RESUME: 0.1
-    # PROGRAM_SUSPEND: 0.1
-    # PROGRAM_RESUME: 0.1
+    PROGRAM_SUSPEND: 0.0
+    PROGRAM_RESUME: 0.1
 
     # Read_SLC: 0.1
     # Read_LSB: 0.1
@@ -5148,8 +5149,8 @@ phase_conditional_overrides:
     NOP: 0.5
     # ERASE_SUSPEND: 0.1
   PROGRAM_SLC.CORE_BUSY:
-    NOP: 0.5
-    # PROGRAM_SUSPEND: 0.1
+    # NOP: 0.5
+    PROGRAM_SUSPEND: 0.1
   ONESHOT_PROGRAM_MSB_23H.CORE_BUSY:
     NOP: 0.5
     # PROGRAM_SUSPEND: 0.1

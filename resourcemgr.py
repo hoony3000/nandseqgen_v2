@@ -590,16 +590,8 @@ class ResourceManager:
         for (die, plane, base, st_list, start) in txn.st_ops:
             # PRD v2 §5.4: skip op_state timeline segments for affect_state == false
             if self._affects_state(base):
-                # PRD v2 §5.5 (SUSPEND/RESUME rule): do not add ISSUE for *_RESUME in timeline
-                b_up = str(base).upper()
-                st_for_tl = st_list
-                if b_up in ("ERASE_RESUME", "PROGRAM_RESUME"):
-                    try:
-                        st_for_tl = [(n, d) for (n, d) in st_list if str(n).upper() != "ISSUE"]
-                    except Exception:
-                        st_for_tl = st_list
-                if st_for_tl:
-                    self._st.reserve_op(die, plane, base, st_for_tl, start)
+                if st_list:
+                    self._st.reserve_op(die, plane, base, st_list, start)
             # Opportunistic minimal state hooks for ODT/CACHE/SUSPEND bookkeeping
             end = quantize(start + sum(float(d) for (_, d) in st_list))
             b = str(base).upper()
