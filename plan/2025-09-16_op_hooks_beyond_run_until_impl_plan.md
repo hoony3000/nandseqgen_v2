@@ -47,5 +47,5 @@
    - Regression test to ensure draining when no pending OP_END events exists is a no-op (idempotency).
 
 ## Open Questions / Follow-ups
-- Should drain automatically run when the scheduler is explicitly `close()`d even if `run` wasn’t called? (default assumption: no, but document behavior.)
-- Determine whether bootstrap skip conditions need dedicated metrics to confirm we are draining only when safe; plan follow-up instrumentation if necessary.
+- Should drain automatically run when the scheduler is explicitly `close()`d even if `run` wasn’t called? (default assumption: no, but document behavior.) -> (reviewed) default no.
+- Determine whether bootstrap skip conditions need dedicated metrics to confirm we are draining only when safe; plan follow-up instrumentation if necessary. -> (reviewed) Not yet.
