@@ -987,7 +987,15 @@ def run_once(cfg: Dict[str, Any], rm: ResourceManager, am: Any, *, run_until_us:
         t0 = 0.0
     t0 = quantize(float(t0))
     t_end = quantize(t0 + float(run_until_us))
-    sched = InstrumentedScheduler(cfg=cfg, rm=rm, addrman=am, rng=rng, start_at_us=t0)
+    def _flag(val: Any) -> bool:
+        if isinstance(val, str):
+            lowered = val.strip().lower()
+            return lowered not in ("", "0", "false", "no", "off")
+        return bool(val)
+
+    feats = (cfg.get("features", {}) or {})
+    drain_enabled = _flag(feats.get("drain_op_end_on_exit", False))
+    sched = InstrumentedScheduler(cfg=cfg, rm=rm, addrman=am, rng=rng, start_at_us=t0, drain_on_exit=drain_enabled)
     res = sched.run(run_until_us=t_end)
     return sched, res
 
@@ -1022,6 +1030,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         default="site_{site_id:02d}",
         help="Per-site subdir pattern; Python format string with 'site_id'",
     )
+    p.add_argument(
+        "--drain-op-end",
+        dest="drain_op_end",
+        action="store_true",
+        default=None,
+        help="Process any pending OP_END events after each run (default: auto for multi-run)",
+    )
+    p.add_argument(
+        "--no-drain-op-end",
+        dest="drain_op_end",
+        action="store_false",
+        default=None,
+        help="Disable draining of pending OP_END events on run exit",
+    )
+    p.set_defaults(drain_op_end=None)
     args = p.parse_args(argv)
 
     cfg = _load_cfg(args.config)
@@ -1045,6 +1068,31 @@ def main(argv: Optional[List[str]] = None) -> int:
     dies = int(topo.get("dies", 1))
     planes = int(topo.get("planes", 1))
 
+    def _coerce_flag(val: Any) -> Optional[bool]:
+        if val is None:
+            return None
+        if isinstance(val, bool):
+            return val
+        if isinstance(val, str):
+            lowered = val.strip().lower()
+            if lowered in ("", "0", "false", "no", "off"):
+                return False
+            return True
+        return bool(val)
+
+    def _apply_drain_feature(cfg_in: Dict[str, Any], *, num_runs: int) -> Dict[str, Any]:
+        cfg_copy = dict(cfg_in or {})
+        feats = dict(cfg_copy.get("features", {}) or {})
+        # Resolve precedence: CLI override > cfg value > default (multi-run only)
+        chosen = _coerce_flag(args.drain_op_end)
+        if chosen is None:
+            chosen = _coerce_flag(feats.get("drain_op_end_on_exit"))
+        if chosen is None:
+            chosen = num_runs > 1
+        feats["drain_op_end_on_exit"] = bool(chosen)
+        cfg_copy["features"] = feats
+        return cfg_copy
+
     # Multi-site batch mode
     if int(getattr(args, "site_count", 0) or 0) > 0:
         site_count = int(args.site_count)
@@ -1067,12 +1115,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             # Per run within the site (continuity preserved via shared RM)
             for i in range(args.num_runs):
                 enable_boot = bool(args.bootstrap) and (i == 0) and (args.num_runs > 1)
-                cfg_run = _apply_overrides(
+                cfg_run_base = _apply_overrides(
                     cfg,
                     admission_window=args.admission_window,
                     bootstrap_enabled=enable_boot,
                     validate_pc=bool(args.validate_pc),
                 )
+                cfg_run = _apply_drain_feature(cfg_run_base, num_runs=args.num_runs)
 
                 # Optional phase_conditional demo override
                 if args.pc_demo is not None:
@@ -1168,12 +1217,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Per run
     for i in range(args.num_runs):
         enable_boot = bool(args.bootstrap) and (i == 0) and (args.num_runs > 1)
-        cfg_run = _apply_overrides(
+        cfg_run_base = _apply_overrides(
             cfg,
             admission_window=args.admission_window,
             bootstrap_enabled=enable_boot,
             validate_pc=bool(args.validate_pc),
         )
+        cfg_run = _apply_drain_feature(cfg_run_base, num_runs=args.num_runs)
         # Optional phase_conditional demo override
         if args.pc_demo is not None:
             pc = dict(cfg_run.get("phase_conditional", {}) or {})

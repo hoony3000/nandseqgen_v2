@@ -47,6 +47,7 @@ class Scheduler:
         rng: Optional[Any] = None,
         logger: Optional[Any] = None,
         start_at_us: Optional[float] = None,
+        drain_on_exit: bool = False,
     ) -> None:
         # Deterministic RNG (no system time)
         if rng is None:
@@ -101,19 +102,27 @@ class Scheduler:
         # round-robin cursor for QUEUE_REFILL hooks
         self._rr_die: int = 0
         self._rr_plane: int = 0
+        # Drain strategy for OP_END events at run boundaries
+        self._drain_on_exit: bool = bool(drain_on_exit)
+        self.metrics["drain_op_end_processed"] = 0
 
     # -----------------
     # Public API
     # -----------------
     def run(self, run_until_us: Optional[int] = None, max_hooks: Optional[int] = None) -> SchedulerResult:
         hooks_budget = float("inf") if max_hooks is None else int(max_hooks)
+        stop_reason: Optional[str] = None
         while True:
             if self._hooks >= hooks_budget:
+                stop_reason = "hooks_budget"
                 break
             if run_until_us is not None and self.now_us >= float(run_until_us):
+                stop_reason = "run_until"
                 break
             tr = self.tick()
             self._hooks += 1
+        if self._drain_on_exit and stop_reason == "run_until":
+            self._drain_pending_op_end_events()
         return SchedulerResult(
             success=True,
             hooks_executed=self._hooks,
@@ -164,6 +173,34 @@ class Scheduler:
     # -----------------
     def _advance_time_to(self, t: float) -> None:
         self.now_us = float(t)
+
+    def _drain_pending_op_end_events(self) -> int:
+        """Process any queued OP_END events after the run loop exits."""
+        queue = list(self._eq._q)
+        if not queue:
+            return 0
+        drained = 0
+        kept: List[Tuple[float, int, int, str, Dict[str, Any]]] = []
+        last_time = self.now_us
+        for (when, prio, seq, kind, payload) in queue:
+            if kind != "OP_END":
+                kept.append((when, prio, seq, kind, payload))
+                continue
+            target_time = float(when)
+            if target_time < last_time:
+                target_time = last_time
+            self._advance_time_to(target_time)
+            try:
+                self._handle_op_end(payload)
+            except Exception:
+                # Continue draining other events even if one handler fails
+                pass
+            drained += 1
+            last_time = self.now_us
+        self._eq._q = kept
+        if drained:
+            self.metrics["drain_op_end_processed"] = int(self.metrics.get("drain_op_end_processed", 0)) + drained
+        return drained
 
     # bootstrap progress helpers moved to bootstrap.py
 

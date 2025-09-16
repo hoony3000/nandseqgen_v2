@@ -3,7 +3,7 @@
 topology:
   dies: 1
   planes: 4
-  blocks_per_die: 4
+  blocks_per_die: 100
   pages_per_block: 2564
 
 celltypes:
@@ -43,6 +43,8 @@ features:
   op_state_timeline_per_run: true
   # Skip reservation/commit and event emission when first proposed op is 'Delay'
   skip_delay_in_proposal: true
+  # Drain pending OP_END events after run_until boundary when enabled (auto-controlled via CLI)
+  drain_op_end_on_exit: true
 
 bootstrap:
   enabled: false
@@ -4742,8 +4744,8 @@ phase_conditional_overrides:
     # Auto_Read_by_39h_Cmd_LUN_Level: 0.0
     # Auto_Read_by_FDh_Cmd_LUN_Level: 0.0
     # Block_Erase_TLC: 0.0
-    Block_Erase_AESLC: 0.0
-    Block_Erase_SLC: 0.0
+    # Block_Erase_AESLC: 0.0
+    # Block_Erase_SLC: 0.0
     Block_Erase_Multi_Plane_Legacy_TLC: 0.0
     Block_Erase_Multi_Plane_Legacy_AESLC: 0.0
     Block_Erase_Multi_Plane_Legacy_SLC: 0.0
@@ -4796,7 +4798,7 @@ phase_conditional_overrides:
     Data_transfer_to_cache_for_3rd_Page_TLC: 0.0
     # DCC_training: 0.0
     # Delay: 0.0
-    Device_Identification_Table_Read: 0.0
+    # Device_Identification_Table_Read: 0.0
     Disable_Cache_PGM_Flag: 0.0
     DSL_Vth_Check: 0.0
     DSL_Vth_Check_Multi_Plane: 0.0
@@ -4805,8 +4807,6 @@ phase_conditional_overrides:
     Enhanced_Random_Data_Output_4K_Secondary: 0.0
     Erase_Suspend_Reset: 0.0
     # Get_Parameter: 0.0
-    LUN_Status_Read_for_LUN1: 0.0
-    # LUN_Status_Read_for_LUN3: 0.0
     ODT_Reenable: 0.0
     One_Shot_Copyback_Program_LSB: 0.0
     One_Shot_Copyback_Program_Multi_Plane_CSB: 0.0
@@ -4816,14 +4816,13 @@ phase_conditional_overrides:
     One_Shot_PGM_Multi_Plane_LSB: 0.0
     One_Shot_PGM_Multi_Plane_MSB: 0.0
     One_Shot_PGM_Multi_Plane_MSB_23h: 0.0
-    Page_Program_A0SLC: 0.0
-    Page_Program_AESLC: 0.0
-    Plane_Level_4KB_Page_Read_AESLC: 0.0
     Erase_Resume: 0.0
     # Get_Features: 0.0
-    Get_Features_LUN_Level: 0.0
-    LUN_Status_Read_for_LUN0: 0.0
-    # LUN_Status_Read_for_LUN2: 0.0
+    # Get_Features_LUN_Level: 0.0
+    # LUN_Status_Read_for_LUN0: 0.0
+    # LUN_Status_Read_for_LUN1: 0.0
+    LUN_Status_Read_for_LUN2: 0.0
+    LUN_Status_Read_for_LUN3: 0.0
     ODT_Disable: 0.0
     One_Shot_Copyback_Program_CSB: 0.0
     One_Shot_Copyback_Program_Execution_MSB: 0.0
@@ -4838,12 +4837,14 @@ phase_conditional_overrides:
     One_Shot_PGM_Multi_Plane_LSB_Legacy: 0.0
     One_Shot_PGM_Multi_Plane_MSB_Legacy: 0.0
     One_Shot_PGM_Multi_Plane_MSB_23h_Legacy: 0.0
-    Page_Program_ACSLC: 0.0
+    # Page_Program_A0SLC: 0.0
+    # Page_Program_ACSLC: 0.0
+    # Page_Program_AESLC: 0.0
+    # Page_Program_SLC: 0.0
     Page_Program_Multi_Plane_Legacy_A0SLC: 0.0
     Page_Program_Multi_Plane_Legacy_ACSLC: 0.0
     Page_Program_Multi_Plane_Legacy_AESLC: 0.0
     Page_Program_Multi_Plane_Legacy_SLC: 0.0
-    # Page_Program_SLC: 0.0
     Read_write_conflict_Fire_N_Forget_CSB_AARV: 0.0
     Read_write_conflict_Fire_N_Forget_CSB: 0.0
     Read_write_conflict_Fire_N_Forget_LSB_AARV: 0.0
@@ -4860,16 +4861,16 @@ phase_conditional_overrides:
     # Set_Features: 0.0
     # Set_Features_LUN_Level: 0.0
     # Set_Parameter: 0.0
-    Soft_Read_AESLC: 0.0
-    Soft_Read_CSB: 0.0
-    Soft_Read_LSB: 0.0
-    Soft_Read_MSB: 0.0
+    # Soft_Read_AESLC: 0.0
+    # Soft_Read_CSB: 0.0
+    # Soft_Read_LSB: 0.0
+    # Soft_Read_MSB: 0.0
     Soft_Read_Multi_Plane_AESLC: 0.0
     Soft_Read_Multi_Plane_CSB: 0.0
     Soft_Read_Multi_Plane_LSB: 0.0
     Soft_Read_Multi_Plane_MSB: 0.0
     Soft_Read_Multi_Plane_SLC: 0.0
-    Soft_Read_SLC: 0.0
+    # Soft_Read_SLC: 0.0
     Super_Reset: 0.0
     Synchronous_Reset: 0.0
     # Temperature_Sensor_Fast_mode: 0.0
@@ -4893,6 +4894,7 @@ phase_conditional_overrides:
     Page_Program_Multi_Plane_ONFI_ACSLC: 0.0
     Page_Program_Multi_Plane_ONFI_AESLC: 0.0
     Page_Program_Multi_Plane_ONFI_SLC: 0.0
+    # Plane_Level_4KB_Page_Read_AESLC: 0.0
     # Plane_Level_4KB_Page_Read_AESLC_AARV: 0.0
     # Plane_Level_4KB_Page_Read_AESLC_Fast_tR: 0.0
     # Plane_Level_4KB_Page_Read_CSB_AARV: 0.0
@@ -4907,22 +4909,22 @@ phase_conditional_overrides:
     # Plane_Level_4KB_Page_Read_SLC_AARV: 0.0
     # Plane_Level_4KB_Page_Read_SLC: 0.0
     # Plane_Level_4KB_Page_Read_SLC_Fast_tR: 0.0
-    # Plane_Level_Cache_Read_AESLC_AARV: 0.0
-    # Plane_Level_Cache_Read_AESLC: 0.0
-    # Plane_Level_Cache_Read_AESLC_Fast_tR: 0.0
-    # Plane_Level_Cache_Read_CSB_AARV: 0.0
-    # Plane_Level_Cache_Read_CSB: 0.0
-    # Plane_Level_Cache_Read_CSB_Fast_tR: 0.0
-    # Plane_Level_Cache_Read_End: 0.0
-    # Plane_Level_Cache_Read_LSB_AARV: 0.0
-    # Plane_Level_Cache_Read_LSB: 0.0
-    # Plane_Level_Cache_Read_LSB_Fast_tR: 0.0
-    # Plane_Level_Cache_Read_MSB_AARV: 0.0
-    # Plane_Level_Cache_Read_MSB: 0.0
-    # Plane_Level_Cache_Read_MSB_Fast_tR: 0.0
-    # Plane_Level_Cache_Read_SLC_AARV: 0.0
-    # Plane_Level_Cache_Read_SLC: 0.0
-    # Plane_Level_Cache_Read_SLC_Fast_tR: 0.0
+    Plane_Level_Cache_Read_AESLC_AARV: 0.0
+    Plane_Level_Cache_Read_AESLC: 0.0
+    Plane_Level_Cache_Read_AESLC_Fast_tR: 0.0
+    Plane_Level_Cache_Read_CSB_AARV: 0.0
+    Plane_Level_Cache_Read_CSB: 0.0
+    Plane_Level_Cache_Read_CSB_Fast_tR: 0.0
+    Plane_Level_Cache_Read_End: 0.0
+    Plane_Level_Cache_Read_LSB_AARV: 0.0
+    Plane_Level_Cache_Read_LSB: 0.0
+    Plane_Level_Cache_Read_LSB_Fast_tR: 0.0
+    Plane_Level_Cache_Read_MSB_AARV: 0.0
+    Plane_Level_Cache_Read_MSB: 0.0
+    Plane_Level_Cache_Read_MSB_Fast_tR: 0.0
+    Plane_Level_Cache_Read_SLC_AARV: 0.0
+    Plane_Level_Cache_Read_SLC: 0.0
+    Plane_Level_Cache_Read_SLC_Fast_tR: 0.0
     # Plane_Level_Page_Read_AESLC_AARV: 0.0
     # Plane_Level_Page_Read_AESLC: 0.0
     # Plane_Level_Page_Read_CSB_AARV: 0.0
@@ -5021,18 +5023,18 @@ phase_conditional_overrides:
     ONESHOT_PROGRAM_CSB: 0.0
     ONESHOT_PROGRAM_MSB: 0.0
     ONESHOT_PROGRAM_EXEC_MSB: 0.0
-    # ONESHOT_PROGRAM_MSB_23H: 0.0
+    ONESHOT_PROGRAM_MSB_23H: 0.0
     ONESHOT_CACHE_PROGRAM: 0.0
     TRANSFER_TO_CACHE_LSB: 0.0
     TRANSFER_TO_CACHE_CSB: 0.0
     TRANSFER_TO_CACHE_MSB: 0.0
     # READ: 0.0
     RECOVERY_RD: 0.0
-    READ4K: 0.0
+    # READ4K: 0.0
     CACHE_READ: 0.0
     CACHE_READ_END: 0.0
-    PLANE_READ: 0.0
-    PLANE_READ4K: 0.0
+    # PLANE_READ: 0.0
+    # PLANE_READ4K: 0.0
     PLANE_CACHE_READ: 0.0
     PLANE_CACHE_READ_END: 0.0
     COPYBACK_READ: 0.0
@@ -5046,25 +5048,25 @@ phase_conditional_overrides:
     DATAIN: 0.0
     # SR: 0.0
     # SR_ADD: 0.0
-    CAMREAD: 0.0
-    CAMREAD_LUN: 0.0
+    # CAMREAD: 0.0
+    # CAMREAD_LUN: 0.0
     ERASE_SUSPEND: 0.0
     ERASE_RESUME: 0.0
     PROGRAM_SUSPEND: 0.0
     PROGRAM_RESUME: 0.0
-    TRAINING: 0.0
-    READID: 0.0
-    SETPARA: 0.0
-    GETPARA: 0.0
-    PLANE_SETPARA: 0.0
-    SETFEATURE: 0.0
-    GETFEATURE: 0.0
-    SETFEATURE_LUN: 0.0
-    GETFEATURE_LUN: 0.0
+    # TRAINING: 0.0
+    # READID: 0.0
+    # SETPARA: 0.0
+    # GETPARA: 0.0
+    # PLANE_SETPARA: 0.0
+    # SETFEATURE: 0.0
+    # GETFEATURE: 0.0
+    # SETFEATURE_LUN: 0.0
+    # GETFEATURE_LUN: 0.0
     RESET: 0.0
     RESET_LUN: 0.0
-    TEMPSENSOR: 0.0
-    ZQCAL: 0.0
+    # TEMPSENSOR: 0.0
+    # ZQCAL: 0.0
     ODTDISABLE: 0.0
     ODTENABLE: 0.0
     NOP: 0.0
