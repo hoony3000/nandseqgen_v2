@@ -17,8 +17,8 @@ def format_payload(payload: list[str] | None) -> str:
     return yaml.safe_dump(payload, default_flow_style=True, sort_keys=False).strip()
 
 
-def build_rows(config: dict) -> list[tuple[str, list[str]]]:
-    rows: list[tuple[str, list[str]]] = []
+def build_rows(config: dict) -> list[tuple[str, str, list[str]]]:
+    rows: list[tuple[str, str, list[str]]] = []
     op_names = config.get("op_names") or {}
     payload_by_op_base = config.get("payload_by_op_base") or {}
 
@@ -34,7 +34,7 @@ def build_rows(config: dict) -> list[tuple[str, list[str]]]:
         if payload is None:
             missing_payload.append((op_name, base))
             payload = []
-        rows.append((op_name, payload))
+        rows.append((op_name, base, payload))
 
     for name in missing_base:
         print(f"warning: {name} missing base", file=sys.stderr)
@@ -44,8 +44,8 @@ def build_rows(config: dict) -> list[tuple[str, list[str]]]:
     return rows
 
 
-def write_rows(rows: list[tuple[str, list[str]]]) -> None:
-    lines = [f"{op_name} {format_payload(payload)}" for op_name, payload in rows]
+def write_rows(rows: list[tuple[str, str, list[str]]]) -> None:
+    lines = [f"{op_name}\t{base}\t{format_payload(payload)}" for op_name, base, payload in rows]
     if lines:
         OUTPUT_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
     else:
