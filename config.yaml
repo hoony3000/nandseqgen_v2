@@ -46,6 +46,20 @@ features:
   # Drain pending OP_END events after run_until boundary when enabled (auto-controlled via CLI)
   drain_op_end_on_exit: true
 
+validation:
+  suspend_resume_op_end:
+    enabled: false
+    log_dir: out/validation
+    strategy1:
+      enabled: true
+      event_log: strategy1_events.jsonl
+    strategy2:
+      enabled: true
+      apply_pgm_log: strategy2_apply_pgm.jsonl
+    strategy3:
+      enabled: true
+      snapshot_log: strategy3_queue_snapshot.jsonl
+
 bootstrap:
   enabled: false
   thresholds:
@@ -735,7 +749,7 @@ op_bases:
 
 payload_by_op_base:
   NOP: []
-  ETC: []
+  ETC: [die]
   ERASE: [die,plane,block,page,celltype]
   DSL_VTH_CHECK: [die,plane,block,page,celltype]
   PROGRAM_SLC: [die,plane,block,page,celltype]
