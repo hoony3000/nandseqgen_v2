@@ -52,6 +52,7 @@ out*/
 prof.*
 *svg
 payloads.txt
+sample*csv
 
 # tmp yaml files
 config_*.yaml

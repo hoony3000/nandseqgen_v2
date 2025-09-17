@@ -142,7 +142,16 @@
   - 개선 방향과 실험:
   - 평가 결과:
 
-   
+- [ ] 24. suspend-resume OP_END 중복 이벤트 분석 확장
+  - 문제 상황: CORE_BUSY 중 SUSPEND→RESUME 반복 시 동일 작업의 OP_END 이벤트가 누적 큐잉되어 AddressManager 페이지가 0→2로 증가하는 사례가 발생하며, 이벤트 payload에 안정적인 작업 식별자가 없어 범위 확인이 어렵다 (`research/2025-09-17_02-14-45_suspend_resume_op_end_requeue.md`).
+  - 개선 방향과 실험: Scheduler 이벤트 payload에 `op_uid` 등 식별자 부여 방안 비교, ERASE 멀티플레인 시뮬레이션으로 중복 여부 재현, OP_END 핸들러에서 중복 무시 시 다른 훅/메트릭 영향 분석; 각 안에 대한 로깅·검증 절차 정의.
+  - 평가 결과: (작성 예정)
+
+- [ ] 25. SR/SR_ADD 의 payload 에 suspend 상태 값 넘기기
+  - 문제 상황: 
+  - 개선 방향과 실험:
+  - 평가 결과:
+
 
 ## Medium Priority
 
