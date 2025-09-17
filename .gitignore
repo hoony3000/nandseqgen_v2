@@ -51,6 +51,7 @@ bench*.csv
 out*/
 prof.*
 *svg
+payloads.txt
 
 # tmp yaml files
 config_*.yaml
