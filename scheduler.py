@@ -137,6 +137,10 @@ class Scheduler:
         strategy3_cfg = (sr_cfg.get("strategy3", {}) or {})
         strategy3_enabled = bool(strategy3_cfg.get("enabled", False)) if enabled else False
         strategy3_log = strategy3_cfg.get("snapshot_log") or "strategy3_queue_snapshot.jsonl"
+        env_force = str(os.getenv("SR_REMAINING_US_ENABLE", "")).strip().lower()
+        if env_force not in ("", "0", "false", "no", "off"):
+            enabled = True
+            strategy2_enabled = True
         if enabled:
             try:
                 os.makedirs(log_dir, exist_ok=True)
@@ -711,6 +715,9 @@ class Scheduler:
                                 "hook": dict(hook) if isinstance(hook, dict) else {},
                                 "phase_key": pk,
                                 "axis": fam,
+                                "meta_start_us": meta.get("start_us"),
+                                "meta_end_us": meta.get("end_us"),
+                                "suspend_time_us": meta.get("suspend_time_us"),
                             })
                         else:
                             try:
@@ -781,13 +788,15 @@ class Scheduler:
                         r2 = d.rm.reserve(txn2, stub, job["targets"], Scope.PLANE_SET)
                         if r2.ok:
                             d.rm.commit(txn2)
+                            stub_start = float(r2.start_us or t0)
+                            stub_end = float(r2.end_us or (r2.start_us or t0))
                             rec2 = {
                                 "base": job["base"],
                                 "op_name": job.get("op_name"),
                                 "targets": list(job["targets"]),
                                 "scope": Scope.PLANE_SET,
-                                "start_us": float(r2.start_us or t0),
-                                "end_us": float(r2.end_us or (r2.start_us or t0)),
+                                "start_us": stub_start,
+                                "end_us": stub_end,
                                 "op": stub,
                                 "phase_key": job.get("phase_key"),
                                 "propose_now": float(now),
@@ -799,6 +808,25 @@ class Scheduler:
                                 "source": "RESUME_CHAIN",
                                 "op_uid": job.get("op_uid"),
                             }
+                            try:
+                                d.rm.record_resume_stub(
+                                    axis=job.get("axis"),
+                                    die=int(job["die"]),
+                                    op_uid=job.get("op_uid"),
+                                    op_name=job.get("op_name"),
+                                    base=str(job["base"]),
+                                    expected_remaining_us=job.get("rem_us"),
+                                    stub_start_us=stub_start,
+                                    stub_end_us=stub_end,
+                                    queued_at_us=job.get("start_at"),
+                                    schedule_now_us=float(now),
+                                    targets=list(job.get("targets") or []),
+                                    meta_start_us=job.get("meta_start_us"),
+                                    meta_end_us=job.get("meta_end_us"),
+                                    suspend_time_us=job.get("suspend_time_us"),
+                                )
+                            except Exception:
+                                pass
                             # Emit events and update metrics
                             self._emit_op_events(rec2)
                             self.metrics["ckpt_ops_committed"] += 1
@@ -819,6 +847,20 @@ class Scheduler:
                                 pass
                         else:
                             try:
+                                d.rm.record_resume_stub_failure(
+                                    axis=job.get("axis"),
+                                    die=int(job["die"]),
+                                    op_uid=job.get("op_uid"),
+                                    base=str(job["base"]),
+                                    expected_remaining_us=job.get("rem_us"),
+                                    queued_at_us=job.get("start_at"),
+                                    schedule_now_us=float(now),
+                                    reason=r2.reason,
+                                    targets=list(job.get("targets") or []),
+                                )
+                            except Exception:
+                                pass
+                            try:
                                 # Enrich diagnostics with last_validation snapshot when available
                                 lv = None
                                 try:
@@ -834,7 +876,20 @@ class Scheduler:
                             except Exception:
                                 pass
                     except Exception:
-                        pass
+                        try:
+                            d.rm.record_resume_stub_failure(
+                                axis=job.get("axis"),
+                                die=int(job.get("die", 0)),
+                                op_uid=job.get("op_uid"),
+                                base=str(job.get("base", "")),
+                                expected_remaining_us=job.get("rem_us"),
+                                queued_at_us=job.get("start_at"),
+                                schedule_now_us=float(now),
+                                reason="exception",
+                                targets=list(job.get("targets") or []),
+                            )
+                        except Exception:
+                            pass
             return (nops + n_chain, False, None)
         else:
             d.rm.rollback(txn)
