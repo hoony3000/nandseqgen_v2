@@ -121,10 +121,6 @@ class Scheduler:
         self._validation_strategy3 = None
         if self._validation_strategy1_enabled():
             self.metrics["validation_strategy1_enabled"] = True
-        if self._validation_strategy2_enabled():
-            self.metrics["validation_strategy2_enabled"] = True
-        if self._validation_strategy3_enabled():
-            self.metrics["validation_strategy3_enabled"] = True
         self._activate_validation_hooks()
 
     # -----------------
@@ -164,39 +160,19 @@ class Scheduler:
         if not self._validation_root_enabled():
             return
         if self._validation_strategy2_enabled():
-            addrman = getattr(self._deps, "addrman", None)
-            if addrman is None:
-                return
+            self._validation_strategy2 = None
             try:
-                from tools.validation_hooks import Strategy2PgmLogger
-
-                logger = Strategy2PgmLogger(
-                    addrman=addrman,
-                    scheduler=self,
-                    log_path=str(self._validation.get("strategy2_log_path")),
-                )
-                logger.enable()
-                self._validation_strategy2 = logger
-            except Exception as exc:
-                self._validation_strategy2 = None
-                try:
-                    self.metrics["validation_strategy2_error"] = f"enable_failed:{type(exc).__name__}:{exc}"[:200]
-                except Exception:
-                    pass
+                self.metrics["validation_strategy2_enabled"] = False
+                self.metrics["validation_strategy2_error"] = "disabled:validation_hooks_removed"
+            except Exception:
+                pass
         if self._validation_strategy3_enabled():
+            self._validation_strategy3 = None
             try:
-                from tools.validation_hooks import Strategy3QueueSnapshot
-
-                self._validation_strategy3 = Strategy3QueueSnapshot(
-                    scheduler=self,
-                    log_path=str(self._validation.get("strategy3_log_path")),
-                )
-            except Exception as exc:
-                self._validation_strategy3 = None
-                try:
-                    self.metrics["validation_strategy3_error"] = f"enable_failed:{type(exc).__name__}:{exc}"[:200]
-                except Exception:
-                    pass
+                self.metrics["validation_strategy3_enabled"] = False
+                self.metrics["validation_strategy3_error"] = "disabled:validation_hooks_removed"
+            except Exception:
+                pass
 
     def _validation_root_enabled(self) -> bool:
         data = getattr(self, "_validation", {})
