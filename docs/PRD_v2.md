@@ -358,6 +358,7 @@ class Operation:
   - 목적: "달성 지표" 중 `op_state x op_name x input_time` 다양성 확보는 타임라인 내 실존 세그먼트로 계산하고, 제안 시점 분포는 가상 END 분류(3.7)로 계산한다.
   - 예외 operation
     - SUSPEND→RESUME
+      - 관련 규칙은 `SUSPEND_RESUME_RULES.md` 에 따로 기술한다.
       - workflow (ERASE_SUSPEND 예시, PROGRAM_SUSPEND도 동일 적용)
         1) ERASE/PROGRAM 동작이 `Scheduler`에 의해 예약됨. 이때 `ongoing_ops` 배열에 해당 operation을 복사하여 추가
         2) `ERASE.CORE_BUSY`/`PROGRAM.CORE_BUSY` state 중 ERASE_SUSPEND/PROGRAM_SUSPEND 동작이 `time_suspend` 시각에 등록됨
