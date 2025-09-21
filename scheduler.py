@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, TypedDict, Tuple
 
@@ -88,13 +86,6 @@ class Scheduler:
             # suspend/resume chaining diagnostics
             "chained_stubs": 0,
             "chained_stub_total_us": 0.0,
-            # validation instrumentation
-            "validation_strategy1_enabled": False,
-            "validation_strategy2_enabled": False,
-            "validation_strategy3_enabled": False,
-            "validation_events_logged": 0,
-            "validation_strategy2_records": 0,
-            "validation_strategy3_records": 0,
         }
         # Bootstrap controller (inactive by default unless cfg['bootstrap']['enabled'] is true)
         self._boot = BootstrapController(cfg)
@@ -114,142 +105,6 @@ class Scheduler:
         # Drain strategy for OP_END events at run boundaries
         self._drain_on_exit: bool = bool(drain_on_exit)
         self.metrics["drain_op_end_processed"] = 0
-        # Validation instrumentation setup (Strategy 1 scaffolding)
-        self._op_uid_seq: int = 0
-        self._validation: Dict[str, Any] = self._init_validation(cfg)
-        self._validation_strategy2 = None
-        self._validation_strategy3 = None
-        if self._validation_strategy1_enabled():
-            self.metrics["validation_strategy1_enabled"] = True
-        self._activate_validation_hooks()
-
-    # -----------------
-    def _init_validation(self, cfg: Dict[str, Any]) -> Dict[str, Any]:
-        sr_cfg = ((cfg.get("validation", {}) or {}).get("suspend_resume_op_end", {}) or {})
-        enabled = bool(sr_cfg.get("enabled", False))
-        strategy1_cfg = (sr_cfg.get("strategy1", {}) or {})
-        log_dir = sr_cfg.get("log_dir") or os.path.join("out", "validation")
-        event_log = strategy1_cfg.get("event_log") or "strategy1_events.jsonl"
-        strategy1_enabled = bool(strategy1_cfg.get("enabled", True)) if enabled else False
-        strategy2_cfg = (sr_cfg.get("strategy2", {}) or {})
-        strategy2_enabled = bool(strategy2_cfg.get("enabled", False)) if enabled else False
-        strategy2_log = strategy2_cfg.get("apply_pgm_log") or "strategy2_apply_pgm.jsonl"
-        strategy3_cfg = (sr_cfg.get("strategy3", {}) or {})
-        strategy3_enabled = bool(strategy3_cfg.get("enabled", False)) if enabled else False
-        strategy3_log = strategy3_cfg.get("snapshot_log") or "strategy3_queue_snapshot.jsonl"
-        env_force = str(os.getenv("SR_REMAINING_US_ENABLE", "")).strip().lower()
-        if env_force not in ("", "0", "false", "no", "off"):
-            enabled = True
-            strategy2_enabled = True
-        if enabled:
-            try:
-                os.makedirs(log_dir, exist_ok=True)
-            except Exception:
-                enabled = False
-                strategy1_enabled = False
-                strategy2_enabled = False
-                strategy3_enabled = False
-        return {
-            "enabled": enabled,
-            "strategy1": strategy1_enabled,
-            "strategy2": strategy2_enabled,
-            "strategy3": strategy3_enabled,
-            "log_dir": log_dir,
-            "event_log_path": os.path.join(log_dir, event_log),
-            "strategy2_log_path": os.path.join(log_dir, strategy2_log),
-            "strategy3_log_path": os.path.join(log_dir, strategy3_log),
-        }
-
-    def _activate_validation_hooks(self) -> None:
-        if not self._validation_root_enabled():
-            return
-        if self._validation_strategy2_enabled():
-            self._validation_strategy2 = None
-            try:
-                self.metrics["validation_strategy2_enabled"] = False
-                self.metrics["validation_strategy2_error"] = "disabled:validation_hooks_removed"
-            except Exception:
-                pass
-        if self._validation_strategy3_enabled():
-            self._validation_strategy3 = None
-            try:
-                self.metrics["validation_strategy3_enabled"] = False
-                self.metrics["validation_strategy3_error"] = "disabled:validation_hooks_removed"
-            except Exception:
-                pass
-
-    def _validation_root_enabled(self) -> bool:
-        data = getattr(self, "_validation", {})
-        if not data:
-            return False
-        return bool(data.get("enabled"))
-
-    def _validation_strategy1_enabled(self) -> bool:
-        data = getattr(self, "_validation", {})
-        if not data:
-            return False
-        return bool(data.get("enabled")) and bool(data.get("strategy1"))
-
-    def _validation_strategy2_enabled(self) -> bool:
-        data = getattr(self, "_validation", {})
-        if not data:
-            return False
-        return bool(data.get("enabled")) and bool(data.get("strategy2"))
-
-    def _validation_strategy3_enabled(self) -> bool:
-        data = getattr(self, "_validation", {})
-        if not data:
-            return False
-        return bool(data.get("enabled")) and bool(data.get("strategy3"))
-
-    def _next_op_uid(self) -> int:
-        self._op_uid_seq += 1
-        return self._op_uid_seq
-
-    def _validation_targets(self, targets: Iterable[Any]) -> List[Dict[str, int]]:
-        result: List[Dict[str, int]] = []
-        for tgt in targets or []:
-            try:
-                result.append(
-                    {
-                        "die": int(getattr(tgt, "die", -1)),
-                        "plane": int(getattr(tgt, "plane", -1)),
-                        "block": int(getattr(tgt, "block", -1)),
-                        "page": (None if getattr(tgt, "page", None) is None else int(getattr(tgt, "page"))),
-                    }
-                )
-            except Exception:
-                result.append({"repr": repr(tgt)})
-        return result
-
-    def _validation_log_event(self, when: float, kind: str, payload: Dict[str, Any], seq: int) -> None:
-        if not self._validation_strategy1_enabled():
-            return
-        op_uid = payload.get("op_uid")
-        if op_uid in (None, "None"):
-            return
-        try:
-            op_uid_int = int(op_uid)
-        except Exception:
-            op_uid_int = op_uid  # fallback to original value if cast fails
-        record = {
-            "time_us": float(when),
-            "kind": str(kind),
-            "op_uid": op_uid_int,
-            "base": payload.get("base"),
-            "op_name": payload.get("op_name"),
-            "scheduled_seq": int(seq),
-            "targets": self._validation_targets(payload.get("targets") or []),
-        }
-        path = self._validation.get("event_log_path") if isinstance(self._validation, dict) else None
-        if not path:
-            return
-        try:
-            with open(path, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(record, default=str) + "\n")
-        except Exception:
-            return
-        self.metrics["validation_events_logged"] = int(self.metrics.get("validation_events_logged", 0)) + 1
 
     # -----------------
     # Public API
@@ -286,8 +141,6 @@ class Scheduler:
             self._eq.push(self.now_us, "QUEUE_REFILL", payload={})
         t, batch = self._eq.pop_time_batch()
         self._advance_time_to(t)
-        for (_t, _prio, _seq, kind, payload) in batch:
-            self._validation_log_event(_t, kind, payload, _seq)
         committed_total = 0
         rolled_back_any = False
         reason: Optional[str] = None
@@ -386,18 +239,6 @@ class Scheduler:
     def _handle_op_end(self, payload: Dict[str, Any]) -> None:
         base = str(payload.get("base"))
         targets = payload.get("targets") or []
-        s2_logger = getattr(self, "_validation_strategy2", None)
-        if s2_logger is not None:
-            try:
-                s2_logger.set_event_context(
-                    op_uid=payload.get("op_uid"),
-                    base=base,
-                    op_name=str(payload.get("op_name", "")),
-                    targets=targets,
-                    time_us=self.now_us,
-                )
-            except Exception:
-                pass
         # Release policies
         if base in ("DOUT", "DOUT4K", "CACHE_READ_END", "PLANE_CACHE_READ_END"):
             self._deps.rm.release_on_dout_end(targets, now_us=self.now_us)
@@ -413,11 +254,6 @@ class Scheduler:
         except Exception:
             # Best-effort: ignore AM sync failures to avoid breaking scheduling
             pass
-        if s2_logger is not None:
-            try:
-                s2_logger.clear_event_context()
-            except Exception:
-                pass
 
     def _am_apply_on_end(self, base: str, op_name: str, targets: Iterable[Address]) -> None:
         """Apply ERASE/PROGRAM effects to AddressManager on OP_END.
@@ -489,11 +325,6 @@ class Scheduler:
         if is_erase and hasattr(am, "apply_erase"):
             am.apply_erase(addrs, mode=mode)
         elif is_program_commit and hasattr(am, "apply_pgm"):
-            if getattr(self, "_validation_strategy2", None) is not None:
-                try:
-                    self._validation_strategy2.prepare_apply_context(addrs=addrs, mode=mode)
-                except Exception:
-                    pass
             am.apply_pgm(addrs, mode=mode)
 
     # -----------------
@@ -653,10 +484,6 @@ class Scheduler:
                 except Exception:
                     # best-effort: skip if RM lacks API or errors
                     pass
-            op_uid: Optional[int] = None
-            if self._validation_root_enabled():
-                op_uid = self._next_op_uid()
-                rec["op_uid"] = op_uid
             resv_records.append(rec)
             # Public metrics: expose a thin copy for observability/tests
             try:
@@ -760,7 +587,7 @@ class Scheduler:
                         die0 = int(getattr(tgs[0], "die", 0))
                         d.rm.register_ongoing(
                             die=die0,
-                            op_id=(rec.get("op_uid") if self._validation_root_enabled() else None),
+                            op_id=None,
                             op_name=str(rec.get("op_name", "")) if rec.get("op_name") is not None else None,
                             base=str(rec.get("base")),
                             targets=list(tgs),
@@ -806,27 +633,7 @@ class Scheduler:
                                 "_chain_stub": True,
                                 # Tag resume-chained stub for downstream exporters
                                 "source": "RESUME_CHAIN",
-                                "op_uid": job.get("op_uid"),
                             }
-                            try:
-                                d.rm.record_resume_stub(
-                                    axis=job.get("axis"),
-                                    die=int(job["die"]),
-                                    op_uid=job.get("op_uid"),
-                                    op_name=job.get("op_name"),
-                                    base=str(job["base"]),
-                                    expected_remaining_us=job.get("rem_us"),
-                                    stub_start_us=stub_start,
-                                    stub_end_us=stub_end,
-                                    queued_at_us=job.get("start_at"),
-                                    schedule_now_us=float(now),
-                                    targets=list(job.get("targets") or []),
-                                    meta_start_us=job.get("meta_start_us"),
-                                    meta_end_us=job.get("meta_end_us"),
-                                    suspend_time_us=job.get("suspend_time_us"),
-                                )
-                            except Exception:
-                                pass
                             # Emit events and update metrics
                             self._emit_op_events(rec2)
                             self.metrics["ckpt_ops_committed"] += 1
@@ -847,20 +654,6 @@ class Scheduler:
                                 pass
                         else:
                             try:
-                                d.rm.record_resume_stub_failure(
-                                    axis=job.get("axis"),
-                                    die=int(job["die"]),
-                                    op_uid=job.get("op_uid"),
-                                    base=str(job["base"]),
-                                    expected_remaining_us=job.get("rem_us"),
-                                    queued_at_us=job.get("start_at"),
-                                    schedule_now_us=float(now),
-                                    reason=r2.reason,
-                                    targets=list(job.get("targets") or []),
-                                )
-                            except Exception:
-                                pass
-                            try:
                                 # Enrich diagnostics with last_validation snapshot when available
                                 lv = None
                                 try:
@@ -876,20 +669,7 @@ class Scheduler:
                             except Exception:
                                 pass
                     except Exception:
-                        try:
-                            d.rm.record_resume_stub_failure(
-                                axis=job.get("axis"),
-                                die=int(job.get("die", 0)),
-                                op_uid=job.get("op_uid"),
-                                base=str(job.get("base", "")),
-                                expected_remaining_us=job.get("rem_us"),
-                                queued_at_us=job.get("start_at"),
-                                schedule_now_us=float(now),
-                                reason="exception",
-                                targets=list(job.get("targets") or []),
-                            )
-                        except Exception:
-                            pass
+                        pass
             return (nops + n_chain, False, None)
         else:
             d.rm.rollback(txn)
@@ -902,7 +682,6 @@ class Scheduler:
         base = str(rec["base"]) 
         op = rec["op"]
         targets = rec["targets"]
-        op_uid = rec.get("op_uid")
         # PHASE_HOOK generation guard per PRD v2 §5.3
         # - Skip ISSUE/DATA_IN/DATA_OUT states for PHASE_HOOKs
         # - Skip PHASE_HOOKs entirely when op base affect_state == false
@@ -941,14 +720,10 @@ class Scheduler:
         # OP_START and OP_END
         payload_start = {"base": base, "op_name": rec["op_name"], "targets": targets}
         payload_end = {"base": base, "op_name": rec["op_name"], "targets": targets}
-        if op_uid is not None:
-            payload_start["op_uid"] = op_uid
-            payload_end["op_uid"] = op_uid
         self._eq.push(start, "OP_START", payload=payload_start)
         self._eq.push(end, "OP_END", payload=payload_end)
         # If this operation does not affect state, do not emit PHASE_HOOKs
         if not _affects_state(self._deps.cfg, base):
-            self._maybe_snapshot_queue(rec, base)
             return
         # State-driven PHASE_HOOKs (skip ISSUE)
         t = float(start)
@@ -978,32 +753,7 @@ class Scheduler:
                         hook["targets"] = list(hook_targets_payload)
                     self._eq.push(post_t, "PHASE_HOOK", payload={"hook": hook})
             t = t_end
-        self._maybe_snapshot_queue(rec, base)
-
-    def _maybe_snapshot_queue(self, rec: Dict[str, Any], base: str) -> None:
-        logger = getattr(self, "_validation_strategy3", None)
-        if logger is None:
-            return
-        stage = None
-        if bool(rec.get("_chain_stub")) or str(rec.get("source")) == "RESUME_CHAIN":
-            stage = "chain_stub"
-        else:
-            b_upper = str(base or "").upper()
-            if "RESUME" in b_upper:
-                stage = "resume_op"
-        if stage is None:
-            return
-        try:
-            logger.snapshot(
-                event_queue=self._eq,
-                rec=rec,
-                stage=stage,
-            )
-            self.metrics["validation_strategy3_records"] = int(
-                self.metrics.get("validation_strategy3_records", 0)
-            ) + 1
-        except Exception:
-            pass
+        return
 
 
 def _is_instant_base(cfg: Dict[str, Any], base: str) -> bool:

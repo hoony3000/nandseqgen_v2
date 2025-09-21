@@ -1,6 +1,5 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-import json
 import os
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Set, Callable
@@ -130,207 +129,6 @@ class _OpMeta:
     remaining_us: Optional[float] = None
     suspend_time_us: Optional[float] = None
 
-
-class _SuspendResumeRemainingLogger:
-    """Best-effort JSONL logger for suspend/resume remaining_us diagnostics."""
-
-    _ENV_ENABLE = "SR_REMAINING_US_ENABLE"
-    _ENV_LOG_PATH = "SR_REMAINING_US_LOG_PATH"
-
-    def __init__(self, cfg: Optional[Dict[str, Any]] = None) -> None:
-        self.enabled: bool = False
-        self._log_path: Optional[str] = None
-        self._seq: int = 0
-        sr_cfg = (((cfg or {}).get("validation", {}) or {}).get("suspend_resume_op_end", {}) or {})
-        force = self._flag(os.getenv(self._ENV_ENABLE))
-        root_enabled = bool(sr_cfg.get("enabled", False)) or force
-        strategy2_cfg = (sr_cfg.get("strategy2", {}) or {})
-        rem_cfg = (strategy2_cfg.get("remaining_us", {}) or {})
-        rem_enabled = bool(rem_cfg.get("enabled", False)) or force
-        if not (root_enabled and rem_enabled):
-            return
-        log_dir = sr_cfg.get("log_dir") or os.path.join("out", "validation")
-        log_name = rem_cfg.get("log") or "resume_remaining_us.jsonl"
-        env_path = os.getenv(self._ENV_LOG_PATH)
-        if env_path:
-            candidate = env_path
-        elif os.path.isabs(log_name):
-            candidate = log_name
-        else:
-            candidate = os.path.join(log_dir, log_name)
-        try:
-            os.makedirs(os.path.dirname(candidate), exist_ok=True)
-        except Exception:
-            return
-        self.enabled = True
-        self._log_path = candidate
-
-    def _flag(self, val: Optional[str]) -> bool:
-        if val is None:
-            return False
-        lowered = val.strip().lower()
-        return lowered not in ("", "0", "false", "no", "off")
-
-    def _next_seq(self) -> int:
-        self._seq += 1
-        return self._seq
-
-    def _maybe_float(self, value: Any) -> Optional[float]:
-        if value in (None, "None", ""):
-            return None
-        try:
-            return float(value)
-        except Exception:
-            return None
-
-    def _maybe_int(self, value: Any) -> Optional[int]:
-        if value in (None, "None", ""):
-            return None
-        try:
-            return int(value)
-        except Exception:
-            return None
-
-    def _targets(self, targets: List[Any]) -> List[Dict[str, Any]]:
-        out: List[Dict[str, Any]] = []
-        for t in targets or []:
-            try:
-                die = getattr(t, "die", None)
-                plane = getattr(t, "plane", None)
-                block = getattr(t, "block", None)
-                page = getattr(t, "page", None)
-                out.append(
-                    {
-                        "die": self._maybe_int(die),
-                        "plane": self._maybe_int(plane),
-                        "block": self._maybe_int(block),
-                        "page": self._maybe_int(page),
-                    }
-                )
-            except Exception:
-                try:
-                    if isinstance(t, dict):
-                        out.append({
-                            "die": self._maybe_int(t.get("die")),
-                            "plane": self._maybe_int(t.get("plane")),
-                            "block": self._maybe_int(t.get("block")),
-                            "page": self._maybe_int(t.get("page")),
-                        })
-                        continue
-                except Exception:
-                    pass
-                out.append({"repr": repr(t)})
-        return out
-
-    def _write(self, record: Dict[str, Any]) -> None:
-        if not self.enabled or not self._log_path:
-            return
-        record.setdefault("seq", self._next_seq())
-        record.setdefault("sim_res_us", SIM_RES_US)
-        try:
-            with open(self._log_path, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(record, default=str, ensure_ascii=False) + "\n")
-        except Exception:
-            self.enabled = False
-
-    def log_suspend(self, *, axis: str, die: int, meta: _OpMeta, suspend_time_us: float, stack_depth: int) -> None:
-        if not self.enabled:
-            return
-        rec = {
-            "kind": "suspend",
-            "time_us": suspend_time_us,
-            "axis": str(axis),
-            "die": int(die),
-            "op_uid": self._maybe_int(meta.op_id),
-            "op_name": meta.op_name,
-            "base": meta.base,
-            "meta_start_us": self._maybe_float(meta.start_us),
-            "meta_end_us": self._maybe_float(meta.end_us),
-            "remaining_us": self._maybe_float(meta.remaining_us),
-            "suspend_time_us": self._maybe_float(meta.suspend_time_us),
-            "stack_depth": int(stack_depth),
-            "targets": self._targets(meta.targets),
-        }
-        self._write(rec)
-
-    def log_resume_stub(
-        self,
-        *,
-        axis: Optional[str],
-        die: int,
-        op_uid: Optional[int],
-        op_name: Optional[str],
-        base: str,
-        expected_remaining_us: Optional[float],
-        stub_start_us: Optional[float],
-        stub_end_us: Optional[float],
-        queued_at_us: Optional[float],
-        schedule_now_us: Optional[float],
-        targets: List[Any],
-        meta_start_us: Optional[float],
-        meta_end_us: Optional[float],
-        suspend_time_us: Optional[float],
-    ) -> None:
-        if not self.enabled:
-            return
-        duration = None
-        if stub_start_us is not None and stub_end_us is not None:
-            try:
-                duration = float(stub_end_us) - float(stub_start_us)
-            except Exception:
-                duration = None
-        delta = None
-        if duration is not None and expected_remaining_us is not None:
-            delta = duration - float(expected_remaining_us)
-        rec = {
-            "kind": "resume_stub",
-            "axis": (None if axis is None else str(axis)),
-            "die": int(die),
-            "op_uid": self._maybe_int(op_uid),
-            "op_name": op_name,
-            "base": base,
-            "expected_remaining_us": self._maybe_float(expected_remaining_us),
-            "stub_start_us": self._maybe_float(stub_start_us),
-            "stub_end_us": self._maybe_float(stub_end_us),
-            "stub_duration_us": self._maybe_float(duration),
-            "delta_us": self._maybe_float(delta),
-            "queued_at_us": self._maybe_float(queued_at_us),
-            "scheduled_at_us": self._maybe_float(schedule_now_us),
-            "meta_start_us": self._maybe_float(meta_start_us),
-            "meta_end_us": self._maybe_float(meta_end_us),
-            "suspend_time_us": self._maybe_float(suspend_time_us),
-            "targets": self._targets(targets),
-        }
-        self._write(rec)
-
-    def log_resume_stub_failure(
-        self,
-        *,
-        axis: Optional[str],
-        die: int,
-        op_uid: Optional[int],
-        base: str,
-        expected_remaining_us: Optional[float],
-        queued_at_us: Optional[float],
-        schedule_now_us: Optional[float],
-        reason: Optional[str],
-        targets: List[Any],
-    ) -> None:
-        if not self.enabled:
-            return
-        rec = {
-            "kind": "resume_stub_fail",
-            "axis": (None if axis is None else str(axis)),
-            "die": int(die),
-            "op_uid": self._maybe_int(op_uid),
-            "base": base,
-            "expected_remaining_us": self._maybe_float(expected_remaining_us),
-            "queued_at_us": self._maybe_float(queued_at_us),
-            "scheduled_at_us": self._maybe_float(schedule_now_us),
-            "reason": (None if reason in (None, "None") else str(reason)),
-            "targets": self._targets(targets),
-        }
-        self._write(rec)
 class ResourceManager:
     def __init__(self, cfg: Optional[Dict[str, Any]] = None, dies: int = 1, planes: int = 1):
         self.cfg = cfg or {}
@@ -375,8 +173,6 @@ class ResourceManager:
             ) or set(default_allowed)
         except Exception:
             self._ALLOWED_SINGLE_SINGLE_BASES = set(default_allowed)
-        # suspend/resume remaining_us instrumentation (gated by config/env)
-        self._suspend_resume_logger = _SuspendResumeRemainingLogger(self.cfg)
 
     def _affects_state(self, base: str) -> bool:
         """Return True when cfg marks this base as affecting op_state timeline.
@@ -1307,12 +1103,6 @@ class ResourceManager:
         else:
             stack = self._suspended_ops_program.setdefault(die, [])
             stack.append(meta)
-        logger = getattr(self, "_suspend_resume_logger", None)
-        if logger and getattr(logger, "enabled", False):
-            try:
-                logger.log_suspend(axis=fam, die=die, meta=meta, suspend_time_us=now_q, stack_depth=len(stack))
-            except Exception:
-                pass
 
     def resume_from_suspended(self, die: int, op_id: Optional[int]) -> None:
         """Backward-compatible wrapper. Picks the most recent across axes when op_id is None.
@@ -1359,78 +1149,6 @@ class ResourceManager:
             return
         meta = lst.pop(idx)
         self._ongoing_ops.setdefault(die, []).append(meta)
-
-    def record_resume_stub(
-        self,
-        *,
-        axis: Optional[str],
-        die: int,
-        op_uid: Optional[int],
-        op_name: Optional[str],
-        base: str,
-        expected_remaining_us: Optional[float],
-        stub_start_us: Optional[float],
-        stub_end_us: Optional[float],
-        queued_at_us: Optional[float],
-        schedule_now_us: Optional[float],
-        targets: List[Any],
-        meta_start_us: Optional[float] = None,
-        meta_end_us: Optional[float] = None,
-        suspend_time_us: Optional[float] = None,
-    ) -> None:
-        logger = getattr(self, "_suspend_resume_logger", None)
-        if not logger or not getattr(logger, "enabled", False):
-            return
-        try:
-            logger.log_resume_stub(
-                axis=axis,
-                die=die,
-                op_uid=op_uid,
-                op_name=op_name,
-                base=base,
-                expected_remaining_us=expected_remaining_us,
-                stub_start_us=stub_start_us,
-                stub_end_us=stub_end_us,
-                queued_at_us=queued_at_us,
-                schedule_now_us=schedule_now_us,
-                targets=list(targets or []),
-                meta_start_us=meta_start_us,
-                meta_end_us=meta_end_us,
-                suspend_time_us=suspend_time_us,
-            )
-        except Exception:
-            pass
-
-    def record_resume_stub_failure(
-        self,
-        *,
-        axis: Optional[str],
-        die: int,
-        op_uid: Optional[int],
-        base: str,
-        expected_remaining_us: Optional[float],
-        queued_at_us: Optional[float],
-        schedule_now_us: Optional[float],
-        reason: Optional[str],
-        targets: List[Any],
-    ) -> None:
-        logger = getattr(self, "_suspend_resume_logger", None)
-        if not logger or not getattr(logger, "enabled", False):
-            return
-        try:
-            logger.log_resume_stub_failure(
-                axis=axis,
-                die=die,
-                op_uid=op_uid,
-                base=base,
-                expected_remaining_us=expected_remaining_us,
-                queued_at_us=queued_at_us,
-                schedule_now_us=schedule_now_us,
-                reason=reason,
-                targets=list(targets or []),
-            )
-        except Exception:
-            pass
 
     def snapshot(self) -> Dict[str, Any]:
         return {
