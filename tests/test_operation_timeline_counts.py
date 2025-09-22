@@ -71,6 +71,30 @@ class OperationTimelineCountsTests(unittest.TestCase):
         self.assertEqual(base_counts["PROGRAM_SUSPEND"], 1)
         self.assertEqual(base_counts["ERASE"], 1)
 
+    def test_collect_counts_scans_site_style_subdirectories(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            parent = root / "bundle"
+            parent.mkdir()
+            site_dir = parent / "site_01"
+            site_dir.mkdir()
+
+            write_timeline_csv(
+                parent / "operation_timeline_root.csv",
+                [[0, 1, 0, 0, 0, 0, "Top_Level", "TOP", "", 1, "STATE", "", ""]],
+            )
+            write_timeline_csv(
+                site_dir / "operation_timeline_site.csv",
+                [[0, 1, 0, 0, 0, 0, "Site_Level", "SITE", "", 2, "STATE", "", ""]],
+            )
+
+            name_counts, base_counts = collect_counts_from_directories([parent])
+
+        self.assertEqual(name_counts["Top_Level"], 1)
+        self.assertEqual(name_counts["Site_Level"], 1)
+        self.assertEqual(base_counts["TOP"], 1)
+        self.assertEqual(base_counts["SITE"], 1)
+
     def test_collect_counts_errors_when_column_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

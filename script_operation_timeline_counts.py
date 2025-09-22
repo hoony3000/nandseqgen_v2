@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -42,6 +43,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+SITE_DIR_PATTERN = re.compile(r"site_\d+$")
+
+
+def _candidate_directories(root: Path) -> list[Path]:
+    candidates = [root]
+    for child in sorted(root.iterdir()):
+        if child.is_dir() and SITE_DIR_PATTERN.fullmatch(child.name):
+            candidates.append(child)
+    return candidates
+
+
 def discover_csv_files(directories: Sequence[Path]) -> list[Path]:
     discovered: list[Path] = []
     seen: set[Path] = set()
@@ -50,11 +62,12 @@ def discover_csv_files(directories: Sequence[Path]) -> list[Path]:
             raise FileNotFoundError(f"directory not found: {directory}")
         if not directory.is_dir():
             raise NotADirectoryError(f"not a directory: {directory}")
-        for candidate in sorted(directory.glob("operation_timeline*.csv")):
-            if candidate in seen:
-                continue
-            seen.add(candidate)
-            discovered.append(candidate)
+        for candidate_dir in _candidate_directories(directory):
+            for candidate in sorted(candidate_dir.glob("operation_timeline*.csv")):
+                if candidate in seen:
+                    continue
+                seen.add(candidate)
+                discovered.append(candidate)
     return discovered
 
 
