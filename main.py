@@ -179,6 +179,37 @@ def _csv_write(path: str, rows: List[Dict[str, Any]], fieldnames: List[str]) -> 
             w.writerow(r)
 
 
+def _write_op_event_resume_csv(rows: List[Dict[str, Any]], *, out_dir: str) -> str:
+    fname = "op_event_resume.csv"
+    path = os.path.join(out_dir, fname)
+    fieldnames = [
+        "op_name",
+        "op_id",
+        "op_uid",
+        "die",
+        "plane",
+        "block",
+        "page",
+        "is_resumed",
+        "event",
+        "triggered_us",
+    ]
+    ordered = sorted(
+        rows,
+        key=lambda r: (
+            float(r.get("triggered_us", 0.0)),
+            int(r.get("op_uid", 0)),
+            int(r.get("die", 0)),
+            int(r.get("plane", 0)),
+            int(r.get("block", 0)),
+            int(r.get("page", 0)),
+            str(r.get("event", "")),
+        ),
+    )
+    _csv_write(path, ordered, fieldnames)
+    return path
+
+
 def _is_program_family(base: str) -> bool:
     b = str(base).upper()
     return ("PROGRAM" in b) and ("SUSPEND" not in b) and ("RESUME" not in b) and ("CACHE" not in b)
@@ -1112,6 +1143,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             except Exception:
                 pass
 
+            site_op_event_rows: List[Dict[str, Any]] = []
+
             # Per run within the site (continuity preserved via shared RM)
             for i in range(args.num_runs):
                 enable_boot = bool(args.bootstrap) and (i == 0) and (args.num_runs > 1)
@@ -1171,6 +1204,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
                 # Collect timeline rows
                 rows = sched.timeline_rows()
+                site_op_event_rows.extend(sched.drain_op_event_rows())
+                op_event_resume_path = _write_op_event_resume_csv(site_op_event_rows, out_dir=out_dir_site)
 
                 # Exports (PRD §3)
                 os.makedirs(out_dir_site, exist_ok=True)
@@ -1199,7 +1234,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                 except Exception:
                     pass
                 print("  files:")
-                for pth in (op_sequence, touch_cnt, op_timeline, opstate_timeline, opstate_name_input_time, phase_counts, snap_path):
+                for pth in (
+                    op_sequence,
+                    touch_cnt,
+                    op_timeline,
+                    opstate_timeline,
+                    opstate_name_input_time,
+                    phase_counts,
+                    snap_path,
+                    op_event_resume_path,
+                ):
                     print("   -", pth)
         return 0
 
@@ -1207,13 +1251,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Shared state across runs for continuity
     rm = ResourceManager(cfg=cfg, dies=dies, planes=planes)
     am = _mk_addrman(cfg)
-        # Register address-dependent policy (EPR) when available
+    # Register address-dependent policy (EPR) when available
     try:
         if hasattr(rm, "register_addr_policy") and hasattr(am, "check_epr"):
             rm.register_addr_policy(am.check_epr)  # type: ignore[attr-defined]
     except Exception:
         pass
     
+    op_event_rows: List[Dict[str, Any]] = []
     # Per run
     for i in range(args.num_runs):
         enable_boot = bool(args.bootstrap) and (i == 0) and (args.num_runs > 1)
@@ -1270,6 +1315,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         # Collect timeline rows
         rows = sched.timeline_rows()
+        op_event_rows.extend(sched.drain_op_event_rows())
+        op_event_resume_path = _write_op_event_resume_csv(op_event_rows, out_dir=args.out_dir)
 
         # Exports (PRD §3)
         os.makedirs(args.out_dir, exist_ok=True)
@@ -1298,7 +1345,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         except Exception:
             pass
         print("  files:")
-        for pth in (op_sequence, touch_cnt, op_timeline, opstate_timeline, opstate_name_input_time, phase_counts, snap_path):
+        for pth in (
+            op_sequence,
+            touch_cnt,
+            op_timeline,
+            opstate_timeline,
+            opstate_name_input_time,
+            phase_counts,
+            snap_path,
+            op_event_resume_path,
+        ):
             print("   -", pth)
 
     return 0

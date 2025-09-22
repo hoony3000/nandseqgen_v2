@@ -2378,7 +2378,7 @@ generate_seq_rules:
 latencies:
   erase.slc.busy: &erase_slc_busy 7000.0
   erase.tlc.busy: &erase_tlc_busy 7000.0
-  program.slc.busy: &program_slc_busy 3000.0
+  program.slc.busy: &program_slc_busy 300.0
   oneshot_program.trans.busy: &oneshot_program_trans_busy 20.0
   oneshot_program.tlc.busy: &oneshot_program_tlc_busy 2000.0
   cache_program.slc.busy: &cache_program_slc_busy 300.0

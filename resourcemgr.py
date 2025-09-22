@@ -128,6 +128,7 @@ class _OpMeta:
     end_us: float
     remaining_us: Optional[float] = None
     suspend_time_us: Optional[float] = None
+    axis: Optional[str] = None
 
 class ResourceManager:
     def __init__(self, cfg: Optional[Dict[str, Any]] = None, dies: int = 1, planes: int = 1):
@@ -1036,9 +1037,26 @@ class ResourceManager:
         return [_pub(int(die), o) for o in self._suspended_ops_program.get(int(die), [])]
 
     def register_ongoing(self, die: int, op_id: Optional[int], op_name: Optional[str], base: str, targets: List[Address], start_us: float, end_us: float) -> None:
-        self._ongoing_ops.setdefault(die, []).append(
-            _OpMeta(die=die, op_id=op_id, op_name=op_name, base=str(base), targets=list(targets), start_us=quantize(start_us), end_us=quantize(end_us))
+        axis = self._axis_for_base(base)
+        meta = _OpMeta(
+            die=die,
+            op_id=op_id,
+            op_name=op_name,
+            base=str(base),
+            targets=list(targets),
+            start_us=quantize(start_us),
+            end_us=quantize(end_us),
+            axis=axis,
         )
+        self._ongoing_ops.setdefault(die, []).append(meta)
+
+    def _axis_for_base(self, base: str) -> Optional[str]:
+        bb = str(base or "").upper()
+        if "ERASE" in bb and "SUSPEND" not in bb and "RESUME" not in bb:
+            return "ERASE"
+        if "PROGRAM" in bb and "SUSPEND" not in bb and "RESUME" not in bb and "CACHE" not in bb:
+            return "PROGRAM"
+        return None
 
     def move_to_suspended(self, die: int, op_id: Optional[int], now_us: float) -> None:
         """Backward-compatible wrapper. Infers axis from op base and delegates.
@@ -1096,7 +1114,9 @@ class ResourceManager:
         now_q = quantize(now_us)
         meta.suspend_time_us = now_q
         rem = max(0.0, meta.end_us - now_q)
+        rem = quantize(rem)
         meta.remaining_us = rem
+        meta.axis = fam
         if fam == "ERASE":
             stack = self._suspended_ops_erase.setdefault(die, [])
             stack.append(meta)
@@ -1104,7 +1124,7 @@ class ResourceManager:
             stack = self._suspended_ops_program.setdefault(die, [])
             stack.append(meta)
 
-    def resume_from_suspended(self, die: int, op_id: Optional[int]) -> None:
+    def resume_from_suspended(self, die: int, op_id: Optional[int], now_us: Optional[float] = None) -> None:
         """Backward-compatible wrapper. Picks the most recent across axes when op_id is None.
 
         New code should call resume_from_suspended_axis(..., axis).
@@ -1116,27 +1136,25 @@ class ResourceManager:
             return
         # If op_id specified, prefer matching in program, then erase
         if op_id is not None:
-            for i in range(len(lst_p) - 1, -1, -1):
-                if lst_p[i].op_id == op_id:
-                    self._ongoing_ops.setdefault(die, []).append(lst_p.pop(i))
-                    return
-            for i in range(len(lst_e) - 1, -1, -1):
-                if lst_e[i].op_id == op_id:
-                    self._ongoing_ops.setdefault(die, []).append(lst_e.pop(i))
-                    return
+            if any(meta.op_id == op_id for meta in lst_p):
+                self.resume_from_suspended_axis(die, op_id=op_id, axis="PROGRAM", now_us=now_us)
+                return
+            if any(meta.op_id == op_id for meta in lst_e):
+                self.resume_from_suspended_axis(die, op_id=op_id, axis="ERASE", now_us=now_us)
+                return
         # No op_id or not found: choose the one with latest start_us
         cand_p = lst_p[-1] if lst_p else None
         cand_e = lst_e[-1] if lst_e else None
         if cand_p and (not cand_e or cand_p.start_us >= cand_e.start_us):
-            self._ongoing_ops.setdefault(die, []).append(lst_p.pop())
+            self.resume_from_suspended_axis(die, op_id=getattr(cand_p, "op_id", None), axis="PROGRAM", now_us=now_us)
         elif cand_e:
-            self._ongoing_ops.setdefault(die, []).append(lst_e.pop())
+            self.resume_from_suspended_axis(die, op_id=getattr(cand_e, "op_id", None), axis="ERASE", now_us=now_us)
 
-    def resume_from_suspended_axis(self, die: int, op_id: Optional[int], axis: str) -> None:
+    def resume_from_suspended_axis(self, die: int, op_id: Optional[int], axis: str, now_us: Optional[float] = None) -> Optional[_OpMeta]:
         fam = str(axis).upper()
         lst = self._suspended_ops_program.get(die, []) if fam == "PROGRAM" else self._suspended_ops_erase.get(die, [])
         if not lst:
-            return
+            return None
         idx = None
         if op_id is not None:
             for i in range(len(lst) - 1, -1, -1):
@@ -1146,9 +1164,46 @@ class ResourceManager:
         if idx is None:
             idx = len(lst) - 1
         if idx < 0:
-            return
+            return None
         meta = lst.pop(idx)
+        start_ref = now_us if now_us is not None else meta.suspend_time_us
+        if start_ref is None:
+            start_ref = meta.start_us
+        if meta.suspend_time_us is not None:
+            start_ref = max(start_ref, meta.suspend_time_us)
+        start_q = quantize(start_ref)
+        rem = meta.remaining_us
+        if rem is None:
+            rem = max(0.0, meta.end_us - start_q)
+        rem = quantize(rem)
+        end_q = quantize(start_q + rem)
+        meta.start_us = start_q
+        meta.end_us = end_q
+        meta.remaining_us = None
+        meta.suspend_time_us = None
+        meta.axis = fam
         self._ongoing_ops.setdefault(die, []).append(meta)
+        return meta
+
+    def is_op_suspended(self, op_id: int) -> bool:
+        if op_id is None:
+            return False
+        for lst in self._suspended_ops_program.values():
+            if any(meta.op_id == op_id for meta in lst):
+                return True
+        for lst in self._suspended_ops_erase.values():
+            if any(meta.op_id == op_id for meta in lst):
+                return True
+        return False
+
+    def complete_op(self, op_id: int) -> None:
+        if op_id is None:
+            return
+        for ops in self._ongoing_ops.values():
+            for i in range(len(ops) - 1, -1, -1):
+                if ops[i].op_id == op_id:
+                    ops.pop(i)
+                    return
 
     def snapshot(self) -> Dict[str, Any]:
         return {

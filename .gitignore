@@ -18,9 +18,6 @@ share/
 Scripts/
 var/
 
-# unittest
-tests/
-
 # Jupyter Notebook
 .ipynb_checkpoints
 

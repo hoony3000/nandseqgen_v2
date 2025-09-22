@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, TypedDict, Tuple
 
 # Core collaborators
-from resourcemgr import ResourceManager, Scope, Address, SIM_RES_US, quantize
+from resourcemgr import ResourceManager, Address, SIM_RES_US, quantize
 import proposer as _proposer
 from bootstrap import BootstrapController
 from event_queue import EventQueue
@@ -105,6 +105,13 @@ class Scheduler:
         # Drain strategy for OP_END events at run boundaries
         self._drain_on_exit: bool = bool(drain_on_exit)
         self.metrics["drain_op_end_processed"] = 0
+        # Global op_uid monotonic counter (Alt C resume flow)
+        self._op_uid_seq: int = 0
+        # Resume diagnostics & OP event export buffers
+        self._resumed_op_uids: set[int] = set()
+        self._resume_expected_targets: Dict[int, List[Tuple[int, int, int, Optional[int]]]] = {}
+        self._op_event_rows: List[Dict[str, Any]] = []
+        self.metrics["program_resume_page_mismatch"] = 0
 
     # -----------------
     # Public API
@@ -162,7 +169,10 @@ class Scheduler:
                 committed_total += c
                 rolled_back_any = rolled_back_any or rb
                 reason = reason or rsn
-        # OP_START: no-op for now (placeholder for logging)
+        for (_t, _prio, _seq, kind, payload) in batch:
+            if kind == "OP_START":
+                self._handle_op_start(payload)
+        # OP_START events are logged for diagnostics; no additional side-effects
         return TickResult(committed=committed_total, rolled_back=rolled_back_any, reason=reason)
 
     def close(self) -> None:
@@ -210,6 +220,18 @@ class Scheduler:
     def _queue_period(self) -> float:
         return float(((self._deps.cfg.get("policies", {}) or {}).get("queue_refill_period_us", 50.0)))
 
+    def _next_op_uid(self) -> int:
+        self._op_uid_seq += 1
+        return self._op_uid_seq
+
+    def _tracking_axis(self, base: str) -> Optional[str]:
+        bb = str(base or "").upper()
+        if bb == "ERASE":
+            return "ERASE"
+        if ("PROGRAM" in bb) and ("SUSPEND" not in bb) and ("RESUME" not in bb) and ("CACHE" not in bb):
+            return "PROGRAM"
+        return None
+
     def _topology(self) -> tuple[int, int]:
         topo = (self._deps.cfg.get("topology", {}) or {})
         try:
@@ -239,6 +261,17 @@ class Scheduler:
     def _handle_op_end(self, payload: Dict[str, Any]) -> None:
         base = str(payload.get("base"))
         targets = payload.get("targets") or []
+        op_uid = payload.get("op_uid")
+        try:
+            op_uid_int = int(op_uid) if op_uid is not None else None
+        except Exception:
+            op_uid_int = None
+        try:
+            if op_uid_int is not None and self._deps.rm.is_op_suspended(op_uid_int):
+                return
+        except Exception:
+            # Fall back to normal handling if RM lookup fails
+            pass
         # Release policies
         if base in ("DOUT", "DOUT4K", "CACHE_READ_END", "PLANE_CACHE_READ_END"):
             self._deps.rm.release_on_dout_end(targets, now_us=self.now_us)
@@ -254,6 +287,190 @@ class Scheduler:
         except Exception:
             # Best-effort: ignore AM sync failures to avoid breaking scheduling
             pass
+        self._record_op_event_rows(
+            payload=payload,
+            targets=targets,
+            op_uid=op_uid_int,
+            event="OP_END",
+            triggered_us=float(self.now_us),
+            check_expected=True,
+        )
+        if op_uid_int is not None:
+            try:
+                self._deps.rm.complete_op(op_uid_int)
+            except Exception:
+                pass
+
+    def _handle_op_start(self, payload: Dict[str, Any]) -> None:
+        targets = payload.get("targets") or []
+        op_uid = payload.get("op_uid")
+        try:
+            op_uid_int = int(op_uid) if op_uid is not None else None
+        except Exception:
+            op_uid_int = None
+        self._record_op_event_rows(
+            payload=payload,
+            targets=targets,
+            op_uid=op_uid_int,
+            event="OP_START",
+            triggered_us=float(self.now_us),
+            check_expected=False,
+        )
+
+    def _record_op_event_rows(
+        self,
+        *,
+        payload: Dict[str, Any],
+        targets: Iterable[Any],
+        op_uid: Optional[int],
+        event: str,
+        triggered_us: float,
+        check_expected: bool,
+    ) -> None:
+        rows: List[Any] = list(targets or [])
+        if not rows:
+            return
+        op_name = str(payload.get("op_name", ""))
+        op_id_raw = payload.get("op_id")
+        op_id_val: Optional[int]
+        try:
+            op_id_val = int(op_id_raw) if op_id_raw is not None else None
+        except Exception:
+            op_id_val = None
+        if op_id_val is None and op_uid is not None:
+            op_id_val = op_uid
+        resumed_flag = bool(op_uid is not None and op_uid in self._resumed_op_uids)
+        if resumed_flag and check_expected and op_uid is not None:
+            self._resumed_op_uids.discard(op_uid)
+        expected = None
+        if check_expected and op_uid is not None:
+            expected = self._resume_expected_targets.pop(op_uid, None)
+        actual: List[Tuple[int, int, int, Optional[int]]] = []
+        for tgt in rows:
+            die_v = self._coerce_int(getattr(tgt, "die", payload.get("die", 0)))
+            plane_v = self._coerce_int(getattr(tgt, "plane", payload.get("plane", 0)))
+            block_v = self._coerce_int(getattr(tgt, "block", payload.get("block", 0)))
+            page_attr = getattr(tgt, "page", None)
+            page_opt: Optional[int]
+            try:
+                page_opt = None if page_attr is None else int(page_attr)
+            except Exception:
+                page_opt = None
+            actual.append((die_v, plane_v, block_v, page_opt))
+            page_for_csv = page_opt if page_opt is not None else -1
+            row = {
+                "op_name": op_name,
+                "op_id": op_id_val if op_id_val is not None else 0,
+                "op_uid": op_uid if op_uid is not None else 0,
+                "die": die_v,
+                "plane": plane_v,
+                "block": block_v,
+                "page": page_for_csv,
+                "is_resumed": resumed_flag,
+                "event": str(event),
+                "triggered_us": float(triggered_us),
+            }
+            self._op_event_rows.append(row)
+        if check_expected and expected is not None and sorted(actual) != sorted(expected):
+            try:
+                self.metrics["program_resume_page_mismatch"] = int(self.metrics.get("program_resume_page_mismatch", 0)) + 1
+            except Exception:
+                self.metrics["program_resume_page_mismatch"] = 1
+
+    @staticmethod
+    def _coerce_int(value: Any, default: int = 0) -> int:
+        try:
+            return int(value)
+        except Exception:
+            return int(default)
+
+    def drain_op_event_rows(self) -> List[Dict[str, Any]]:
+        rows = list(self._op_event_rows)
+        self._op_event_rows.clear()
+        return rows
+
+    def _handle_resume_commit(self, rec: Dict[str, Any]) -> None:
+        b = str(rec.get("base", ""))
+        bb = b.upper()
+        if bb not in ("PROGRAM_RESUME", "ERASE_RESUME"):
+            return
+        axis = "PROGRAM" if bb == "PROGRAM_RESUME" else "ERASE"
+
+        def _extract_die(obj: Any) -> Optional[int]:
+            if obj is None:
+                return None
+            die_val = getattr(obj, "die", None)
+            if die_val is None and isinstance(obj, dict):
+                die_val = obj.get("die")
+            if die_val is None:
+                return None
+            try:
+                return int(die_val)
+            except Exception:
+                return None
+
+        die0: Optional[int] = None
+        for tgt in rec.get("targets") or []:
+            die0 = _extract_die(tgt)
+            if die0 is not None:
+                break
+        if die0 is None:
+            hk_die = rec.get("phase_hook_die")
+            try:
+                die0 = None if hk_die in (None, "None") else int(hk_die)
+            except Exception:
+                die0 = None
+        if die0 is None:
+            rm = self._deps.rm
+            dies_range = range(getattr(rm, "dies", 0) or 0)
+            for cand in dies_range:
+                if axis == "PROGRAM" and rm.suspended_ops_program(cand):
+                    die0 = cand
+                    break
+                if axis == "ERASE" and rm.suspended_ops_erase(cand):
+                    die0 = cand
+                    break
+        if die0 is None:
+            return
+        resume_at = float(rec.get("end_us", self.now_us))
+        try:
+            meta = self._deps.rm.resume_from_suspended_axis(int(die0), op_id=None, axis=axis, now_us=resume_at)
+        except TypeError:
+            # Backward compat: older RM signature without now_us
+            meta = self._deps.rm.resume_from_suspended_axis(int(die0), op_id=None, axis=axis)  # type: ignore[call-arg]
+        except Exception:
+            meta = None
+        if meta is None:
+            return
+        op_uid = getattr(meta, "op_id", None)
+        if op_uid is None:
+            return
+        payload = {
+            "base": meta.base,
+            "op_name": meta.op_name,
+            "targets": list(meta.targets),
+            "op_uid": op_uid,
+        }
+        try:
+            op_uid_int = int(op_uid)
+        except Exception:
+            op_uid_int = None
+        if op_uid_int is not None:
+            self._resumed_op_uids.add(op_uid_int)
+            exp: List[Tuple[int, int, int, Optional[int]]] = []
+            for tgt in payload["targets"]:
+                die_v = int(getattr(tgt, "die", 0))
+                plane_v = int(getattr(tgt, "plane", 0))
+                block_v = int(getattr(tgt, "block", 0))
+                page_attr = getattr(tgt, "page", None)
+                page_v: Optional[int]
+                try:
+                    page_v = None if page_attr is None else int(page_attr)
+                except Exception:
+                    page_v = None
+                exp.append((die_v, plane_v, block_v, page_v))
+            self._resume_expected_targets[op_uid_int] = exp
+        self._eq.push(float(meta.end_us), "OP_END", payload=payload)
 
     def _am_apply_on_end(self, base: str, op_name: str, targets: Iterable[Address]) -> None:
         """Apply ERASE/PROGRAM effects to AddressManager on OP_END.
@@ -385,31 +602,6 @@ class Scheduler:
         # Reset last reserved records for observability/testing
         self.metrics["last_reserved_records"] = []
 
-        # Feature flag: enable chaining of leftover CORE_BUSY after *_RESUME
-        def _chain_enabled(cfg: Dict[str, Any]) -> bool:
-            try:
-                return bool(((cfg.get("features", {}) or {}).get("suspend_resume_chain_enabled", False)))
-            except Exception:
-                return False
-
-        def _is_family_base(b: str, fam: str) -> bool:
-            bb = str(b).upper()
-            ff = str(fam).upper()
-            return (ff in bb) and ("SUSPEND" not in bb) and ("RESUME" not in bb)
-
-        def _build_core_busy_stub(base: str, dur_us: float):
-            class _State:
-                def __init__(self, name: str, dur: float, bus: bool = False) -> None:
-                    self.name = name
-                    self.dur_us = float(dur)
-                    self.bus = bool(bus)
-            class _Op:
-                def __init__(self, b: str, d: float) -> None:
-                    self.base = b
-                    self.states = [_State("CORE_BUSY", d, False)]
-            return _Op(str(base), float(dur_us))
-
-        chain_jobs: List[Dict[str, Any]] = []
         for idx, p in enumerate(batch.ops):
             op = _proposer._build_op(d.cfg, p.op_name, p.targets)
             instant = _is_instant_base(d.cfg, p.base)
@@ -484,6 +676,9 @@ class Scheduler:
                 except Exception:
                     # best-effort: skip if RM lacks API or errors
                     pass
+            axis = self._tracking_axis(rec["base"])
+            rec["_tracking_axis"] = axis
+            rec["op_uid"] = self._next_op_uid() if axis else None
             resv_records.append(rec)
             # Public metrics: expose a thin copy for observability/tests
             try:
@@ -511,54 +706,6 @@ class Scheduler:
                 # Best-effort; if quantize or end_us fails, keep txn.now_us unchanged
                 pass
 
-            # Chain leftover CORE_BUSY immediately after *_RESUME when enabled
-            try:
-                b_up = str(p.base).upper()
-                if _chain_enabled(cfg_used) and (b_up in ("ERASE_RESUME", "PROGRAM_RESUME")):
-                    # Determine die from targets (or hook fallback)
-                    die0 = int(p.targets[0].die) if p.targets else (int(hook.get("die", 0)) if isinstance(hook, dict) else 0)
-                    # Select axis-specific suspended list
-                    if b_up == "ERASE_RESUME":
-                        sus = d.rm.suspended_ops_erase(die0)
-                        fam = "ERASE"
-                    else:
-                        sus = d.rm.suspended_ops_program(die0)
-                        fam = "PROGRAM"
-                    meta = sus[-1] if isinstance(sus, list) and sus else None
-                    rem = float(meta.get("remaining_us", 0.0)) if isinstance(meta, dict) else 0.0
-                    if rem > 0.0 and isinstance(meta, dict):
-                        targets2 = meta.get("targets") or []
-                        base2 = str(meta.get("base", ""))
-                        if targets2 and _is_family_base(base2, fam):
-                            chain_jobs.append({
-                                "die": die0,
-                                "base": base2,
-                                "op_name": meta.get("op_name"),
-                                "targets": list(targets2),
-                                "start_at": float(r.end_us or p.start_us),
-                                "rem_us": float(rem),
-                                "op_id": meta.get("op_id"),
-                                "op_uid": meta.get("op_id"),
-                                "hook": dict(hook) if isinstance(hook, dict) else {},
-                                "phase_key": pk,
-                                "axis": fam,
-                                "meta_start_us": meta.get("start_us"),
-                                "meta_end_us": meta.get("end_us"),
-                                "suspend_time_us": meta.get("suspend_time_us"),
-                            })
-                        else:
-                            try:
-                                print(f"[chain] skip(pre): targets2={len(targets2) if isinstance(targets2,list) else 0} base2={base2}")
-                            except Exception:
-                                pass
-                    else:
-                        try:
-                            print(f"[chain] skip(pre): remaining_us={rem} meta_ok={isinstance(meta,dict)}")
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-
         if ok_all and reserved_any:
             d.rm.commit(txn)
             nops = len(resv_records)
@@ -574,26 +721,25 @@ class Scheduler:
                 # emit OP_START/OP_END and state PHASE_HOOKs
                 self._emit_op_events(rec)
             self.metrics["last_commit_bases"] = list(bases)
-            # Register ongoing meta for freshly committed ERASE/PROGRAM (skip chained stubs)
+            # Register ongoing meta for freshly committed ERASE/PROGRAM operations
             try:
                 for rec in resv_records:
-                    if rec.get("_chain_stub"):
+                    axis = rec.get("_tracking_axis")
+                    if not axis:
                         continue
-                    b = str(rec.get("base", "")).upper()
-                    if (b == "ERASE") or ("PROGRAM" in b and ("SUSPEND" not in b) and ("RESUME" not in b) and ("CACHE" not in b)):
-                        tgs = rec.get("targets") or []
-                        if not tgs:
-                            continue
-                        die0 = int(getattr(tgs[0], "die", 0))
-                        d.rm.register_ongoing(
-                            die=die0,
-                            op_id=None,
-                            op_name=str(rec.get("op_name", "")) if rec.get("op_name") is not None else None,
-                            base=str(rec.get("base")),
-                            targets=list(tgs),
-                            start_us=float(rec.get("start_us")),
-                            end_us=float(rec.get("end_us")),
-                        )
+                    tgs = rec.get("targets") or []
+                    if not tgs:
+                        continue
+                    die0 = int(getattr(tgs[0], "die", 0))
+                    d.rm.register_ongoing(
+                        die=die0,
+                        op_id=(None if rec.get("op_uid") is None else int(rec["op_uid"])),
+                        op_name=str(rec.get("op_name", "")) if rec.get("op_name") is not None else None,
+                        base=str(rec.get("base")),
+                        targets=list(tgs),
+                        start_us=float(rec.get("start_us")),
+                        end_us=float(rec.get("end_us")),
+                    )
             except Exception:
                 # Best-effort; ongoing meta is observability aid and should not break scheduling
                 pass
@@ -603,74 +749,13 @@ class Scheduler:
             self._boot.maybe_advance(self._boot.progress_snapshot(topo))
             self.metrics["bootstrap_active"] = self._boot.active()
             self.metrics["bootstrap_stage"] = self._boot.stage()
-            # Post-commit chaining of leftover CORE_BUSY (now that *_SUSPENDED axis state is cleared)
-            n_chain = 0
-            if chain_jobs:
-                for job in chain_jobs:
-                    try:
-                        t0 = quantize(float(job["start_at"]))
-                        txn2 = d.rm.begin(t0)
-                        # Build stub op and reserve
-                        stub = _build_core_busy_stub(job["base"], float(job["rem_us"]))
-                        r2 = d.rm.reserve(txn2, stub, job["targets"], Scope.PLANE_SET)
-                        if r2.ok:
-                            d.rm.commit(txn2)
-                            stub_start = float(r2.start_us or t0)
-                            stub_end = float(r2.end_us or (r2.start_us or t0))
-                            rec2 = {
-                                "base": job["base"],
-                                "op_name": job.get("op_name"),
-                                "targets": list(job["targets"]),
-                                "scope": Scope.PLANE_SET,
-                                "start_us": stub_start,
-                                "end_us": stub_end,
-                                "op": stub,
-                                "phase_key": job.get("phase_key"),
-                                "propose_now": float(now),
-                                "phase_hook_die": job.get("hook", {}).get("die"),
-                                "phase_hook_plane": job.get("hook", {}).get("plane"),
-                                "phase_hook_label": job.get("hook", {}).get("label"),
-                                "_chain_stub": True,
-                                # Tag resume-chained stub for downstream exporters
-                                "source": "RESUME_CHAIN",
-                            }
-                            # Emit events and update metrics
-                            self._emit_op_events(rec2)
-                            self.metrics["ckpt_ops_committed"] += 1
-                            self._ops_committed += 1
-                            b2 = str(rec2["base"])  # type: ignore[index]
-                            self.metrics["committed_by_base"][b2] = int(self.metrics["committed_by_base"].get(b2, 0)) + 1
-                            self.metrics["chained_stubs"] = int(self.metrics.get("chained_stubs", 0)) + 1
-                            self.metrics["chained_stub_total_us"] = float(self.metrics.get("chained_stub_total_us", 0.0)) + float(job["rem_us"])
-                            n_chain += 1
-                            # Reflect meta move back to ongoing
-                            try:
-                                ax = str(job.get("axis", "")).upper()
-                                if ax in ("ERASE", "PROGRAM"):
-                                    d.rm.resume_from_suspended_axis(int(job["die"]), op_id=job.get("op_id"), axis=ax)
-                                else:
-                                    d.rm.resume_from_suspended(int(job["die"]), op_id=job.get("op_id"))
-                            except Exception:
-                                pass
-                        else:
-                            try:
-                                # Enrich diagnostics with last_validation snapshot when available
-                                lv = None
-                                try:
-                                    snap = getattr(d.rm, "last_validation", None)
-                                    lv = snap() if callable(snap) else None
-                                except Exception:
-                                    lv = None
-                                if isinstance(lv, dict):
-                                    sub = lv.get("epr_failures")
-                                    print(f"[chain] post-commit reserve_fail reason={r2.reason} failed_rule={lv.get('failed_rule')} epr_failures={sub}")
-                                else:
-                                    print(f"[chain] post-commit reserve_fail reason={r2.reason}")
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-            return (nops + n_chain, False, None)
+            # Handle resume commits by rescheduling underlying operations (Alt C)
+            try:
+                for rec in resv_records:
+                    self._handle_resume_commit(rec)
+            except Exception:
+                pass
+            return (nops, False, None)
         else:
             d.rm.rollback(txn)
             self.metrics["ckpt_rollback_batches"] += 1
@@ -718,8 +803,9 @@ class Scheduler:
                 plane_set_sorted = None
                 hook_targets_payload = None
         # OP_START and OP_END
-        payload_start = {"base": base, "op_name": rec["op_name"], "targets": targets}
-        payload_end = {"base": base, "op_name": rec["op_name"], "targets": targets}
+        targets_payload = list(targets)
+        payload_start = {"base": base, "op_name": rec["op_name"], "targets": targets_payload, "op_uid": rec.get("op_uid")}
+        payload_end = {"base": base, "op_name": rec["op_name"], "targets": targets_payload, "op_uid": rec.get("op_uid")}
         self._eq.push(start, "OP_START", payload=payload_start)
         self._eq.push(end, "OP_END", payload=payload_end)
         # If this operation does not affect state, do not emit PHASE_HOOKs
