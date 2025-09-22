@@ -50,6 +50,8 @@ prof.*
 *svg
 payloads.txt
 sample*csv
+op_name_counts.csv
+op_base_counts.csv
 
 # tmp yaml files
 config_*.yaml
