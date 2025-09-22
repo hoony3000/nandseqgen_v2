@@ -46,6 +46,15 @@ features:
   # Drain pending OP_END events after run_until boundary when enabled (auto-controlled via CLI)
   drain_op_end_on_exit: true
 
+program_base_whitelist:
+  - PROGRAM_SLC
+  - CACHE_PROGRAM_SLC
+  - COPYBACK_PROGRAM_SLC
+  - ONESHOT_PROGRAM_MSB_23H
+  - ONESHOT_PROGRAM_EXEC_MSB
+  - ONESHOT_CACHE_PROGRAM
+  - ONESHOT_COPYBACK_PROGRAM_EXEC_MSB
+
 bootstrap:
   enabled: false
   thresholds:

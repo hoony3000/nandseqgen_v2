@@ -14,8 +14,8 @@ try:
 except Exception:
     yaml = None  # optional
 
-from scheduler import Scheduler
 import proposer as _proposer
+from scheduler import Scheduler, get_allowed_program_bases
 from resourcemgr import ResourceManager, Address, SIM_RES_US, quantize
 
 try:
@@ -449,16 +449,6 @@ def export_op_state_timeline(rm: ResourceManager, rows: Optional[List[Dict[str, 
     return path
 
 
-_ALLOWED_PROGRAM_BASES = {
-    "PROGRAM_SLC",
-    "CACHE_PROGRAM_SLC",
-    "COPYBACK_PROGRAM_SLC",
-    "ONESHOT_PROGRAM_MSB_23H",
-    "ONESHOT_PROGRAM_EXEC_MSB",
-    "ONESHOT_CACHE_PROGRAM",
-    "ONESHOT_COPYBACK_PROGRAM_EXEC_MSB",
-}
-
 _READ_BASE_PREFIXES = (
     "READ",
     "PLANE_READ",
@@ -471,9 +461,10 @@ def export_address_touch_count(rows: List[Dict[str, Any]], cfg: Dict[str, Any], 
     # PRD 3.2 fields: op_base,cell_type,die,block,page,count
     # Derive cell_type from cfg.op_names[op_name].celltype when available
     counts: Dict[Tuple[str, str, int, int, int], int] = {}
+    allowed_program = get_allowed_program_bases(cfg)
     def _canon(base: str) -> Optional[str]:
         b = base.upper()
-        if b in _ALLOWED_PROGRAM_BASES:
+        if b in allowed_program:
             return "PROGRAM"
         if any(b.startswith(prefix) for prefix in _READ_BASE_PREFIXES):
             return "READ"

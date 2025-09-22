@@ -18,11 +18,20 @@ class AddressTouchCountTests(unittest.TestCase):
             {"op_base": "CACHE_PROGRAM_TLC", "op_name": "CacheProgramTlc", "die": 0, "block": 1, "page": 6},
         ]
         cfg = {
+            "program_base_whitelist": [
+                "PROGRAM_SLC",
+                "CACHE_PROGRAM_SLC",
+                "COPYBACK_PROGRAM_SLC",
+                "ONESHOT_PROGRAM_MSB_23H",
+                "ONESHOT_PROGRAM_EXEC_MSB",
+                "ONESHOT_CACHE_PROGRAM",
+                "ONESHOT_COPYBACK_PROGRAM_EXEC_MSB",
+            ],
             "op_names": {
                 "ProgramSlc": {"celltype": "SLC"},
                 "OneShotExec": {"celltype": "TLC"},
                 "ReadOp": {"celltype": "SLC"},
-            }
+            },
         }
 
         with tempfile.TemporaryDirectory() as tmpdir:

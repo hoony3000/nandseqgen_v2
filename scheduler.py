@@ -10,6 +10,29 @@ from bootstrap import BootstrapController
 from event_queue import EventQueue
 from typing import Iterable
 
+_DEFAULT_PROGRAM_BASE_WHITELIST: frozenset[str] = frozenset(
+    {
+        "PROGRAM_SLC",
+        "CACHE_PROGRAM_SLC",
+        "COPYBACK_PROGRAM_SLC",
+        "ONESHOT_PROGRAM_MSB_23H",
+        "ONESHOT_PROGRAM_EXEC_MSB",
+        "ONESHOT_CACHE_PROGRAM",
+        "ONESHOT_COPYBACK_PROGRAM_EXEC_MSB",
+    }
+)
+
+
+def get_allowed_program_bases(cfg: Dict[str, Any]) -> frozenset[str]:
+    """Return the configured PROGRAM bases; fall back to defaults when missing."""
+    if not isinstance(cfg, dict):
+        return _DEFAULT_PROGRAM_BASE_WHITELIST
+    raw = cfg.get("program_base_whitelist", [])
+    bases = {str(x).upper() for x in raw if str(x).strip()}
+    if not bases:
+        return _DEFAULT_PROGRAM_BASE_WHITELIST
+    return frozenset(bases)
+
 
 class SchedulerResult(TypedDict):
     success: bool
@@ -518,27 +541,19 @@ class Scheduler:
         addrs = np.array(rows, dtype=int).reshape(-1, 1, 3)
         mode = _celltype_from_cfg(d.cfg, op_name)
         # Whitelist of PROGRAM bases that are allowed to commit addr_state at OP_END
-        ALLOWED_PROGRAM_COMMIT = {
-            "PROGRAM_SLC",
-            "CACHE_PROGRAM_SLC",
-            "COPYBACK_PROGRAM_SLC",
-            "ONESHOT_PROGRAM_MSB_23H",
-            "ONESHOT_PROGRAM_EXEC_MSB",
-            "ONESHOT_CACHE_PROGRAM",
-            "ONESHOT_COPYBACK_PROGRAM_EXEC_MSB",
-        }
+        allowed_program_commit = set(get_allowed_program_bases(d.cfg))
         # Optional runtime extension via cfg.features.extra_allowed_program_bases
         try:
             feats = (d.cfg.get("features", {}) or {})
             extra = feats.get("extra_allowed_program_bases", []) or []
             for x in extra:
                 try:
-                    ALLOWED_PROGRAM_COMMIT.add(str(x).upper())
+                    allowed_program_commit.add(str(x).upper())
                 except Exception:
                     continue
         except Exception:
             pass
-        is_program_commit = b in ALLOWED_PROGRAM_COMMIT
+        is_program_commit = b in allowed_program_commit
         if is_erase and hasattr(am, "apply_erase"):
             am.apply_erase(addrs, mode=mode)
         elif is_program_commit and hasattr(am, "apply_pgm"):
