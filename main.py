@@ -449,15 +449,33 @@ def export_op_state_timeline(rm: ResourceManager, rows: Optional[List[Dict[str, 
     return path
 
 
+_ALLOWED_PROGRAM_BASES = {
+    "PROGRAM_SLC",
+    "CACHE_PROGRAM_SLC",
+    "COPYBACK_PROGRAM_SLC",
+    "ONESHOT_PROGRAM_MSB_23H",
+    "ONESHOT_PROGRAM_EXEC_MSB",
+    "ONESHOT_CACHE_PROGRAM",
+    "ONESHOT_COPYBACK_PROGRAM_EXEC_MSB",
+}
+
+_READ_BASE_PREFIXES = (
+    "READ",
+    "PLANE_READ",
+    "CACHE_READ",
+    "COPYBACK_READ",
+)
+
+
 def export_address_touch_count(rows: List[Dict[str, Any]], cfg: Dict[str, Any], *, out_dir: str, run_idx: int) -> str:
     # PRD 3.2 fields: op_base,cell_type,die,block,page,count
     # Derive cell_type from cfg.op_names[op_name].celltype when available
     counts: Dict[Tuple[str, str, int, int, int], int] = {}
     def _canon(base: str) -> Optional[str]:
         b = base.upper()
-        if b.startswith("PROGRAM") or b.startswith("COPYBACK_PROGRAM"):
+        if b in _ALLOWED_PROGRAM_BASES:
             return "PROGRAM"
-        if b.startswith("READ") or b.startswith("PLANE_READ") or b.startswith("CACHE_READ") or b.startswith("COPYBACK_READ"):
+        if any(b.startswith(prefix) for prefix in _READ_BASE_PREFIXES):
             return "READ"
         return None
 
