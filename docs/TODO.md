@@ -152,6 +152,16 @@
   - 개선 방향과 실험:
   - 평가 결과:
 
+- [ ] 26. SUSPEND, RESUME 반복 시나리오에서 PROGRAM target(die, block) 내 page address 가 0→1→2 순서로 증가하지 않고 RESUME 된 PROGRAM 이 끝나기도 전에 다음 PROGRAM 이 예약되는 문제가 있다.
+  - 문제 상황: 
+  - 개선 방향과 실험:
+  - 평가 결과:
+
+- [ ] 27. _update_overlay_for_reserved 을 모든 PROGRAM 동작에 대해서 업데이트 하게 변경하기
+  - 문제 상황: 
+  - 개선 방향과 실험:
+  - 평가 결과:
+
 
 ## Medium Priority
 

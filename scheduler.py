@@ -10,28 +10,13 @@ from bootstrap import BootstrapController
 from event_queue import EventQueue
 from typing import Iterable
 
-_DEFAULT_PROGRAM_BASE_WHITELIST: frozenset[str] = frozenset(
-    {
-        "PROGRAM_SLC",
-        "CACHE_PROGRAM_SLC",
-        "COPYBACK_PROGRAM_SLC",
-        "ONESHOT_PROGRAM_MSB_23H",
-        "ONESHOT_PROGRAM_EXEC_MSB",
-        "ONESHOT_CACHE_PROGRAM",
-        "ONESHOT_COPYBACK_PROGRAM_EXEC_MSB",
-    }
-)
-
 
 def get_allowed_program_bases(cfg: Dict[str, Any]) -> frozenset[str]:
-    """Return the configured PROGRAM bases; fall back to defaults when missing."""
+    """Return the configured PROGRAM bases (uppercased); empty when unspecified."""
     if not isinstance(cfg, dict):
-        return _DEFAULT_PROGRAM_BASE_WHITELIST
+        return frozenset()
     raw = cfg.get("program_base_whitelist", [])
-    bases = {str(x).upper() for x in raw if str(x).strip()}
-    if not bases:
-        return _DEFAULT_PROGRAM_BASE_WHITELIST
-    return frozenset(bases)
+    return frozenset(str(x).upper() for x in (raw or []) if str(x).strip())
 
 
 class SchedulerResult(TypedDict):

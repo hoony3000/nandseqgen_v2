@@ -15,7 +15,7 @@ except Exception:
     yaml = None  # optional
 
 import proposer as _proposer
-from scheduler import Scheduler, get_allowed_program_bases
+from scheduler import Scheduler
 from resourcemgr import ResourceManager, Address, SIM_RES_US, quantize
 
 try:
@@ -457,11 +457,16 @@ _READ_BASE_PREFIXES = (
 )
 
 
+def _allowed_program_bases(cfg: Dict[str, Any]) -> frozenset[str]:
+    raw = (cfg or {}).get("program_base_whitelist", [])
+    return frozenset(str(item).upper() for item in (raw or []) if str(item).strip())
+
+
 def export_address_touch_count(rows: List[Dict[str, Any]], cfg: Dict[str, Any], *, out_dir: str, run_idx: int) -> str:
     # PRD 3.2 fields: op_base,cell_type,die,block,page,count
     # Derive cell_type from cfg.op_names[op_name].celltype when available
     counts: Dict[Tuple[str, str, int, int, int], int] = {}
-    allowed_program = get_allowed_program_bases(cfg)
+    allowed_program = _allowed_program_bases(cfg)
     def _canon(base: str) -> Optional[str]:
         b = base.upper()
         if b in allowed_program:

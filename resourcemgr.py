@@ -174,6 +174,7 @@ class ResourceManager:
             ) or set(default_allowed)
         except Exception:
             self._ALLOWED_SINGLE_SINGLE_BASES = set(default_allowed)
+        self._program_base_whitelist: Set[str] = self._load_program_base_whitelist()
 
     def _affects_state(self, base: str) -> bool:
         """Return True when cfg marks this base as affecting op_state timeline.
@@ -188,6 +189,14 @@ class ResourceManager:
             return bool(ent.get("affect_state", True))
         except Exception:
             return True
+
+    def _load_program_base_whitelist(self) -> Set[str]:
+        cfg = self.cfg or {}
+        try:
+            raw = cfg.get("program_base_whitelist", [])
+        except Exception:
+            raw = []
+        return {str(item).upper() for item in (raw or []) if str(item).strip()}
 
     # --- instant reservation helpers (bus-only immediate scheduling) ---
     def _base_instant(self, base: str) -> bool:
@@ -1464,7 +1473,7 @@ class ResourceManager:
                 ov = txn.addr_overlay.setdefault(key, {})
                 ov["addr_state"] = -1
         # PROGRAM-like ops set addr_state to the programmed page
-        if b in ("PROGRAM_SLC", "COPYBACK_PROGRAM_SLC"):
+        if b in self._program_base_whitelist:
             for t in targets:
                 if t.page is None:
                     continue
