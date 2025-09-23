@@ -157,7 +157,18 @@
   - 개선 방향과 실험:
   - 평가 결과:
 
-- [ ] 27. _update_overlay_for_reserved 을 모든 PROGRAM 동작에 대해서 업데이트 하게 변경하기
+- [x] 27. _update_overlay_for_reserved 을 모든 PROGRAM 동작에 대해서 업데이트 하게 변경하기
+  - 문제 상황: 
+  - 개선 방향과 실험:
+  - 평가 결과:
+
+
+- [ ] 28. SUSPEND 시 예약돼있던 resource, state 전부 자르거나 해제하기
+  - 문제 상황: 
+  - 개선 방향과 실험:
+  - 평가 결과:
+
+- [ ] 29. operation 별 latch 구분하기.
   - 문제 상황: 
   - 개선 방향과 실험:
   - 평가 결과:
