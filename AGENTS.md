@@ -15,6 +15,7 @@ NAND operation 시퀀스를 랜덤하게 생성하기 위한 시스템으로, st
 - 설계 문서와 규칙은 `docs/`, 리그레션 테스트는 도메인별로 `tests/`에 둡니다.
 
 ## 빌드·테스트·개발 명령어
+- 가상 환경이 활성화 상태에서 모든 테스트를 진행한다.
 - 환경 구성: `python -m venv .venv && source .venv/bin/activate`
 - 의존성 설치: `pip install -r requirements.txt`
 - 기본 실행: `python main.py --config config.yaml --out-dir out`
