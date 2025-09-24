@@ -871,11 +871,20 @@ def save_snapshot(rm: ResourceManager, *, out_dir: str, run_idx: int) -> str:
             "tokens": sorted(list(getattr(w, "tokens", []) or [])),
         }
 
-    def _latch_to_dict(l: Any) -> Dict[str, Any]:
+    def _latch_to_dict(l: Any, fallback_kind: str) -> Dict[str, Any]:
+        if isinstance(l, dict):
+            start = float(l.get("start_us", 0.0))
+            end_val = l.get("end_us", None)
+            kind = str(l.get("kind", fallback_kind))
+        else:
+            start = float(getattr(l, "start_us", 0.0))
+            end_attr = getattr(l, "end_us", None)
+            end_val = None if end_attr is None else float(end_attr)
+            kind = str(getattr(l, "kind", fallback_kind))
         return {
-            "start_us": float(getattr(l, "start_us", 0.0)),
-            "end_us": (None if getattr(l, "end_us", None) is None else float(getattr(l, "end_us", 0.0))),
-            "kind": str(getattr(l, "kind", "")),
+            "kind": kind,
+            "start_us": start,
+            "end_us": (None if end_val is None else float(end_val)),
         }
 
     snap2: Dict[str, Any] = {}
@@ -901,12 +910,21 @@ def save_snapshot(rm: ResourceManager, *, out_dir: str, run_idx: int) -> str:
             {"die": int(d), "windows": [_excl_to_dict(w) for w in lst]}
             for d, lst in snap["excl_die"].items()
         ]
-    # latch: {(d,p): _Latch}
+    # latch: {(d,p): {kind: _LatchEntry}}
     if isinstance(snap.get("latch"), dict):
-        snap2["latch"] = [
-            {"die": int(k[0]), "plane": int(k[1]), **_latch_to_dict(v)}
-            for k, v in snap["latch"].items()
-        ]
+        latch_rows: List[Dict[str, Any]] = []
+        for key, raw_bucket in snap["latch"].items():
+            die = int(key[0]) if isinstance(key, (tuple, list)) and len(key) > 0 else int(getattr(key, "die", 0))
+            plane = int(key[1]) if isinstance(key, (tuple, list)) and len(key) > 1 else int(getattr(key, "plane", 0))
+            if isinstance(raw_bucket, dict):
+                items = raw_bucket.items()
+            else:
+                items = [(getattr(raw_bucket, "kind", ""), raw_bucket)]
+            for kind, value in items:
+                row = {"die": die, "plane": plane}
+                row.update(_latch_to_dict(value, fallback_kind=str(kind)))
+                latch_rows.append(row)
+        snap2["latch"] = latch_rows
     # timeline
     snap2["timeline"] = [
         [int(d), int(p), str(b), str(st), float(s0), float(s1)]

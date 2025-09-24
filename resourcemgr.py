@@ -13,10 +13,21 @@ class Reservation: ok:bool; reason:Optional[str]; op:Any; targets:List[Address];
 @dataclass
 class ExclWindow: start:float; end:float; scope:str; die:Optional[int]; tokens:Set[str]
 @dataclass
-class _Latch:
+class _LatchEntry:
+    kind: str  # e.g., 'LATCH_ON_READ', 'LATCH_ON_LSB', 'LATCH_ON_CSB', 'LATCH_ON_MSB'
     start_us: float
     end_us: Optional[float]
-    kind: str  # e.g., 'LATCH_ON_READ', 'LATCH_ON_LSB', 'LATCH_ON_CSB', 'LATCH_ON_MSB'
+
+
+LatchKey = Tuple[int, int]
+_LatchBucket = Dict[str, _LatchEntry]
+
+READ_LATCH_KIND = "LATCH_ON_READ"
+PROGRAM_LATCH_KINDS = {
+    "LATCH_ON_LSB",
+    "LATCH_ON_CSB",
+    "LATCH_ON_MSB",
+}
 @dataclass
 class _StateInterval: die:int; plane:int; op_base:str; state:str; start_us:float; end_us:float
 class _StateTimeline:
@@ -89,7 +100,7 @@ class _Txn:
     bus_resv: List[Tuple[float, float]] = field(default_factory=list)
     excl_global: List[ExclWindow] = field(default_factory=list)
     excl_die: Dict[int, List[ExclWindow]] = field(default_factory=dict)
-    latch_locks: Dict[Tuple[int, int], _Latch] = field(default_factory=dict)
+    latch_locks: Dict[LatchKey, _LatchBucket] = field(default_factory=dict)
     st_ops: List[Tuple[int, int, str, List[Tuple[str, float]], float]] = field(default_factory=list)
     # EPR overlay: (die, block) -> overrides
     addr_overlay: Dict[Tuple[int, int], Dict[str, Any]] = field(default_factory=dict)
@@ -140,7 +151,7 @@ class ResourceManager:
         self._bus_resv: List[Tuple[float, float]] = []
         self._excl_global: List[ExclWindow] = []
         self._excl_die: Dict[int, List[ExclWindow]] = {}
-        self._latch: Dict[Tuple[int, int], _Latch] = {}
+        self._latch: Dict[LatchKey, _LatchBucket] = {}
         self._st = _StateTimeline()
         # runtime states for Proposer/Validator (PRD §5.4/5.5)
         self._odt_disabled: bool = False
@@ -175,6 +186,43 @@ class ResourceManager:
         except Exception:
             self._ALLOWED_SINGLE_SINGLE_BASES = set(default_allowed)
         self._program_base_whitelist: Set[str] = self._load_program_base_whitelist()
+
+    def _txn_record_latch(self, txn: _Txn, die: int, plane: int, entry: _LatchEntry) -> None:
+        key = (int(die), int(plane))
+        bucket = txn.latch_locks.setdefault(key, {})
+        bucket[entry.kind] = entry
+
+    def _set_latch_entry(self, die: int, plane: int, entry: _LatchEntry) -> None:
+        key = (int(die), int(plane))
+        bucket = self._latch.setdefault(key, {})
+        bucket[entry.kind] = entry
+
+    def _remove_latch_entry(self, die: int, plane: int, kind: str) -> None:
+        key = (int(die), int(plane))
+        bucket = self._latch.get(key)
+        if not bucket:
+            return
+        bucket.pop(kind, None)
+        if not bucket:
+            self._latch.pop(key, None)
+
+    def _active_latches(self, die: int, plane: int, at_us: float) -> List[_LatchEntry]:
+        bucket = self._latch.get((int(die), int(plane)))
+        if not bucket:
+            return []
+        active: List[_LatchEntry] = []
+        for entry in bucket.values():
+            if self._latch_entry_active(entry, at_us):
+                active.append(entry)
+        return active
+
+    @staticmethod
+    def _latch_entry_active(entry: _LatchEntry, t0: float) -> bool:
+        if t0 < entry.start_us:
+            return False
+        if entry.end_us is None:
+            return True
+        return t0 < entry.end_us
 
     def _affects_state(self, base: str) -> bool:
         """Return True when cfg marks this base as affecting op_state timeline.
@@ -397,14 +445,7 @@ class ResourceManager:
         return False
 
     def _is_locked_at(self, die: int, plane: int, t0: float) -> bool:
-        lock = self._latch.get((die, plane))
-        if not lock:
-            return False
-        if t0 < lock.start_us:
-            return False
-        if lock.end_us is None:
-            return True
-        return t0 < lock.end_us
+        return bool(self._active_latches(die, plane, float(t0)))
 
     def _latch_ok(self, op: Any, targets: List[Address], start: float, scope: Scope) -> bool:
         """Validate operation against active latch states using config exclusions.
@@ -420,12 +461,11 @@ class ResourceManager:
         group_defs: Dict[str, List[str]] = (cfg.get("exclusion_groups") or {})
 
         def blocked_by_latch(die: int, plane: int) -> bool:
-            lock = self._latch.get((die, plane))
-            if not lock or not self._is_locked_at(die, plane, start):
+            active = self._active_latches(die, plane, start)
+            if not active:
                 return False
-            kinds = [lock.kind]
-            for k in kinds:
-                groups = groups_by_latch.get(k, [])
+            for entry in active:
+                groups = groups_by_latch.get(entry.kind, [])
                 for g in groups:
                     bases = group_defs.get(g, [])
                     if base in bases:
@@ -526,10 +566,20 @@ class ResourceManager:
             if latch_kind:
                 if base in ("READ", "READ4K", "PLANE_READ", "PLANE_READ4K", "CACHE_READ", "PLANE_CACHE_READ", "COPYBACK_READ"):
                     for t in targets:
-                        txn.latch_locks[(t.die, t.plane)] = _Latch(start_us=end, end_us=None, kind=latch_kind)
+                        self._txn_record_latch(
+                            txn,
+                            t.die,
+                            t.plane,
+                            _LatchEntry(kind=latch_kind, start_us=end, end_us=None),
+                        )
                 elif base in ("ONESHOT_PROGRAM_LSB", "ONESHOT_PROGRAM_CSB", "ONESHOT_PROGRAM_MSB"):
                     for p in range(self.planes):
-                        txn.latch_locks[(die, p)] = _Latch(start_us=end, end_us=None, kind=latch_kind)
+                        self._txn_record_latch(
+                            txn,
+                            die,
+                            p,
+                            _LatchEntry(kind=latch_kind, start_us=end, end_us=None),
+                        )
             st_list = [(getattr(s, "name", "STATE"), float(getattr(s, "dur_us", 0.0))) for s in getattr(op, "states", [])]
             for t in targets:
                 txn.st_ops.append((t.die, t.plane, base, st_list, start))
@@ -571,11 +621,21 @@ class ResourceManager:
             if base in ("READ", "READ4K", "PLANE_READ", "PLANE_READ4K", "CACHE_READ", "PLANE_CACHE_READ", "COPYBACK_READ"):
                 # plane-scoped read latch on target planes
                 for t in targets:
-                    txn.latch_locks[(t.die, t.plane)] = _Latch(start_us=end, end_us=None, kind=latch_kind)
+                    self._txn_record_latch(
+                        txn,
+                        t.die,
+                        t.plane,
+                        _LatchEntry(kind=latch_kind, start_us=end, end_us=None),
+                    )
             elif base in ("ONESHOT_PROGRAM_LSB", "ONESHOT_PROGRAM_CSB", "ONESHOT_PROGRAM_MSB"):
                 # die-wide program latch applied to all planes in die as plane-scoped entries
                 for p in range(self.planes):
-                    txn.latch_locks[(die, p)] = _Latch(start_us=end, end_us=None, kind=latch_kind)
+                    self._txn_record_latch(
+                        txn,
+                        die,
+                        p,
+                        _LatchEntry(kind=latch_kind, start_us=end, end_us=None),
+                    )
         st_list = [(getattr(s, "name", "STATE"), float(getattr(s, "dur_us", 0.0))) for s in getattr(op, "states", [])]
         for t in targets:
             txn.st_ops.append((t.die, t.plane, base, st_list, start))
@@ -597,8 +657,12 @@ class ResourceManager:
         self._excl_global.extend(txn.excl_global)
         for d, lst in txn.excl_die.items():
             self._excl_die.setdefault(d, []).extend(lst)
-        for k, v in txn.latch_locks.items():
-            self._latch[k] = v
+        for key, bucket in txn.latch_locks.items():
+            if not bucket:
+                continue
+            dest = self._latch.setdefault(key, {})
+            for kind, entry in bucket.items():
+                dest[kind] = entry
         for (die, plane, base, st_list, start) in txn.st_ops:
             # PRD v2 §5.4: skip op_state timeline segments for affect_state == false
             if self._affects_state(base):
@@ -694,12 +758,13 @@ class ResourceManager:
 
     def release_on_dout_end(self, targets: List[Address], now_us: float) -> None:
         for t in targets:
-            self._latch.pop((t.die, t.plane), None)
+            self._remove_latch_entry(t.die, t.plane, READ_LATCH_KIND)
 
     def release_on_exec_msb_end(self, die: int, now_us: float) -> None:
         """Release program-related latches after ONESHOT_PROGRAM_MSB_23H or ONESHOT_PROGRAM_EXEC_MSB completion for a die."""
         for p in range(self.planes):
-            self._latch.pop((die, p), None)
+            for kind in PROGRAM_LATCH_KINDS:
+                self._remove_latch_entry(die, p, kind)
 
     def op_state(self, die: int, plane: int, at_us: float) -> Optional[str]:
         return self._st.state_at(die, plane, quantize(at_us))
@@ -1221,7 +1286,13 @@ class ResourceManager:
             "bus_resv": list(self._bus_resv),
             "excl_global": [ExclWindow(w.start, w.end, w.scope, w.die, set(w.tokens)) for w in self._excl_global],
             "excl_die": {d: [ExclWindow(w.start, w.end, w.scope, w.die, set(w.tokens)) for w in lst] for d, lst in self._excl_die.items()},
-            "latch": {k: _Latch(v.start_us, v.end_us, v.kind) for k, v in self._latch.items()},
+            "latch": {
+                k: {
+                    kind: _LatchEntry(kind=kind, start_us=entry.start_us, end_us=entry.end_us)
+                    for kind, entry in bucket.items()
+                }
+                for k, bucket in self._latch.items()
+            },
             "timeline": [(seg.die, seg.plane, seg.op_base, seg.state, seg.start_us, seg.end_us) for lst in self._st.by_plane.values() for seg in lst],
             # proposer-facing runtime states
             "odt_disabled": bool(self._odt_disabled),
@@ -1318,7 +1389,36 @@ class ResourceManager:
         self._bus_resv = list(snap.get("bus_resv", []))
         self._excl_global = [ExclWindow(w.start, w.end, w.scope, w.die, set(w.tokens)) for w in snap.get("excl_global", [])]
         self._excl_die = {int(d): [ExclWindow(w.start, w.end, w.scope, w.die, set(w.tokens)) for w in lst] for d, lst in snap.get("excl_die", {}).items()}
-        self._latch = {tuple(k) if not isinstance(k, tuple) else k: _Latch(v.start_us, v.end_us, getattr(v, "kind", "LATCH_ON_READ")) for k, v in snap.get("latch", {}).items()}
+        self._latch = {}
+        for k, raw_bucket in (snap.get("latch", {}) or {}).items():
+            key_tuple = tuple(k) if not isinstance(k, tuple) else k
+            key = tuple(int(x) for x in key_tuple)
+            bucket: _LatchBucket = {}
+            if isinstance(raw_bucket, dict):
+                items = raw_bucket.items()
+            else:
+                # Legacy snapshot storing a single latch entry per key
+                items = [(getattr(raw_bucket, "kind", READ_LATCH_KIND), raw_bucket)]
+            for kind, value in items:
+                if value is None:
+                    continue
+                if isinstance(value, _LatchEntry):
+                    entry = _LatchEntry(kind=value.kind, start_us=value.start_us, end_us=value.end_us)
+                elif isinstance(value, dict):
+                    entry = _LatchEntry(
+                        kind=str(value.get("kind", kind)),
+                        start_us=float(value.get("start_us", 0.0)),
+                        end_us=(None if value.get("end_us") is None else float(value.get("end_us", 0.0))),
+                    )
+                else:
+                    entry = _LatchEntry(
+                        kind=str(getattr(value, "kind", kind)),
+                        start_us=float(getattr(value, "start_us", 0.0)),
+                        end_us=(None if getattr(value, "end_us", None) is None else float(getattr(value, "end_us", 0.0))),
+                    )
+                bucket[str(kind)] = entry
+            if bucket:
+                self._latch[key] = bucket
         self._st = _StateTimeline()
         for (die, plane, op_base, state, s0, s1) in snap.get("timeline", []):
             self._st._insert_plane((die, plane), _StateInterval(die, plane, op_base, state, s0, s1))
@@ -1453,13 +1553,14 @@ class ResourceManager:
 
     # helpers
     def _latch_kind_for_base(self, base: str) -> Optional[str]:
-        if base in ("READ", "READ4K", "PLANE_READ", "PLANE_READ4K", "CACHE_READ", "PLANE_CACHE_READ", "COPYBACK_READ"):
-            return "LATCH_ON_READ"
-        if base == "ONESHOT_PROGRAM_LSB":
+        b = str(base).upper()
+        if b in ("READ", "READ4K", "PLANE_READ", "PLANE_READ4K", "CACHE_READ", "PLANE_CACHE_READ", "COPYBACK_READ"):
+            return READ_LATCH_KIND
+        if b == "ONESHOT_PROGRAM_LSB":
             return "LATCH_ON_LSB"
-        if base == "ONESHOT_PROGRAM_CSB":
+        if b == "ONESHOT_PROGRAM_CSB":
             return "LATCH_ON_CSB"
-        if base == "ONESHOT_PROGRAM_MSB":
+        if b == "ONESHOT_PROGRAM_MSB":
             return "LATCH_ON_MSB"
         return None
 
