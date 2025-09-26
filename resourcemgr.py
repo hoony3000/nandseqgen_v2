@@ -94,6 +94,16 @@ class _StateTimeline:
         # rebuild starts
         self._starts_by_plane[key]=[s.start_us for s in lst]
 @dataclass
+class _StOpEntry:
+    die: int
+    planes: List[int]
+    scope: Scope
+    base: str
+    states: List[Tuple[str, float]]
+    start_us: float
+
+
+@dataclass
 class _Txn:
     now_us: float
     plane_resv: Dict[Tuple[int, int], List[Tuple[float, float]]] = field(default_factory=dict)
@@ -101,7 +111,7 @@ class _Txn:
     excl_global: List[ExclWindow] = field(default_factory=list)
     excl_die: Dict[int, List[ExclWindow]] = field(default_factory=dict)
     latch_locks: Dict[LatchKey, _LatchBucket] = field(default_factory=dict)
-    st_ops: List[Tuple[int, int, str, List[Tuple[str, float]], float]] = field(default_factory=list)
+    st_ops: List[_StOpEntry] = field(default_factory=list)
     # EPR overlay: (die, block) -> overrides
     addr_overlay: Dict[Tuple[int, int], Dict[str, Any]] = field(default_factory=dict)
 
@@ -131,12 +141,13 @@ class _AxisState:
 @dataclass
 class _OpMeta:
     die: int
-    op_id: Optional[int]
-    op_name: Optional[str]
     base: str
-    targets: List[Address]
     start_us: float
     end_us: float
+    op_id: Optional[int] = None
+    op_name: Optional[str] = None
+    targets: List[Address] = field(default_factory=list)
+    planes: List[int] = field(default_factory=list)
     remaining_us: Optional[float] = None
     suspend_time_us: Optional[float] = None
     axis: Optional[str] = None
@@ -319,6 +330,25 @@ class ResourceManager:
             )
             for t in payload.get("targets", [])
         ]
+        planes: List[int] = []
+        raw_planes = payload.get("planes")
+        if isinstance(raw_planes, list):
+            seen: Set[int] = set()
+            for item in raw_planes:
+                try:
+                    ip = int(item)
+                except Exception:
+                    continue
+                if ip not in seen:
+                    seen.add(ip)
+                    planes.append(ip)
+        if not planes and targets:
+            seen: Set[int] = set()
+            for tgt in targets:
+                ip = int(getattr(tgt, "plane", 0))
+                if ip not in seen:
+                    seen.add(ip)
+                    planes.append(ip)
         consumed_raw = payload.get("consumed_us", 0.0)
         try:
             consumed = quantize(float(consumed_raw))
@@ -330,6 +360,7 @@ class ResourceManager:
             op_name=payload.get("op_name"),
             base=str(payload.get("base")),
             targets=targets,
+            planes=planes,
             start_us=float(payload.get("start_us", 0.0)),
             end_us=float(payload.get("end_us", 0.0)),
             remaining_us=(
@@ -478,6 +509,21 @@ class ResourceManager:
                     if not (a1 <= s or e <= a0):
                         return False
         return True
+
+    def _state_op_planes(self, scope: Scope, targets: List[Address]) -> List[int]:
+        if scope == Scope.DIE_WIDE:
+            return [int(p) for p in range(self.planes)]
+        seen: Set[int] = set()
+        planes: List[int] = []
+        for t in targets or []:
+            try:
+                plane = int(getattr(t, "plane", 0))
+            except Exception:
+                plane = 0
+            if plane not in seen:
+                seen.add(plane)
+                planes.append(plane)
+        return planes
 
     # --- single/multi exclusion and single×single allowance (die-level) ---
     def _multiplicity_kind(self, op: Any, scope: Scope, plane_set: List[int]) -> str:
@@ -683,8 +729,18 @@ class ResourceManager:
                             _LatchEntry(kind=latch_kind, start_us=end, end_us=None),
                         )
             st_list = [(getattr(s, "name", "STATE"), float(getattr(s, "dur_us", 0.0))) for s in getattr(op, "states", [])]
-            for t in targets:
-                txn.st_ops.append((t.die, t.plane, base, st_list, start))
+            planes_for_state = self._state_op_planes(scope, targets)
+            if planes_for_state:
+                txn.st_ops.append(
+                    _StOpEntry(
+                        die=int(die),
+                        planes=list(planes_for_state),
+                        scope=scope,
+                        base=base,
+                        states=list(st_list),
+                        start_us=float(start),
+                    )
+                )
             self._update_overlay_for_reserved(txn, base, targets)
             return Reservation(True, None, op, targets, start, end)
         # normal path
@@ -739,8 +795,18 @@ class ResourceManager:
                         _LatchEntry(kind=latch_kind, start_us=end, end_us=None),
                     )
         st_list = [(getattr(s, "name", "STATE"), float(getattr(s, "dur_us", 0.0))) for s in getattr(op, "states", [])]
-        for t in targets:
-            txn.st_ops.append((t.die, t.plane, base, st_list, start))
+        planes_for_state = self._state_op_planes(scope, targets)
+        if planes_for_state:
+            txn.st_ops.append(
+                _StOpEntry(
+                    die=int(die),
+                    planes=list(planes_for_state),
+                    scope=scope,
+                    base=base,
+                    states=list(st_list),
+                    start_us=float(start),
+                )
+            )
         # Update EPR overlay with effects of this reservation for subsequent ops in the same txn
         self._update_overlay_for_reserved(txn, base, targets)
         return Reservation(True, None, op, targets, start, end)
@@ -765,11 +831,16 @@ class ResourceManager:
             dest = self._latch.setdefault(key, {})
             for kind, entry in bucket.items():
                 dest[kind] = entry
-        for (die, plane, base, st_list, start) in txn.st_ops:
+        for entry in txn.st_ops:
+            die = int(entry.die)
+            planes = list(entry.planes)
+            base = entry.base
+            st_list = list(entry.states)
+            start = float(entry.start_us)
             # PRD v2 §5.4: skip op_state timeline segments for affect_state == false
-            if self._affects_state(base):
-                if st_list:
-                    self._st.reserve_op(die, plane, base, st_list, start)
+            if self._affects_state(base) and st_list:
+                for plane in planes:
+                    self._st.reserve_op(die, int(plane), base, st_list, start)
             # Opportunistic minimal state hooks for ODT/CACHE/SUSPEND bookkeeping
             end = quantize(start + sum(float(d) for (_, d) in st_list))
             b = str(base).upper()
@@ -780,11 +851,13 @@ class ResourceManager:
                 self._odt_disabled = False
             # CACHE_READ (plane-scoped) and *_END cleanups
             if b in ("CACHE_READ", "PLANE_CACHE_READ"):
-                self._cache_read[(die, plane)] = _CacheEntry(die=die, plane=plane, kind="ON_CACHE_READ", start_us=start)
+                for plane in planes:
+                    self._cache_read[(die, int(plane))] = _CacheEntry(die=die, plane=int(plane), kind="ON_CACHE_READ", start_us=start)
             elif b in ("CACHE_READ_END", "PLANE_CACHE_READ_END"):
-                ent = self._cache_read.get((die, plane))
-                if ent and ent.end_us is None:
-                    ent.end_us = end
+                for plane in planes:
+                    ent = self._cache_read.get((die, int(plane)))
+                    if ent and ent.end_us is None:
+                        ent.end_us = end
             # CACHE_PROGRAM (die-scoped)
             if b == "CACHE_PROGRAM_SLC":
                 self._cache_program[die] = _CacheEntry(die=die, plane=None, kind="ON_CACHE_PROGRAM", start_us=start)
@@ -810,11 +883,18 @@ class ResourceManager:
                     self._pgm_susp[die] = _AxisState(die=die, state="PROGRAM_SUSPENDED", start_us=start)
                 # Guard: handle once per die per suspend base within this commit
                 key_s = (b, int(die))
+                entry_plane_set: Set[int] = {int(p) for p in planes}
                 if key_s not in _susp_processed:
                     _susp_processed.add(key_s)
                     # Move latest ongoing op of this die to the matching-axis suspended and compute remaining
                     try:
-                        self.move_to_suspended_axis(int(die), op_id=None, now_us=float(start), axis=str(fam))
+                        self.move_to_suspended_axis(
+                            int(die),
+                            op_id=None,
+                            now_us=float(start),
+                            axis=str(fam),
+                            planes=list(entry_plane_set) if entry_plane_set else None,
+                        )
                     except Exception:
                         # best-effort; continue even if no ongoing meta
                         pass
@@ -826,12 +906,21 @@ class ResourceManager:
                         else:
                             meta_list = self._suspended_ops_program.get(int(die), [])
                         meta = meta_list[-1] if meta_list else None
-                        if meta and meta.targets:
-                            planes_to_cut = sorted({int(t.plane) for t in meta.targets})
-                        else:
-                            planes_to_cut = list(range(self.planes))
+                        planes_from_meta: Set[int] = set(entry_plane_set)
+                        if meta:
+                            try:
+                                planes_from_meta.update(int(p) for p in getattr(meta, "planes", []) or [])
+                            except Exception:
+                                pass
+                            if not planes_from_meta and meta.targets:
+                                planes_from_meta.update(int(t.plane) for t in meta.targets)
+                        if not planes_from_meta and meta and meta.scope == Scope.DIE_WIDE:
+                            planes_from_meta.update(range(self.planes))
+                        if not planes_from_meta:
+                            planes_from_meta.update(range(self.planes))
+                        planes_to_cut = sorted(planes_from_meta)
                     except Exception:
-                        planes_to_cut = list(range(self.planes))
+                        planes_to_cut = sorted(entry_plane_set) if entry_plane_set else list(range(self.planes))
                     # Predicate: cut only CORE_BUSY segments of the target family
                     def _pred(seg: _StateInterval) -> bool:
                         try:
@@ -1112,6 +1201,7 @@ class ResourceManager:
                         "op_name": o.op_name,
                         "base": o.base,
                         "targets": [Address(t.die, t.plane, t.block, t.page) for t in o.targets],
+                        "planes": list(o.planes),
                         "start_us": o.start_us,
                         "end_us": o.end_us,
                         "remaining_us": o.remaining_us,
@@ -1129,6 +1219,7 @@ class ResourceManager:
                 "op_name": o.op_name,
                 "base": o.base,
                 "targets": [Address(t.die, t.plane, t.block, t.page) for t in o.targets],
+                "planes": list(o.planes),
                 "start_us": o.start_us,
                 "end_us": o.end_us,
                 "remaining_us": o.remaining_us,
@@ -1149,6 +1240,7 @@ class ResourceManager:
                 "op_name": o.op_name,
                 "base": o.base,
                 "targets": [Address(t.die, t.plane, t.block, t.page) for t in o.targets],
+                "planes": list(o.planes),
                 "start_us": o.start_us,
                 "end_us": o.end_us,
                 "remaining_us": o.remaining_us,
@@ -1190,6 +1282,7 @@ class ResourceManager:
                 "op_name": o.op_name,
                 "base": o.base,
                 "targets": [Address(t.die, t.plane, t.block, t.page) for t in o.targets],
+                "planes": list(o.planes),
                 "start_us": o.start_us,
                 "end_us": o.end_us,
                 "remaining_us": o.remaining_us,
@@ -1215,6 +1308,7 @@ class ResourceManager:
                 "op_name": o.op_name,
                 "base": o.base,
                 "targets": [Address(t.die, t.plane, t.block, t.page) for t in o.targets],
+                "planes": list(o.planes),
                 "start_us": o.start_us,
                 "end_us": o.end_us,
                 "remaining_us": o.remaining_us,
@@ -1281,16 +1375,33 @@ class ResourceManager:
             norm_segs = [seg for seg in norm_segs if seg[1] > seg[0]]
             norm_segs.sort()
 
+        targets_list = list(targets)
+        scope_parsed = self._parse_scope(scope)
+        plane_list: List[int] = []
+        if targets_list:
+            seen_planes: Set[int] = set()
+            for tgt in targets_list:
+                try:
+                    ip = int(getattr(tgt, "plane", 0))
+                except Exception:
+                    ip = 0
+                if ip not in seen_planes:
+                    seen_planes.add(ip)
+                    plane_list.append(ip)
+        if scope_parsed == Scope.DIE_WIDE:
+            plane_list = [int(p) for p in range(self.planes)]
+
         meta = _OpMeta(
             die=die,
             op_id=op_id,
             op_name=op_name,
             base=str(base),
-            targets=list(targets),
+            targets=targets_list,
+            planes=plane_list,
             start_us=quantize(start_us),
             end_us=quantize(end_us),
             axis=axis,
-            scope=self._parse_scope(scope),
+            scope=scope_parsed,
             states=_normalize_states(states),
             bus_segments=norm_segs,
             consumed_us=0.0,
@@ -1417,7 +1528,14 @@ class ResourceManager:
             return
         self.move_to_suspended_axis(die, op_id=meta.op_id, now_us=now_us, axis=axis)
 
-    def move_to_suspended_axis(self, die: int, op_id: Optional[int], now_us: float, axis: str) -> None:
+    def move_to_suspended_axis(
+        self,
+        die: int,
+        op_id: Optional[int],
+        now_us: float,
+        axis: str,
+        planes: Optional[List[int]] = None,
+    ) -> None:
         """Move the latest ongoing op to axis-specific suspended list when family matches.
 
         axis: 'ERASE' | 'PROGRAM'
@@ -1444,6 +1562,31 @@ class ResourceManager:
             return
         # pop and move
         meta = ops.pop(idx)
+
+        def _unique_planes(values: Optional[List[Any]]) -> List[int]:
+            if not values:
+                return []
+            seen: Set[int] = set()
+            out: List[int] = []
+            for val in values:
+                try:
+                    ip = int(val)
+                except Exception:
+                    continue
+                if ip not in seen:
+                    seen.add(ip)
+                    out.append(ip)
+            return out
+
+        override_planes = _unique_planes(list(planes) if planes is not None else None)
+        meta_plane_list = _unique_planes(getattr(meta, "planes", []))
+        planes_from_targets = _unique_planes([getattr(t, "plane", 0) for t in (meta.targets or [])])
+        target_planes = override_planes or meta_plane_list or planes_from_targets
+        if not target_planes and meta.scope == Scope.DIE_WIDE:
+            target_planes = [int(p) for p in range(self.planes)]
+        merged_plane_set = _unique_planes(target_planes + meta_plane_list + override_planes)
+        meta.planes = merged_plane_set
+
         orig_bus_segments = list(meta.bus_segments)
         orig_start = float(meta.start_us)
         orig_end = float(meta.end_us)
@@ -1465,7 +1608,6 @@ class ResourceManager:
         # Release future reservations to allow re-reservation on resume.
         tol = SIM_RES_US
         cutoff = now_q
-        target_planes = sorted({int(t.plane) for t in meta.targets}) if meta.targets else []
         for plane in target_planes:
             key = (int(die), int(plane))
             windows = self._plane_resv.get(key, [])
@@ -1747,6 +1889,7 @@ class ResourceManager:
                         "op_name": m.op_name,
                         "base": m.base,
                         "targets": [(t.die, t.plane, t.block, t.page) for t in m.targets],
+                        "planes": list(m.planes),
                         "start_us": m.start_us,
                         "end_us": m.end_us,
                         "remaining_us": m.remaining_us,
@@ -1768,6 +1911,7 @@ class ResourceManager:
                         "op_name": m.op_name,
                         "base": m.base,
                         "targets": [(t.die, t.plane, t.block, t.page) for t in m.targets],
+                        "planes": list(m.planes),
                         "start_us": m.start_us,
                         "end_us": m.end_us,
                         "remaining_us": m.remaining_us,
@@ -1788,6 +1932,7 @@ class ResourceManager:
                         "op_name": m.op_name,
                         "base": m.base,
                         "targets": [(t.die, t.plane, t.block, t.page) for t in m.targets],
+                        "planes": list(m.planes),
                         "start_us": m.start_us,
                         "end_us": m.end_us,
                         "remaining_us": m.remaining_us,
@@ -1809,6 +1954,7 @@ class ResourceManager:
                         "op_name": m.op_name,
                         "base": m.base,
                         "targets": [(t.die, t.plane, t.block, t.page) for t in m.targets],
+                        "planes": list(m.planes),
                         "start_us": m.start_us,
                         "end_us": m.end_us,
                         "remaining_us": m.remaining_us,
@@ -1935,12 +2081,35 @@ class ResourceManager:
                             consumed_meta = quantize(float(m.get("consumed_us", 0.0)))
                         except Exception:
                             consumed_meta = 0.0
+                    planes_list: List[int] = []
+                    raw_planes = m.get("planes")
+                    if isinstance(raw_planes, list):
+                        seen_planes: Set[int] = set()
+                        for item in raw_planes:
+                            try:
+                                ip = int(item)
+                            except Exception:
+                                continue
+                            if ip not in seen_planes:
+                                seen_planes.add(ip)
+                                planes_list.append(ip)
+                    elif m.get("targets"):
+                        seen_planes = set()
+                        for t in m.get("targets", []):
+                            try:
+                                ip = int(t[1])
+                            except Exception:
+                                continue
+                            if ip not in seen_planes:
+                                seen_planes.add(ip)
+                                planes_list.append(ip)
                     meta = _OpMeta(
                         die=d,
                         op_id=m.get("op_id"),
                         op_name=m.get("op_name"),
                         base=str(m.get("base")),
                         targets=[Address(int(t[0]), int(t[1]), int(t[2]), (None if t[3] in (None, "None") else int(t[3]))) for t in m.get("targets", [])],
+                        planes=planes_list,
                         start_us=float(m.get("start_us", 0.0)),
                         end_us=float(m.get("end_us", 0.0)),
                         remaining_us=(None if m.get("remaining_us") in (None, "None") else float(m.get("remaining_us"))),

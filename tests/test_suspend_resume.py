@@ -113,6 +113,40 @@ class SuspendResumeTests(unittest.TestCase):
         self.assertAlmostEqual(suspended2["consumed_us"], 20.0, places=6)
         self.assertEqual(rm._plane_resv[(0, 0)], [(0.0, 10.0), (25.0, 35.0)])
 
+    def test_die_wide_suspend_covers_all_planes(self) -> None:
+        rm = ResourceManager(cfg={}, dies=1, planes=3)
+        targets = [Address(die=0, plane=0, block=0, page=0)]
+        uid = 515
+        op = _mk_op("PROGRAM_SLC", 30.0)
+
+        txn = rm.begin(0.0)
+        res = rm.reserve(txn, op, targets, Scope.DIE_WIDE)
+        self.assertTrue(res.ok)
+        rm.commit(txn)
+        rm.register_ongoing(
+            die=0,
+            op_id=uid,
+            op_name="PROGRAM_SLC",
+            base="PROGRAM_SLC",
+            targets=targets,
+            start_us=float(res.start_us or 0.0),
+            end_us=float(res.end_us or 0.0),
+            scope=Scope.DIE_WIDE,
+            op=op,
+        )
+
+        rm.move_to_suspended_axis(0, op_id=uid, now_us=12.0, axis="PROGRAM")
+        for plane in range(rm.planes):
+            self.assertEqual(rm._plane_resv[(0, plane)], [(0.0, 12.0)])
+
+        suspended = rm.suspended_ops_program(0)[-1]
+        self.assertEqual(sorted(suspended["planes"]), [0, 1, 2])
+
+        resumed_meta = rm.resume_from_suspended_axis(0, op_id=uid, axis="PROGRAM", now_us=20.0)
+        self.assertIsNotNone(resumed_meta)
+        for plane in range(rm.planes):
+            self.assertEqual(rm._plane_resv[(0, plane)], [(0.0, 12.0), (20.0, 38.0)])
+
     def test_scheduler_op_end_skips_when_suspended(self) -> None:
         rm = _StubRM()
         addr = _StubAddrMan()

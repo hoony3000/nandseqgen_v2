@@ -402,13 +402,20 @@ def export_op_state_timeline(rm: ResourceManager, rows: Optional[List[Dict[str, 
     # If operation rows are provided, derive a stable op_uid per segment for sorting
     if rows is not None:
         idx: Dict[Tuple[int, int, str], List[Tuple[float, float, int]]] = {}
+        idx_die_base: Dict[Tuple[int, str], List[Tuple[float, float, int]]] = {}
         for r in rows:
             die = int(r["die"])  # type: ignore[index]
             plane = int(r["plane"])  # type: ignore[index]
             base = str(r["op_base"])  # type: ignore[index]
-            idx.setdefault((die, plane, base), []).append((float(r["start_us"]), float(r["end_us"]), int(r["op_uid"])) )
+            start_val = float(r["start_us"])
+            end_val = float(r["end_us"])
+            uid_val = int(r["op_uid"])
+            idx.setdefault((die, plane, base), []).append((start_val, end_val, uid_val))
+            idx_die_base.setdefault((die, base), []).append((start_val, end_val, uid_val))
         for k in idx:
             idx[k].sort(key=lambda t: (t[0], t[1]))
+        for k in idx_die_base:
+            idx_die_base[k].sort(key=lambda t: (t[0], t[1]))
 
         def _uid_for(seg: Dict[str, Any]) -> int:
             die = int(seg["die"])
@@ -416,6 +423,8 @@ def export_op_state_timeline(rm: ResourceManager, rows: Optional[List[Dict[str, 
             base = str(seg.get("op_name", ""))  # op_name here is base per exporter
             s0 = float(seg["start"]) 
             cand = idx.get((die, plane, base))
+            if not cand:
+                cand = idx_die_base.get((die, base))
             if not cand:
                 return 0
             # Find the op whose window covers the segment start
@@ -438,7 +447,14 @@ def export_op_state_timeline(rm: ResourceManager, rows: Optional[List[Dict[str, 
                     return uid
             return 0
 
-        out_rows.sort(key=lambda x: (_uid_for(x), x["start"], x["die"], x["plane"]))
+        out_rows.sort(
+            key=lambda x: (
+                float(x["start"]),
+                int(x["die"]),
+                int(x["plane"]),
+                _uid_for(x),
+            )
+        )
     else:
         out_rows.sort(key=lambda x: (x["die"], x["plane"], x["start"]))
     fname = f"op_state_timeline_{_date_stamp()}_{_run_id_str(run_idx+1)}.csv"

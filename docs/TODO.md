@@ -173,6 +173,13 @@
   - 개선 방향과 실험:
   - 평가 결과:
 
+- [ ] 30. suspend, resume 반복 시나리오에서 op_state_probs.yaml 에서 정의되지 않은 copyback_read 의 뜬금없는 등장 원인 파악 및 개선
+  - 문제 상황: 
+  - 개선 방향과 실험:
+  - 평가 결과:
+
+
+
 
 ## Medium Priority
 
