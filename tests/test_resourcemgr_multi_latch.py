@@ -90,6 +90,25 @@ class ResourceManagerMultiLatchTests(unittest.TestCase):
         read_end = self._commit_read()
         prog_end = self._commit_program(read_end)
 
+        txn_resume = self.rm.begin(prog_end)
+        resume_op = _Op("ONESHOT_PROGRAM_MSB", dur_us=3.0)
+        res_resume = self.rm.reserve(txn_resume, resume_op, self.read_targets, Scope.DIE_WIDE)
+        self.assertTrue(res_resume.ok)
+        self.rm.commit(txn_resume)
+        resume_uid = 515
+        self.rm.register_ongoing(
+            die=0,
+            op_id=resume_uid,
+            op_name="ONESHOT_PROGRAM_MSB",
+            base="ONESHOT_PROGRAM_MSB",
+            targets=self.read_targets,
+            start_us=float(res_resume.start_us or prog_end),
+            end_us=float(res_resume.end_us or prog_end),
+            scope=Scope.DIE_WIDE,
+            op=resume_op,
+        )
+        self.rm.move_to_suspended_axis(0, op_id=resume_uid, now_us=float(res_resume.start_us or prog_end) + 1.0, axis="PROGRAM")
+
         snap = self.rm.snapshot()
         bucket = snap["latch"].get((0, 0))
         self.assertIsNotNone(bucket)
@@ -97,11 +116,27 @@ class ResourceManagerMultiLatchTests(unittest.TestCase):
         self.assertIn(READ_LATCH_KIND, bucket)
         self.assertIn(PROGRAM_LATCH_KIND, bucket)
 
+        susp_map = snap.get("suspended_ops_program", {})
+        susp_list = susp_map.get(0) or susp_map.get("0") or []
+        self.assertTrue(susp_list)
+        susp_entry = susp_list[-1]
+        self.assertIn("scope", susp_entry)
+        self.assertIn("states", susp_entry)
+        self.assertIn("bus_segments", susp_entry)
+        self.assertIn("consumed_us", susp_entry)
+
         rm2 = ResourceManager(cfg=self.cfg, dies=1, planes=2)
         rm2.restore(snap)
         restored_bucket = rm2._latch.get((0, 0), {})
         self.assertIn(READ_LATCH_KIND, restored_bucket)
         self.assertIn(PROGRAM_LATCH_KIND, restored_bucket)
+        restored_susp = rm2.suspended_ops_program(0)
+        self.assertTrue(restored_susp)
+        restored_entry = restored_susp[-1]
+        self.assertIn("states", restored_entry)
+        self.assertIn("scope", restored_entry)
+        self.assertIn("bus_segments", restored_entry)
+        self.assertIn("consumed_us", restored_entry)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = save_snapshot(self.rm, out_dir=tmpdir, run_idx=0)
@@ -119,6 +154,14 @@ class ResourceManagerMultiLatchTests(unittest.TestCase):
         plane_set = {row["plane"] for row in prog_rows}
         self.assertIn(0, plane_set)
         self.assertIn(1, plane_set)
+
+        suspended_rows = data.get("suspended_ops_program", {}).get("0", [])
+        self.assertTrue(suspended_rows)
+        last_row = suspended_rows[-1]
+        self.assertIn("scope", last_row)
+        self.assertIn("states", last_row)
+        self.assertIn("bus_segments", last_row)
+        self.assertIn("consumed_us", last_row)
 
 
 if __name__ == "__main__":

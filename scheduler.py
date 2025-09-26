@@ -441,14 +441,31 @@ class Scheduler:
         if die0 is None:
             return
         resume_at = float(rec.get("end_us", self.now_us))
+        rm = self._deps.rm
         try:
-            meta = self._deps.rm.resume_from_suspended_axis(int(die0), op_id=None, axis=axis, now_us=resume_at)
+            meta = rm.resume_from_suspended_axis(int(die0), op_id=None, axis=axis, now_us=resume_at)
         except TypeError:
             # Backward compat: older RM signature without now_us
-            meta = self._deps.rm.resume_from_suspended_axis(int(die0), op_id=None, axis=axis)  # type: ignore[call-arg]
+            meta = rm.resume_from_suspended_axis(int(die0), op_id=None, axis=axis)  # type: ignore[call-arg]
         except Exception:
             meta = None
         if meta is None:
+            err = None
+            try:
+                last_err = getattr(rm, "last_resume_error", None)
+                if callable(last_err):
+                    err = last_err()
+                else:
+                    err = last_err
+            except Exception:
+                err = None
+            if isinstance(err, dict) and err:
+                reason = err.get("reason")
+                msg = (
+                    f"[resume] reapply failed axis={axis} base={b} die={die0} op_id={err.get('op_id')} "
+                    f"reason={reason} start_hint={err.get('start_hint_us')}"
+                )
+                _proposer._log(msg)
             return
         op_uid = getattr(meta, "op_id", None)
         if op_uid is None:
@@ -739,6 +756,8 @@ class Scheduler:
                         targets=list(tgs),
                         start_us=float(rec.get("start_us")),
                         end_us=float(rec.get("end_us")),
+                        scope=rec.get("scope"),
+                        op=rec.get("op"),
                     )
             except Exception:
                 # Best-effort; ongoing meta is observability aid and should not break scheduling

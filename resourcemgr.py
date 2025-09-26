@@ -140,6 +140,10 @@ class _OpMeta:
     remaining_us: Optional[float] = None
     suspend_time_us: Optional[float] = None
     axis: Optional[str] = None
+    scope: Scope = Scope.NONE
+    states: List[Tuple[str, float]] = field(default_factory=list)
+    bus_segments: List[Tuple[float, float]] = field(default_factory=list)
+    consumed_us: float = 0.0
 
 class ResourceManager:
     def __init__(self, cfg: Optional[Dict[str, Any]] = None, dies: int = 1, planes: int = 1):
@@ -186,6 +190,7 @@ class ResourceManager:
         except Exception:
             self._ALLOWED_SINGLE_SINGLE_BASES = set(default_allowed)
         self._program_base_whitelist: Set[str] = self._load_program_base_whitelist()
+        self._last_resume_error: Optional[Dict[str, Any]] = None
 
     def _txn_record_latch(self, txn: _Txn, die: int, plane: int, entry: _LatchEntry) -> None:
         key = (int(die), int(plane))
@@ -245,6 +250,103 @@ class ResourceManager:
         except Exception:
             raw = []
         return {str(item).upper() for item in (raw or []) if str(item).strip()}
+
+    def _parse_scope(self, value: Any) -> Scope:
+        if isinstance(value, Scope):
+            return value
+        if value is None:
+            return Scope.NONE
+        try:
+            if isinstance(value, str):
+                key = value.upper()
+                if key.startswith("SCOPE."):
+                    key = key.split(".", 1)[1]
+                return Scope[key]
+        except Exception:
+            pass
+        try:
+            return Scope(int(value))
+        except Exception:
+            return Scope.NONE
+
+    def _scope_name(self, scope: Optional[Scope]) -> str:
+        if isinstance(scope, Scope):
+            return scope.name
+        try:
+            return Scope(scope).name  # type: ignore[arg-type]
+        except Exception:
+            return Scope.NONE.name
+
+    def _deserialize_states(self, raw: Any) -> List[Tuple[str, float]]:
+        states: List[Tuple[str, float]] = []
+        if not raw:
+            return states
+        for item in raw:
+            if isinstance(item, (list, tuple)) and item:
+                name = str(item[0])
+                try:
+                    dur = quantize(float(item[1]))
+                except Exception:
+                    dur = 0.0
+                if dur > 0.0:
+                    states.append((name, dur))
+        return states
+
+    def _deserialize_segments(self, raw: Any) -> List[Tuple[float, float]]:
+        segs: List[Tuple[float, float]] = []
+        if not raw:
+            return segs
+        for item in raw:
+            if not isinstance(item, (list, tuple)) or len(item) < 2:
+                continue
+            try:
+                a0 = quantize(float(item[0]))
+                a1 = quantize(float(item[1]))
+            except Exception:
+                continue
+            if a1 > a0:
+                segs.append((a0, a1))
+        segs.sort()
+        return segs
+
+    def _meta_from_snapshot(self, die: int, payload: Dict[str, Any]) -> _OpMeta:
+        targets = [
+            Address(
+                int(t[0]),
+                int(t[1]),
+                int(t[2]),
+                (None if t[3] in (None, "None") else int(t[3])),
+            )
+            for t in payload.get("targets", [])
+        ]
+        consumed_raw = payload.get("consumed_us", 0.0)
+        try:
+            consumed = quantize(float(consumed_raw))
+        except Exception:
+            consumed = 0.0
+        return _OpMeta(
+            die=die,
+            op_id=payload.get("op_id"),
+            op_name=payload.get("op_name"),
+            base=str(payload.get("base")),
+            targets=targets,
+            start_us=float(payload.get("start_us", 0.0)),
+            end_us=float(payload.get("end_us", 0.0)),
+            remaining_us=(
+                None
+                if payload.get("remaining_us") in (None, "None")
+                else float(payload.get("remaining_us", 0.0))
+            ),
+            suspend_time_us=(
+                None
+                if payload.get("suspend_time_us") in (None, "None")
+                else float(payload.get("suspend_time_us", 0.0))
+            ),
+            scope=self._parse_scope(payload.get("scope")),
+            states=self._deserialize_states(payload.get("states")),
+            bus_segments=self._deserialize_segments(payload.get("bus_segments")),
+            consumed_us=consumed,
+        )
 
     # --- instant reservation helpers (bus-only immediate scheduling) ---
     def _base_instant(self, base: str) -> bool:
@@ -1014,6 +1116,10 @@ class ResourceManager:
                         "end_us": o.end_us,
                         "remaining_us": o.remaining_us,
                         "suspend_time_us": o.suspend_time_us,
+                        "scope": self._scope_name(o.scope),
+                        "states": list(o.states),
+                        "bus_segments": list(o.bus_segments),
+                        "consumed_us": o.consumed_us,
                     })
             return lst
         return [
@@ -1027,6 +1133,10 @@ class ResourceManager:
                 "end_us": o.end_us,
                 "remaining_us": o.remaining_us,
                 "suspend_time_us": o.suspend_time_us,
+                "scope": self._scope_name(o.scope),
+                "states": list(o.states),
+                "bus_segments": list(o.bus_segments),
+                "consumed_us": o.consumed_us,
             }
             for o in self._ongoing_ops.get(die, [])
         ]
@@ -1043,6 +1153,10 @@ class ResourceManager:
                 "end_us": o.end_us,
                 "remaining_us": o.remaining_us,
                 "suspend_time_us": o.suspend_time_us,
+                "scope": self._scope_name(o.scope),
+                "states": list(o.states),
+                "bus_segments": list(o.bus_segments),
+                "consumed_us": o.consumed_us,
             }
         # Merge ERASE/PROGRAM axes into a legacy single list (sorted by start_us)
         if die is None:
@@ -1080,6 +1194,10 @@ class ResourceManager:
                 "end_us": o.end_us,
                 "remaining_us": o.remaining_us,
                 "suspend_time_us": o.suspend_time_us,
+                "scope": self._scope_name(o.scope),
+                "states": list(o.states),
+                "bus_segments": list(o.bus_segments),
+                "consumed_us": o.consumed_us,
             }
         if die is None:
             lst: List[Dict[str, Any]] = []
@@ -1101,6 +1219,10 @@ class ResourceManager:
                 "end_us": o.end_us,
                 "remaining_us": o.remaining_us,
                 "suspend_time_us": o.suspend_time_us,
+                "scope": self._scope_name(o.scope),
+                "states": list(o.states),
+                "bus_segments": list(o.bus_segments),
+                "consumed_us": o.consumed_us,
             }
         if die is None:
             lst: List[Dict[str, Any]] = []
@@ -1110,8 +1232,55 @@ class ResourceManager:
             return lst
         return [_pub(int(die), o) for o in self._suspended_ops_program.get(int(die), [])]
 
-    def register_ongoing(self, die: int, op_id: Optional[int], op_name: Optional[str], base: str, targets: List[Address], start_us: float, end_us: float) -> None:
+    def register_ongoing(
+        self,
+        die: int,
+        op_id: Optional[int],
+        op_name: Optional[str],
+        base: str,
+        targets: List[Address],
+        start_us: float,
+        end_us: float,
+        *,
+        scope: Optional[Scope] = None,
+        op: Optional[Any] = None,
+        states: Optional[List[Tuple[str, float]]] = None,
+        bus_segments: Optional[List[Tuple[float, float]]] = None,
+    ) -> None:
         axis = self._axis_for_base(base)
+
+        def _normalize_states(raw: Optional[List[Tuple[str, float]]]) -> List[Tuple[str, float]]:
+            norm: List[Tuple[str, float]] = []
+            if not raw:
+                return norm
+            for name, dur in raw:
+                try:
+                    norm.append((str(name), quantize(float(dur))))
+                except Exception:
+                    norm.append((str(name), 0.0))
+            return [item for item in norm if item[1] > 0.0]
+
+        if states is None and op is not None:
+            states = [
+                (
+                    str(getattr(s, "name", "STATE")),
+                    float(getattr(s, "dur_us", 0.0)),
+                )
+                for s in getattr(op, "states", []) or []
+            ]
+        segs: Optional[List[Tuple[float, float]]] = bus_segments
+        if segs is None and op is not None:
+            segs = self._bus_segments(op)
+        norm_segs: List[Tuple[float, float]] = []
+        if segs:
+            for a0, a1 in segs:
+                try:
+                    norm_segs.append((quantize(float(a0)), quantize(float(a1))))
+                except Exception:
+                    continue
+            norm_segs = [seg for seg in norm_segs if seg[1] > seg[0]]
+            norm_segs.sort()
+
         meta = _OpMeta(
             die=die,
             op_id=op_id,
@@ -1121,6 +1290,10 @@ class ResourceManager:
             start_us=quantize(start_us),
             end_us=quantize(end_us),
             axis=axis,
+            scope=self._parse_scope(scope),
+            states=_normalize_states(states),
+            bus_segments=norm_segs,
+            consumed_us=0.0,
         )
         self._ongoing_ops.setdefault(die, []).append(meta)
 
@@ -1131,6 +1304,92 @@ class ResourceManager:
         if "PROGRAM" in bb and "SUSPEND" not in bb and "RESUME" not in bb and "CACHE" not in bb:
             return "PROGRAM"
         return None
+
+    def _slice_states(self, states: List[Tuple[str, float]], consumed_us: float) -> Tuple[List[Tuple[str, float]], float]:
+        remaining: List[Tuple[str, float]] = []
+        remaining_consumed = max(0.0, float(consumed_us))
+        for name, dur in states:
+            try:
+                dur_f = float(dur)
+            except Exception:
+                continue
+            if dur_f <= 0.0:
+                continue
+            if remaining_consumed >= dur_f - (SIM_RES_US / 2.0):
+                remaining_consumed = max(0.0, remaining_consumed - dur_f)
+                continue
+            if remaining_consumed > 0.0:
+                dur_f = max(0.0, dur_f - remaining_consumed)
+                remaining_consumed = 0.0
+            dur_q = quantize(dur_f)
+            if dur_q <= 0.0:
+                continue
+            remaining.append((str(name), dur_q))
+        total = sum(d for (_name, d) in remaining)
+        return remaining, quantize(total)
+
+    def _slice_bus_segments_remaining(self, segments: List[Tuple[float, float]], consumed_us: float) -> List[Tuple[float, float]]:
+        if not segments:
+            return []
+        shift = max(0.0, float(consumed_us))
+        sliced: List[Tuple[float, float]] = []
+        for raw_start, raw_end in segments:
+            try:
+                start = float(raw_start) - shift
+                end = float(raw_end) - shift
+            except Exception:
+                continue
+            if end <= 0.0:
+                continue
+            start = max(0.0, start)
+            end = max(0.0, end)
+            if end <= start:
+                continue
+            sliced.append((quantize(start), quantize(end)))
+        sliced.sort()
+        return sliced
+
+    def _make_resume_op(self, meta: _OpMeta) -> Any:
+        states = list(meta.states)
+        segments = list(meta.bus_segments)
+
+        def _state_has_bus(start: float, end: float) -> bool:
+            for (b0, b1) in segments:
+                if b1 <= start or b0 >= end:
+                    continue
+                return True
+            return False
+
+        class _ResumeState:
+            def __init__(self, name: str, dur_us: float, bus: bool) -> None:
+                self.name = name
+                self.dur_us = float(dur_us)
+                self.bus = bool(bus)
+
+        resume_states: List[_ResumeState] = []
+        offset = 0.0
+        for name, dur in states:
+            try:
+                dur_f = float(dur)
+            except Exception:
+                continue
+            if dur_f <= 0.0:
+                continue
+            dur_q = quantize(dur_f)
+            if dur_q <= 0.0:
+                continue
+            has_bus = _state_has_bus(offset, offset + dur_q)
+            resume_states.append(_ResumeState(str(name), dur_q, has_bus))
+            offset += dur_q
+
+        class _ResumeOp:
+            def __init__(self, base: str, name: Optional[str], states: List[_ResumeState]) -> None:
+                self.base = base
+                self.name = name or base
+                self.op_name = name or base
+                self.states = states
+
+        return _ResumeOp(str(meta.base), meta.op_name, resume_states)
 
     def move_to_suspended(self, die: int, op_id: Optional[int], now_us: float) -> None:
         """Backward-compatible wrapper. Infers axis from op base and delegates.
@@ -1185,12 +1444,110 @@ class ResourceManager:
             return
         # pop and move
         meta = ops.pop(idx)
+        orig_bus_segments = list(meta.bus_segments)
+        orig_start = float(meta.start_us)
+        orig_end = float(meta.end_us)
         now_q = quantize(now_us)
         meta.suspend_time_us = now_q
-        rem = max(0.0, meta.end_us - now_q)
-        rem = quantize(rem)
-        meta.remaining_us = rem
+        consumed_now = max(0.0, now_q - meta.start_us)
+        sliced_states, total_remaining = self._slice_states(list(meta.states), consumed_now)
+        sliced_segments = self._slice_bus_segments_remaining(list(meta.bus_segments), consumed_now)
+        prev_consumed = max(0.0, float(getattr(meta, "consumed_us", 0.0)))
+        meta.consumed_us = quantize(prev_consumed + consumed_now)
+        meta.states = sliced_states
+        meta.bus_segments = sliced_segments
+        # Fallback to time delta if states absent (legacy ops without timeline)
+        if total_remaining <= 0.0:
+            total_remaining = quantize(max(0.0, meta.end_us - now_q))
+        meta.remaining_us = total_remaining
         meta.axis = fam
+
+        # Release future reservations to allow re-reservation on resume.
+        tol = SIM_RES_US
+        cutoff = now_q
+        target_planes = sorted({int(t.plane) for t in meta.targets}) if meta.targets else []
+        for plane in target_planes:
+            key = (int(die), int(plane))
+            windows = self._plane_resv.get(key, [])
+            new_windows: List[Tuple[float, float]] = []
+            for (s, e) in windows:
+                if abs(s - orig_start) <= tol and abs(e - orig_end) <= tol:
+                    if e <= cutoff + tol:
+                        new_windows.append((s, e))
+                    elif s >= cutoff - tol:
+                        # drop future portion entirely
+                        continue
+                    else:
+                        new_windows.append((s, cutoff))
+                else:
+                    new_windows.append((s, e))
+            self._plane_resv[key] = new_windows
+            if new_windows:
+                self._avail[key] = max(end for (_, end) in new_windows)
+            else:
+                self._avail[key] = max(self._avail.get(key, 0.0), cutoff)
+
+        # Trim die-level exclusion windows for this op base
+        token = f"OPBASE:{str(meta.base)}"
+        die_windows = self._excl_die.get(int(die), [])
+        new_die_windows: List[ExclWindow] = []
+        for win in die_windows:
+            if token in win.tokens and abs(win.start - orig_start) <= tol and abs(win.end - orig_end) <= tol:
+                if win.end <= cutoff + tol:
+                    new_die_windows.append(win)
+                elif win.start >= cutoff - tol:
+                    continue
+                else:
+                    new_die_windows.append(ExclWindow(start=win.start, end=cutoff, scope=win.scope, die=win.die, tokens=set(win.tokens)))
+            else:
+                new_die_windows.append(win)
+        self._excl_die[int(die)] = new_die_windows
+
+        new_global_windows: List[ExclWindow] = []
+        for win in self._excl_global:
+            if token in win.tokens and abs(win.start - orig_start) <= tol and abs(win.end - orig_end) <= tol:
+                if win.end <= cutoff + tol:
+                    new_global_windows.append(win)
+                elif win.start >= cutoff - tol:
+                    continue
+                else:
+                    new_global_windows.append(ExclWindow(start=win.start, end=cutoff, scope=win.scope, die=win.die, tokens=set(win.tokens)))
+            else:
+                new_global_windows.append(win)
+        self._excl_global = new_global_windows
+
+        # Trim bus reservations belonging to this op (match original segments)
+        if orig_bus_segments:
+            removals: List[Tuple[float, float]] = []
+            truncations: List[Tuple[float, float]] = []
+            for (off0, off1) in orig_bus_segments:
+                try:
+                    abs_s = quantize(orig_start + float(off0))
+                    abs_e = quantize(orig_start + float(off1))
+                except Exception:
+                    continue
+                if abs_e <= cutoff + tol:
+                    continue
+                if abs_s >= cutoff - tol:
+                    removals.append((abs_s, abs_e))
+                else:
+                    truncations.append((abs_s, abs_e))
+            if removals or truncations:
+                updated_bus: List[Tuple[float, float]] = []
+                for (s, e) in self._bus_resv:
+                    key = (quantize(s), quantize(e))
+                    if key in removals:
+                        continue
+                    truncated = False
+                    for (ts, te) in truncations:
+                        if key == (ts, te):
+                            if s < cutoff:
+                                updated_bus.append((s, cutoff))
+                            truncated = True
+                            break
+                    if not truncated:
+                        updated_bus.append((s, e))
+                self._bus_resv = updated_bus
         if fam == "ERASE":
             stack = self._suspended_ops_erase.setdefault(die, [])
             stack.append(meta)
@@ -1224,7 +1581,13 @@ class ResourceManager:
         elif cand_e:
             self.resume_from_suspended_axis(die, op_id=getattr(cand_e, "op_id", None), axis="ERASE", now_us=now_us)
 
-    def resume_from_suspended_axis(self, die: int, op_id: Optional[int], axis: str, now_us: Optional[float] = None) -> Optional[_OpMeta]:
+    def resume_from_suspended_axis(
+        self,
+        die: int,
+        op_id: Optional[int],
+        axis: str,
+        now_us: Optional[float] = None,
+    ) -> Optional[_OpMeta]:
         fam = str(axis).upper()
         lst = self._suspended_ops_program.get(die, []) if fam == "PROGRAM" else self._suspended_ops_erase.get(die, [])
         if not lst:
@@ -1246,17 +1609,79 @@ class ResourceManager:
         if meta.suspend_time_us is not None:
             start_ref = max(start_ref, meta.suspend_time_us)
         start_q = quantize(start_ref)
-        rem = meta.remaining_us
-        if rem is None:
-            rem = max(0.0, meta.end_us - start_q)
-        rem = quantize(rem)
-        end_q = quantize(start_q + rem)
-        meta.start_us = start_q
-        meta.end_us = end_q
+
+        orig_states = list(meta.states)
+        orig_segments = list(meta.bus_segments)
+
+        resume_states = list(meta.states)
+        if not resume_states and meta.remaining_us is not None and meta.remaining_us > 0.0:
+            resume_states = [("CORE_BUSY", float(meta.remaining_us))]
+        normalized_states = []
+        for name, dur in resume_states:
+            try:
+                dur_f = quantize(float(dur))
+            except Exception:
+                continue
+            if dur_f > 0.0:
+                normalized_states.append((str(name), dur_f))
+        meta.states = normalized_states
+        resume_scope = meta.scope if isinstance(meta.scope, Scope) else Scope.NONE
+        targets = list(meta.targets)
+
+        resume_op = self._make_resume_op(meta)
+        duration = sum(float(getattr(s, "dur_us", 0.0)) for s in getattr(resume_op, "states", []) or [])
+        if duration <= 0.0:
+            duration = max(0.0, meta.end_us - start_q)
+        duration = quantize(duration)
+
+        if duration <= 0.0 or not targets:
+            # Nothing to reapply; treat as instant completion
+            meta.start_us = start_q
+            meta.end_us = start_q
+            meta.remaining_us = None
+            meta.suspend_time_us = None
+            meta.axis = fam
+            self._ongoing_ops.setdefault(die, []).append(meta)
+            self._last_resume_error = None
+            return meta
+
+        txn = self.begin(start_q)
+        txn.now_us = start_q
+        res = self.reserve(txn, resume_op, targets, resume_scope, duration_us=duration)
+        start_match = False
+        try:
+            if res.ok and res.start_us is not None:
+                start_match = abs(float(res.start_us) - start_q) <= (SIM_RES_US + 1e-9)
+        except Exception:
+            start_match = False
+        if (not res.ok) or (not start_match):
+            self.rollback(txn)
+            # restore stack order and record failure
+            lst.insert(idx, meta)
+            meta.states = orig_states
+            meta.bus_segments = orig_segments
+            failure_reason = res.reason if not res.ok else (res.reason or "planescope")
+            self._last_resume_error = {
+                "axis": fam,
+                "die": die,
+                "op_id": meta.op_id,
+                "reason": failure_reason,
+                "start_hint_us": start_q,
+                "remaining_us": meta.remaining_us,
+            }
+            return None
+
+        self.commit(txn)
+        meta.start_us = float(res.start_us or start_q)
+        meta.end_us = float(res.end_us or (start_q + duration))
         meta.remaining_us = None
         meta.suspend_time_us = None
         meta.axis = fam
+        meta.scope = resume_scope
+        meta.states = [(str(getattr(s, "name", "STATE")), quantize(float(getattr(s, "dur_us", 0.0)))) for s in getattr(resume_op, "states", []) if float(getattr(s, "dur_us", 0.0)) > 0.0]
+        meta.bus_segments = self._bus_segments(resume_op)
         self._ongoing_ops.setdefault(die, []).append(meta)
+        self._last_resume_error = None
         return meta
 
     def is_op_suspended(self, op_id: int) -> bool:
@@ -1326,6 +1751,10 @@ class ResourceManager:
                         "end_us": m.end_us,
                         "remaining_us": m.remaining_us,
                         "suspend_time_us": m.suspend_time_us,
+                        "scope": self._scope_name(m.scope),
+                        "states": [[name, dur] for (name, dur) in m.states],
+                        "bus_segments": [[seg[0], seg[1]] for seg in m.bus_segments],
+                        "consumed_us": m.consumed_us,
                     }
                     for m in lst
                 ]
@@ -1343,6 +1772,10 @@ class ResourceManager:
                         "end_us": m.end_us,
                         "remaining_us": m.remaining_us,
                         "suspend_time_us": m.suspend_time_us,
+                        "scope": self._scope_name(m.scope),
+                        "states": [[name, dur] for (name, dur) in m.states],
+                        "bus_segments": [[seg[0], seg[1]] for seg in m.bus_segments],
+                        "consumed_us": m.consumed_us,
                     }
                     for m in lst
                 ]
@@ -1359,6 +1792,10 @@ class ResourceManager:
                         "end_us": m.end_us,
                         "remaining_us": m.remaining_us,
                         "suspend_time_us": m.suspend_time_us,
+                        "scope": self._scope_name(m.scope),
+                        "states": [[name, dur] for (name, dur) in m.states],
+                        "bus_segments": [[seg[0], seg[1]] for seg in m.bus_segments],
+                        "consumed_us": m.consumed_us,
                     }
                     for m in lst
                 ]
@@ -1376,6 +1813,10 @@ class ResourceManager:
                         "end_us": m.end_us,
                         "remaining_us": m.remaining_us,
                         "suspend_time_us": m.suspend_time_us,
+                        "scope": self._scope_name(m.scope),
+                        "states": [[name, dur] for (name, dur) in m.states],
+                        "bus_segments": [[seg[0], seg[1]] for seg in m.bus_segments],
+                        "consumed_us": m.consumed_us,
                     }
                     for m in (self._suspended_ops_erase.get(d, []) + self._suspended_ops_program.get(d, []))
                 ]
@@ -1461,17 +1902,8 @@ class ResourceManager:
             d = int(k)
             acc: List[_OpMeta] = []
             for m in lst:
-                acc.append(_OpMeta(
-                    die=d,
-                    op_id=m.get("op_id"),
-                    op_name=m.get("op_name"),
-                    base=str(m.get("base")),
-                    targets=[Address(int(t[0]), int(t[1]), int(t[2]), (None if t[3] in (None, "None") else int(t[3]))) for t in m.get("targets", [])],
-                    start_us=float(m.get("start_us", 0.0)),
-                    end_us=float(m.get("end_us", 0.0)),
-                    remaining_us=(None if m.get("remaining_us") in (None, "None") else float(m.get("remaining_us"))),
-                    suspend_time_us=(None if m.get("suspend_time_us") in (None, "None") else float(m.get("suspend_time_us"))),
-                ))
+                if isinstance(m, dict):
+                    acc.append(self._meta_from_snapshot(d, m))
             self._ongoing_ops[d] = acc
         # Restore suspended ops (axis-specific preferred, legacy fallback)
         self._suspended_ops_erase = {d: [] for d in range(self.dies)}
@@ -1481,39 +1913,28 @@ class ResourceManager:
             d = int(k)
             acc: List[_OpMeta] = []
             for m in lst:
-                acc.append(_OpMeta(
-                    die=d,
-                    op_id=m.get("op_id"),
-                    op_name=m.get("op_name"),
-                    base=str(m.get("base")),
-                    targets=[Address(int(t[0]), int(t[1]), int(t[2]), (None if t[3] in (None, "None") else int(t[3]))) for t in m.get("targets", [])],
-                    start_us=float(m.get("start_us", 0.0)),
-                    end_us=float(m.get("end_us", 0.0)),
-                    remaining_us=(None if m.get("remaining_us") in (None, "None") else float(m.get("remaining_us"))),
-                    suspend_time_us=(None if m.get("suspend_time_us") in (None, "None") else float(m.get("suspend_time_us"))),
-                ))
+                if isinstance(m, dict):
+                    acc.append(self._meta_from_snapshot(d, m))
             self._suspended_ops_erase[d] = acc
         for k, lst in (snap.get("suspended_ops_program", {}) or {}).items():
             d = int(k)
             acc: List[_OpMeta] = []
             for m in lst:
-                acc.append(_OpMeta(
-                    die=d,
-                    op_id=m.get("op_id"),
-                    op_name=m.get("op_name"),
-                    base=str(m.get("base")),
-                    targets=[Address(int(t[0]), int(t[1]), int(t[2]), (None if t[3] in (None, "None") else int(t[3]))) for t in m.get("targets", [])],
-                    start_us=float(m.get("start_us", 0.0)),
-                    end_us=float(m.get("end_us", 0.0)),
-                    remaining_us=(None if m.get("remaining_us") in (None, "None") else float(m.get("remaining_us"))),
-                    suspend_time_us=(None if m.get("suspend_time_us") in (None, "None") else float(m.get("suspend_time_us"))),
-                ))
+                if isinstance(m, dict):
+                    acc.append(self._meta_from_snapshot(d, m))
             self._suspended_ops_program[d] = acc
         # Legacy field fallback
         if not any(self._suspended_ops_erase.values()) and not any(self._suspended_ops_program.values()):
             for k, lst in (snap.get("suspended_ops", {}) or {}).items():
                 d = int(k)
                 for m in lst:
+                    if m.get("consumed_us") in (None, "None"):
+                        consumed_meta = 0.0
+                    else:
+                        try:
+                            consumed_meta = quantize(float(m.get("consumed_us", 0.0)))
+                        except Exception:
+                            consumed_meta = 0.0
                     meta = _OpMeta(
                         die=d,
                         op_id=m.get("op_id"),
@@ -1524,6 +1945,10 @@ class ResourceManager:
                         end_us=float(m.get("end_us", 0.0)),
                         remaining_us=(None if m.get("remaining_us") in (None, "None") else float(m.get("remaining_us"))),
                         suspend_time_us=(None if m.get("suspend_time_us") in (None, "None") else float(m.get("suspend_time_us"))),
+                        scope=self._parse_scope(m.get("scope")),
+                        states=self._deserialize_states(m.get("states")),
+                        bus_segments=self._deserialize_segments(m.get("bus_segments")),
+                        consumed_us=consumed_meta,
                     )
                     b = str(meta.base).upper()
                     if "ERASE" in b:
@@ -1597,6 +2022,9 @@ class ResourceManager:
     def last_validation(self) -> Optional[Dict[str, Any]]:
         """Return last validation snapshot for observability/debugging."""
         return self._last_validation
+
+    def last_resume_error(self) -> Optional[Dict[str, Any]]:
+        return self._last_resume_error
 
     def _rules_cfg(self) -> Dict[str, Any]:
         cfg = (self.cfg or {}).get("constraints", {}) or {}
