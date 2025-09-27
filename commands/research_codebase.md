@@ -32,7 +32,7 @@
 
 4. **모든 하위 에이전트 완료 대기 후 결과 종합:**
    - 중요: 계속 진행하기 전에 모든 하위 에이전트 작업이 완료될 때까지 기다립니다
-   - 모든 하위 에이전트 결과(코드베이스 결과와 thoughts 결과 모두)를 취합합니다
+   - 모든 하위 에이전트 결과(코드베이스 결과)를 취합합니다
    - 실시간 코드베이스에서의 발견을 1차 신뢰 원천으로 우선시합니다
    - 서로 다른 구성 요소 간 발견 사항을 연결합니다
    - 패턴, 연결 관계, 아키텍처적 결정을 강조합니다
@@ -52,7 +52,6 @@
      ```markdown
      ---
      date: [Current date and time with timezone in ISO format]
-     researcher: [Researcher name from thoughts status]
      git_commit: [Current commit hash]
      branch: [Current branch name]
      repository: [Repository name]
@@ -60,13 +59,11 @@
      tags: [research, codebase, relevant-component-names]
      status: complete
      last_updated: [Current date in YYYY-MM-DD format]
-     last_updated_by: [Researcher name]
      ---
 
      # 연구: [사용자 질문/주제]
 
      **Date**: [4단계의 현재 날짜와 시간(시간대 포함)]
-     **Researcher**: [thoughts 상태의 연구자 이름]
      **Git Commit**: [4단계의 현재 커밋 해시]
      **Branch**: [4단계의 현재 브랜치 이름]
      **Repository**: [저장소 이름]
@@ -94,10 +91,6 @@
      ## 아키텍처 인사이트
      [발견된 패턴, 규약, 설계 결정]
 
-     ## 역사적 맥락(thoughts/ 기반)
-     [참조와 함께 thoughts/ 디렉터리에서의 관련 인사이트]
-     - `thoughts/something.md` - X에 대한 역사적 결정, Y에 대한 과거 탐색
-
      ## 관련 연구
      [research/ 내 다른 연구 문서 링크]
 
@@ -121,7 +114,6 @@
 ## 중요 메모:
 - 효율을 극대화하고 컨텍스트 사용을 최소화하기 위해 항상 병렬 Task 에이전트를 사용하세요
 - 항상 최신 코드베이스 조사를 수행하세요 — 기존 연구 문서에만 의존하지 마세요
-- thoughts/ 디렉터리는 실시간 발견을 보완하는 역사적 맥락을 제공합니다
 - 개발자 참조를 위해 구체적 파일 경로와 줄 번호 찾기에 집중하세요
 - 연구 문서는 필요한 모든 맥락을 포함한 자기완결적 문서여야 합니다
 - 각 하위 에이전트 프롬프트는 구체적이며 읽기 전용 작업에 집중해야 합니다
@@ -129,7 +121,6 @@
 - 연구가 수행된 시점(시간적 맥락)을 포함하세요
 - 메인 에이전트는 깊은 파일 읽기보다 "종합"에 집중하세요
 - 하위 에이전트가 정의만이 아니라 예시와 사용 패턴도 찾도록 유도하세요
-- thoughts/ 디렉터리 전체를 탐색하세요. research 하위 디렉터리만 보지 마세요
 - **파일 읽기**: 언급된 파일은 항상 "완전히" 읽고(limit/offset 없음) 하위 작업을 생성하세요
 - **중요한 순서**: 번호가 매겨진 단계를 정확히 따르세요
   - (1단계) 하위 작업을 생성하기 전에 언급된 파일을 먼저 읽습니다

@@ -42,7 +42,7 @@
 
    - 작업과 관련된 모든 파일 찾기
    - 현재 구현이 어떻게 동작하는지 이해하기
-   - 관련이 있다면 이 기능에 대한 기존 thoughts 문서 찾기
+   - 관련이 있다면 이 기능에 대한 기존 research 문서 찾기
 
    이 에이전트들은 다음을 수행합니다:
    - 관련 소스, 구성, 테스트 파일 찾기
@@ -246,7 +246,7 @@
 
 ## 참고 자료
 
-- 관련 연구: `thoughts/shared/research/[relevant].md`
+- 관련 연구: `research/[relevant].md`
 - 유사 구현: `[file:line]`
 ```
 
@@ -378,14 +378,3 @@
    - 예기치 않은 결과가 오면 후속 작업 생성
    - 실제 코드베이스와 교차 확인
    - 신뢰하기 어려운 결과는 수용하지 않기
-
-다중 작업 병렬 생성 예시:
-```python
-# 다음 작업을 동시에 생성합니다:
-tasks = [
-    Task("데이터베이스 스키마 조사", db_research_prompt),
-    Task("API 패턴 찾기", api_research_prompt),
-    Task("UI 컴포넌트 조사", ui_research_prompt),
-    Task("테스트 패턴 확인", test_research_prompt)
-]
-```

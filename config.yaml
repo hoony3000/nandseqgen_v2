@@ -581,8 +581,8 @@ op_bases:
     instant_resv: true
     sequence:
       probs:
-        - NONE: 0.99
-        - RECOVERY_RD.SEQ: 0.01
+        - NONE: 1.00
+        - RECOVERY_RD.SEQ: 0.0
       inherit:
         - RECOVERY_RD.SEQ: ['same_page_from_program_suspend']
     states:
