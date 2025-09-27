@@ -18,9 +18,9 @@ NAND operation 시퀀스를 랜덤하게 생성하기 위한 시스템으로, st
 - 가상 환경이 활성화 상태에서 모든 테스트를 진행한다.
 - 환경 구성: `python -m venv .venv && source .venv/bin/activate`
 - 의존성 설치: `pip install -r requirements.txt`
-- 기본 실행: `.venv/binpython main.py --config config.yaml --out-dir out`
+- 기본 실행: `.venv/bin/python main.py --config config.yaml --out-dir out`
 - 전체 테스트: `.venv/bin/python -m pytest`
-- 선택적 단위 실행: `.venv/binpython -m pytest tests/test_suspend_resume.py -k resume`
+- 선택적 단위 실행: `.venv/bin/python -m pytest tests/test_suspend_resume.py -k resume`
 - 대규모 몬테카를로 작업은 `out/2024-ops/`처럼 날짜 기반 디렉터리에 저장해 산출물을 추적합니다.
 
 ## 코딩 스타일 및 네이밍 규칙
