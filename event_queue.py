@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 
 _PRIO = {"OP_END": 0, "PHASE_HOOK": 1, "QUEUE_REFILL": 2, "OP_START": 3}
@@ -14,11 +14,15 @@ class EventQueue:
     def is_empty(self) -> bool:
         return not self._q
 
-    def push(self, when: float, kind: str, payload: Dict[str, Any]) -> None:
+    def push(self, when: float, kind: str, payload: Dict[str, Any]) -> int:
         pri = _PRIO.get(kind, 3)
         self._seq += 1
-        self._q.append((float(when), int(pri), int(self._seq), str(kind), dict(payload or {})))
+        seq = int(self._seq)
+        payload_copy = dict(payload or {})
+        payload_copy.setdefault("event_seq", seq)
+        self._q.append((float(when), int(pri), seq, str(kind), payload_copy))
         self._q.sort(key=lambda x: (x[0], x[1], x[2]))
+        return seq
 
     def pop_time_batch(self) -> Tuple[float, List[Tuple[float, int, int, str, Dict[str, Any]]]]:
         if not self._q:
@@ -32,3 +36,15 @@ class EventQueue:
         del self._q[:i]
         return (t0, batch)
 
+    def remove(self, seq_id: int, *, kind: Optional[str] = None) -> bool:
+        """Remove an event by its sequence identifier.
+
+        When *kind* is provided, only remove a matching event type. Returns
+        True when an entry was removed, False otherwise.
+        """
+
+        for idx, (_, _, seq, entry_kind, _) in enumerate(self._q):
+            if seq == seq_id and (kind is None or entry_kind == kind):
+                del self._q[idx]
+                return True
+        return False

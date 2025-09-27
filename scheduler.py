@@ -105,6 +105,7 @@ class Scheduler:
         self._boot_program_blocks: set[Tuple[int, int]] = set()
         # Event queue (time-ordered)
         self._eq = EventQueue()
+        self._op_end_handles: Dict[int, int] = {}
         # seed initial queue_refill event
         self._eq.push(self.now_us, "QUEUE_REFILL", payload={})
         # round-robin cursor for QUEUE_REFILL hooks
@@ -113,6 +114,7 @@ class Scheduler:
         # Drain strategy for OP_END events at run boundaries
         self._drain_on_exit: bool = bool(drain_on_exit)
         self.metrics["drain_op_end_processed"] = 0
+        self.metrics["suspended_op_end_cancelled"] = 0
         # Global op_uid monotonic counter (Alt C resume flow)
         self._op_uid_seq: int = 0
         # Resume diagnostics & OP event export buffers
@@ -210,11 +212,19 @@ class Scheduler:
             if target_time < last_time:
                 target_time = last_time
             self._advance_time_to(target_time)
+            op_uid_val = payload.get("op_uid")
+            try:
+                op_uid_int = int(op_uid_val) if op_uid_val is not None else None
+            except Exception:
+                op_uid_int = None
             try:
                 self._handle_op_end(payload)
             except Exception:
                 # Continue draining other events even if one handler fails
                 pass
+            finally:
+                if op_uid_int is not None:
+                    self._op_end_handles.pop(op_uid_int, None)
             drained += 1
             last_time = self.now_us
         self._eq._q = kept
@@ -276,6 +286,8 @@ class Scheduler:
             op_uid_int = int(op_uid) if op_uid is not None else None
         except Exception:
             op_uid_int = None
+        if op_uid_int is not None:
+            self._op_end_handles.pop(op_uid_int, None)
         try:
             if op_uid_int is not None and self._deps.rm.is_op_suspended(op_uid_int):
                 return
@@ -507,7 +519,9 @@ class Scheduler:
                     page_v = None
                 exp.append((die_v, plane_v, block_v, page_v))
             self._resume_expected_targets[op_uid_int] = exp
-        self._eq.push(float(meta.end_us), "OP_END", payload=payload)
+        seq = self._eq.push(float(meta.end_us), "OP_END", payload=payload)
+        if op_uid_int is not None:
+            self._op_end_handles[op_uid_int] = seq
 
     def _am_apply_on_end(
         self,
@@ -783,6 +797,30 @@ class Scheduler:
                 self.metrics["committed_by_base"][b] = int(self.metrics["committed_by_base"].get(b, 0)) + 1
                 # emit OP_START/OP_END and state PHASE_HOOKs
                 self._emit_op_events(rec)
+                b_upper = b.upper()
+                if b_upper in ("PROGRAM_SUSPEND", "ERASE_SUSPEND"):
+                    die_val: Optional[int] = None
+                    for tgt in rec.get("targets") or []:
+                        try:
+                            die_val = int(getattr(tgt, "die"))
+                            break
+                        except Exception:
+                            continue
+                    if die_val is None:
+                        hook_die = rec.get("phase_hook_die")
+                        try:
+                            die_val = None if hook_die in (None, "None") else int(hook_die)
+                        except Exception:
+                            die_val = None
+                    if die_val is None:
+                        continue
+                    axis = "PROGRAM" if b_upper == "PROGRAM_SUSPEND" else "ERASE"
+                    try:
+                        suspended_ids = self._deps.rm.consume_suspended_op_ids(axis, die_val)
+                    except Exception:
+                        suspended_ids = []
+                    for op_id in suspended_ids:
+                        self._cancel_op_end(op_id)
             self.metrics["last_commit_bases"] = list(bases)
             # Register ongoing meta for freshly committed ERASE/PROGRAM operations
             try:
@@ -869,10 +907,17 @@ class Scheduler:
                 hook_targets_payload = None
         # OP_START and OP_END
         targets_payload = list(targets)
-        payload_start = {"base": base, "op_name": rec["op_name"], "targets": targets_payload, "op_uid": rec.get("op_uid")}
-        payload_end = {"base": base, "op_name": rec["op_name"], "targets": targets_payload, "op_uid": rec.get("op_uid")}
+        op_uid_raw = rec.get("op_uid")
+        payload_start = {"base": base, "op_name": rec["op_name"], "targets": targets_payload, "op_uid": op_uid_raw}
+        payload_end = {"base": base, "op_name": rec["op_name"], "targets": targets_payload, "op_uid": op_uid_raw}
         self._eq.push(start, "OP_START", payload=payload_start)
-        self._eq.push(end, "OP_END", payload=payload_end)
+        seq_end = self._eq.push(end, "OP_END", payload=payload_end)
+        try:
+            op_uid_int = int(op_uid_raw) if op_uid_raw is not None else None
+        except Exception:
+            op_uid_int = None
+        if op_uid_int is not None:
+            self._op_end_handles[op_uid_int] = seq_end
         # If this operation does not affect state, do not emit PHASE_HOOKs
         if not _affects_state(self._deps.cfg, base):
             return
@@ -905,6 +950,35 @@ class Scheduler:
                     self._eq.push(post_t, "PHASE_HOOK", payload={"hook": hook})
             t = t_end
         return
+
+    def _cancel_op_end(self, op_uid: int) -> bool:
+        try:
+            op_uid_int = int(op_uid)
+        except Exception:
+            return False
+        seq = self._op_end_handles.pop(op_uid_int, None)
+        if seq is None:
+            return False
+        removed = self._eq.remove(seq, kind="OP_END")
+        if removed:
+            try:
+                self.metrics["suspended_op_end_cancelled"] = int(
+                    self.metrics.get("suspended_op_end_cancelled", 0)
+                ) + 1
+            except Exception:
+                self.metrics["suspended_op_end_cancelled"] = 1
+            return True
+        logger = getattr(self._deps, "logger", None)
+        try:
+            if logger is not None and hasattr(logger, "warning"):
+                logger.warning(
+                    "scheduler_cancel_op_end_failed op_uid=%s seq=%s",
+                    op_uid_int,
+                    seq,
+                )
+        except Exception:
+            pass
+        return False
 
 
 def _is_instant_base(cfg: Dict[str, Any], base: str) -> bool:

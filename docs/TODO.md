@@ -55,13 +55,18 @@
   - 개선 방향과 실험:
   - 평가 결과:
 
-- [ ] B08
+- [x] B08
   - 문제 상황: SUSPEND, RESUME 반복 시나리오에서 PROGRAM target(die, block) 내 page address 가 0→1→2 순서로 증가하지 않고 RESUME 된 PROGRAM 이 끝나기도 전에 다음 PROGRAM 이 예약되는 문제가 있다.
   - 개선 방향과 실험:
   - 평가 결과:
 
-- [ ] B10
+- [x] B10
   - 문제 상황: suspend 이후 suspended_ops 의 remaining_us 가 계산이 잘됐는지, resume 시에 올바르게 스케쥴에 반영되는지. 즉, resume 동작 busy 가 끝난 후, suspended_ops 가 이어서 예약되는지 확인.
+  - 개선 방향과 실험:
+  - 평가 결과:
+
+- [ ] B11
+  - 문제 상황: ONESHOT_PROGRAM_MSB_23H SUSPEND->RESUME 반복 시나리오에서, SUSPEND 가 항상 ONESHOT_PROGRAM_MSB_23H OP_END 직후에 예약되는 현상
   - 개선 방향과 실험:
   - 평가 결과:
 

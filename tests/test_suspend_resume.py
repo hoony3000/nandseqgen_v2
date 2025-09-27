@@ -7,6 +7,7 @@ from typing import Optional
 
 import pytest
 
+from addrman import AddressManager
 from resourcemgr import Address, ResourceManager, Scope
 from scheduler import Scheduler
 
@@ -112,6 +113,39 @@ class SuspendResumeTests(unittest.TestCase):
         self.assertEqual(suspended2["states"], [("CORE_BUSY", 20.0)])
         self.assertAlmostEqual(suspended2["consumed_us"], 20.0, places=6)
         self.assertEqual(rm._plane_resv[(0, 0)], [(0.0, 10.0), (25.0, 35.0)])
+
+    def test_consume_suspended_op_ids_returns_buffered_handles(self) -> None:
+        rm = ResourceManager(cfg={}, dies=1, planes=1)
+        targets = [Address(die=0, plane=0, block=0, page=0)]
+        uid = 333
+        op = _mk_op("PROGRAM_SLC", 20.0)
+
+        txn = rm.begin(0.0)
+        res = rm.reserve(txn, op, targets, Scope.PLANE_SET)
+        self.assertTrue(res.ok)
+        rm.commit(txn)
+        rm.register_ongoing(
+            die=0,
+            op_id=uid,
+            op_name="PROGRAM_SLC",
+            base="PROGRAM_SLC",
+            targets=targets,
+            start_us=0.0,
+            end_us=20.0,
+            scope=Scope.PLANE_SET,
+            op=op,
+        )
+
+        rm.move_to_suspended_axis(0, op_id=uid, now_us=5.0, axis="PROGRAM")
+        self.assertTrue(rm.is_op_suspended(uid))
+
+        # Incorrect axis returns nothing and leaves the entry queued
+        self.assertEqual(rm.consume_suspended_op_ids("ERASE", 0), [])
+
+        ids = rm.consume_suspended_op_ids("PROGRAM", 0)
+        self.assertEqual(ids, [uid])
+        # Subsequent calls drain the buffer
+        self.assertEqual(rm.consume_suspended_op_ids("PROGRAM", 0), [])
 
     def test_die_wide_suspend_covers_all_planes(self) -> None:
         rm = ResourceManager(cfg={}, dies=1, planes=3)
@@ -366,6 +400,87 @@ class SuspendResumeTests(unittest.TestCase):
         self.assertEqual(second["block"], 2)
         self.assertEqual(second["page"], 4)
         self.assertEqual(sched.drain_apply_pgm_rows(), [])
+
+    def test_scheduler_cancels_op_end_on_suspend_then_applies_once_on_resume(self) -> None:
+        cfg = {
+            "program_base_whitelist": ["PROGRAM_SLC"],
+            "topology": {"dies": 1, "planes": 1, "blocks_per_die": 4, "pages_per_block": 8},
+            "op_bases": {"PROGRAM_SLC": {"affect_state": True}},
+        }
+        addr = AddressManager.from_topology(cfg["topology"])
+        rm = ResourceManager(cfg=cfg, dies=1, planes=1)
+        sched = Scheduler(cfg=cfg, rm=rm, addrman=addr)
+
+        targets = [Address(die=0, plane=0, block=0, page=0)]
+        op = _mk_op("PROGRAM_SLC", 30.0)
+        uid = 5150
+        rec_program = {
+            "base": "PROGRAM_SLC",
+            "op_name": "PROGRAM_SLC",
+            "targets": targets,
+            "op": op,
+            "start_us": 0.0,
+            "end_us": 30.0,
+            "scope": Scope.PLANE_SET,
+            "op_uid": uid,
+        }
+
+        baseline_state = int(addr.addrstates[0])
+        sched._emit_op_events(rec_program)
+        rm.register_ongoing(
+            die=0,
+            op_id=uid,
+            op_name="PROGRAM_SLC",
+            base="PROGRAM_SLC",
+            targets=targets,
+            start_us=0.0,
+            end_us=30.0,
+            scope=Scope.PLANE_SET,
+            op=op,
+        )
+
+        def _queue_contains_op_end(op_uid: int) -> bool:
+            return any(
+                kind == "OP_END" and payload.get("op_uid") == op_uid
+                for (_, _, _, kind, payload) in sched._eq._q
+            )
+
+        self.assertTrue(_queue_contains_op_end(uid))
+
+        rm.move_to_suspended_axis(0, op_id=uid, now_us=10.0, axis="PROGRAM")
+        suspended_ids = rm.consume_suspended_op_ids("PROGRAM", 0)
+        self.assertEqual(suspended_ids, [uid])
+        self.assertTrue(sched._cancel_op_end(uid))
+        self.assertEqual(int(sched.metrics["suspended_op_end_cancelled"]), 1)
+        self.assertFalse(_queue_contains_op_end(uid))
+        self.assertNotIn(uid, sched._op_end_handles)
+
+        resume_rec = {
+            "base": "PROGRAM_RESUME",
+            "op_name": "PROGRAM_RESUME",
+            "targets": targets,
+            "end_us": 40.0,
+        }
+        sched._handle_resume_commit(resume_rec)
+        self.assertIn(uid, sched._op_end_handles)
+
+        pending_entry = None
+        for entry in list(sched._eq._q):
+            if entry[3] == "OP_END" and entry[4].get("op_uid") == uid:
+                pending_entry = entry
+                break
+        self.assertIsNotNone(pending_entry)
+        assert pending_entry is not None
+        when, _prio, seq, _kind, payload = pending_entry
+
+        self.assertTrue(sched._eq.remove(seq, kind="OP_END"))
+        sched._advance_time_to(float(when))
+        before_resume_state = int(addr.addrstates[0])
+        sched._handle_op_end(payload)
+        after_state = int(addr.addrstates[0])
+        self.assertEqual(after_state - before_resume_state, 1)
+        self.assertNotIn(uid, sched._op_end_handles)
+        self.assertEqual(int(addr.addrstates[0]) - baseline_state, 1)
 
     def test_suspend_slices_states_and_bus_segments(self) -> None:
         rm = ResourceManager(cfg={}, dies=1, planes=1)

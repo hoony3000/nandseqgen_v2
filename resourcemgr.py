@@ -183,6 +183,8 @@ class ResourceManager:
         self._suspended_ops_program: Dict[int, List[_OpMeta]] = {d: [] for d in range(self.dies)}
         # Backward-compat container (legacy snapshots); not used for new writes
         self._suspended_ops: Dict[int, List[_OpMeta]] = {d: [] for d in range(self.dies)}
+        # Suspended op transfers staged for Scheduler consumption (axis, die) -> [op_uid]
+        self._suspend_transfers: Dict[Tuple[str, int], List[int]] = {}
         # --- Validator integration (skeleton, gated by config) ---
         # External address-dependent policy callback (e.g., AddressManager.check_epr)
         self.addr_policy: Optional[Callable[..., Any]] = None
@@ -1697,6 +1699,16 @@ class ResourceManager:
             stack = self._suspended_ops_program.setdefault(die, [])
             stack.append(meta)
 
+        # Surface suspended op identifiers to the scheduler for OP_END cancellation.
+        op_uid = getattr(meta, "op_id", None)
+        if op_uid is not None:
+            try:
+                key = (fam, int(die))
+                bucket = self._suspend_transfers.setdefault(key, [])
+                bucket.append(int(op_uid))
+            except Exception:
+                pass
+
     def resume_from_suspended(self, die: int, op_id: Optional[int], now_us: Optional[float] = None) -> None:
         """Backward-compatible wrapper. Picks the most recent across axes when op_id is None.
 
@@ -1837,6 +1849,15 @@ class ResourceManager:
                 return True
         return False
 
+    def consume_suspended_op_ids(self, axis: str, die: int) -> List[int]:
+        """Return and clear suspended op IDs for the given axis/die pair."""
+
+        fam = str(axis).upper()
+        key = (fam, int(die))
+        ids = self._suspend_transfers.pop(key, [])
+        # Defensive copy so callers cannot mutate internal storage accidentally
+        return list(ids)
+
     def complete_op(self, op_id: int) -> None:
         if op_id is None:
             return
@@ -1946,6 +1967,10 @@ class ResourceManager:
                 ]
                 for d, lst in self._suspended_ops_program.items()
             },
+            "suspend_transfers": [
+                (axis, die, list(ids))
+                for (axis, die), ids in self._suspend_transfers.items()
+            ],
             # legacy single-axis union view (for backward-compat consumers)
             "suspended_ops": {
                 d: [
@@ -2069,6 +2094,25 @@ class ResourceManager:
                 if isinstance(m, dict):
                     acc.append(self._meta_from_snapshot(d, m))
             self._suspended_ops_program[d] = acc
+        self._suspend_transfers = {}
+        for entry in snap.get("suspend_transfers", []) or []:
+            if not isinstance(entry, (list, tuple)) or len(entry) != 3:
+                continue
+            axis_raw, die_raw, ids_raw = entry
+            try:
+                axis = str(axis_raw).upper()
+                die = int(die_raw)
+            except Exception:
+                continue
+            bucket: List[int] = []
+            if isinstance(ids_raw, (list, tuple)):
+                for item in ids_raw:
+                    try:
+                        bucket.append(int(item))
+                    except Exception:
+                        continue
+            if bucket:
+                self._suspend_transfers[(axis, die)] = bucket
         # Legacy field fallback
         if not any(self._suspended_ops_erase.values()) and not any(self._suspended_ops_program.values()):
             for k, lst in (snap.get("suspended_ops", {}) or {}).items():

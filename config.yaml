@@ -4752,9 +4752,9 @@ phase_conditional_overrides:
     # Auto_Read_by_38h_Cmd_Target_Level: 0.0
     # Auto_Read_by_39h_Cmd_LUN_Level: 0.0
     # Auto_Read_by_FDh_Cmd_LUN_Level: 0.0
-    Block_Erase_TLC: 0.0
+    # Block_Erase_TLC: 0.0
     Block_Erase_AESLC: 0.0
-    # Block_Erase_SLC: 0.0
+    Block_Erase_SLC: 0.0
     Block_Erase_Multi_Plane_Legacy_TLC: 0.0
     Block_Erase_Multi_Plane_Legacy_AESLC: 0.0
     Block_Erase_Multi_Plane_Legacy_SLC: 0.0
@@ -5025,10 +5025,10 @@ phase_conditional_overrides:
     ETC: 0.0
     # ERASE: 0.0
     DSL_VTH_CHECK: 0.0
-    # PROGRAM_SLC: 0.0
+    PROGRAM_SLC: 0.0
     ALLWL_PROGRAM: 0.0
     CACHE_PROGRAM_SLC: 0.0
-    ONESHOT_PROGRAM_LSB: 0.0
+    # ONESHOT_PROGRAM_LSB: 0.0
     ONESHOT_PROGRAM_CSB: 0.0
     ONESHOT_PROGRAM_MSB: 0.0
     ONESHOT_PROGRAM_EXEC_MSB: 0.0
@@ -5158,11 +5158,11 @@ phase_conditional_overrides:
     NOP: 0.5
     # ERASE_SUSPEND: 0.1
   PROGRAM_SLC.CORE_BUSY:
-    # NOP: 0.5
+    NOP: 0.5
     PROGRAM_SUSPEND: 0.1
   ONESHOT_PROGRAM_MSB_23H.CORE_BUSY:
-    NOP: 0.5
-    # PROGRAM_SUSPEND: 0.1
+    # NOP: 0.5
+    PROGRAM_SUSPEND: 0.1
   # ONESHOT_PROGRAM_EXEC_MSB.CORE_BUSY:
   #   NOP: 0.5
   #   PROGRAM_SUSPEND: 0.1
