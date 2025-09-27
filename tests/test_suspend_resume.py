@@ -151,7 +151,10 @@ class SuspendResumeTests(unittest.TestCase):
         rm = _StubRM()
         addr = _StubAddrMan()
         sched = Scheduler(cfg={}, rm=rm, addrman=addr)
-        sched._am_apply_on_end = types.MethodType(lambda _self, base, op_name, targets: addr.apply_pgm(None), sched)
+        sched._am_apply_on_end = types.MethodType(
+            lambda _self, base, op_name, targets, op_uid=None: addr.apply_pgm(None),
+            sched,
+        )
         uid = 404
         rm.suspended.add(uid)
 
@@ -323,6 +326,46 @@ class SuspendResumeTests(unittest.TestCase):
         self.assertFalse(row["is_resumed"])
         self.assertEqual(row["triggered_us"], float(sched.now_us))
         self.assertEqual(sched.drain_op_event_rows(), [])
+
+    def test_scheduler_logs_apply_pgm_calls(self) -> None:
+        cfg = {"program_base_whitelist": ["PROGRAM_SLC"]}
+        rm = _StubRM()
+        addr = _StubAddrMan()
+        sched = Scheduler(cfg=cfg, rm=rm, addrman=addr)
+        uid = 77
+        payload = {
+            "base": "PROGRAM_SLC",
+            "op_name": "PROGRAM_SLC",
+            "targets": [Address(die=0, plane=1, block=2, page=4)],
+            "op_uid": uid,
+        }
+
+        sched._handle_op_end(payload)
+        first_rows = sched.drain_apply_pgm_rows()
+        self.assertEqual(addr.apply_calls, 1)
+        self.assertEqual(len(first_rows), 1)
+        first = first_rows[0]
+        self.assertEqual(first["op_uid"], uid)
+        self.assertEqual(first["call_seq"], 1)
+        self.assertFalse(first["resume"])
+        self.assertEqual(first["plane"], 1)
+        self.assertEqual(first["block"], 2)
+        self.assertEqual(first["page"], 4)
+        self.assertEqual(first["base"], "PROGRAM_SLC")
+
+        sched._resumed_op_uids.add(uid)
+        sched._handle_op_end(payload)
+        second_rows = sched.drain_apply_pgm_rows()
+        self.assertEqual(addr.apply_calls, 2)
+        self.assertEqual(len(second_rows), 1)
+        second = second_rows[0]
+        self.assertEqual(second["call_seq"], 2)
+        self.assertTrue(second["resume"])
+        self.assertEqual(second["op_uid"], uid)
+        self.assertEqual(second["plane"], 1)
+        self.assertEqual(second["block"], 2)
+        self.assertEqual(second["page"], 4)
+        self.assertEqual(sched.drain_apply_pgm_rows(), [])
 
     def test_suspend_slices_states_and_bus_segments(self) -> None:
         rm = ResourceManager(cfg={}, dies=1, planes=1)

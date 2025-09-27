@@ -119,6 +119,8 @@ class Scheduler:
         self._resumed_op_uids: set[int] = set()
         self._resume_expected_targets: Dict[int, List[Tuple[int, int, int, Optional[int]]]] = {}
         self._op_event_rows: List[Dict[str, Any]] = []
+        self._apply_pgm_rows: List[Dict[str, Any]] = []
+        self._apply_pgm_call_seq: Dict[Optional[int], int] = {}
         self.metrics["program_resume_page_mismatch"] = 0
 
     # -----------------
@@ -291,7 +293,12 @@ class Scheduler:
             self._deps.rm.release_on_exec_msb_end(die, now_us=self.now_us)
         # AddressManager state sync at OP_END for ERASE/PROGRAM families
         try:
-            self._am_apply_on_end(base=str(payload.get("base")), op_name=str(payload.get("op_name", "")), targets=targets)
+            self._am_apply_on_end(
+                base=str(payload.get("base")),
+                op_name=str(payload.get("op_name", "")),
+                targets=targets,
+                op_uid=op_uid_int,
+            )
         except Exception:
             # Best-effort: ignore AM sync failures to avoid breaking scheduling
             pass
@@ -397,6 +404,11 @@ class Scheduler:
         self._op_event_rows.clear()
         return rows
 
+    def drain_apply_pgm_rows(self) -> List[Dict[str, Any]]:
+        rows = list(self._apply_pgm_rows)
+        self._apply_pgm_rows.clear()
+        return rows
+
     def _handle_resume_commit(self, rec: Dict[str, Any]) -> None:
         b = str(rec.get("base", ""))
         bb = b.upper()
@@ -497,14 +509,15 @@ class Scheduler:
             self._resume_expected_targets[op_uid_int] = exp
         self._eq.push(float(meta.end_us), "OP_END", payload=payload)
 
-    def _am_apply_on_end(self, base: str, op_name: str, targets: Iterable[Address]) -> None:
-        """Apply ERASE/PROGRAM effects to AddressManager on OP_END.
-
-        - ERASE family: mark blocks as ERASE with erase celltype
-        - PROGRAM family: increment programmed page and set program mode on fresh ERASE
-        Converts targets -> numpy ndarray of shape (#, 1, 3) as (die, block, page).
-        Guards: no-op on empty targets or when addrman lacks apply_*.
-        """
+    def _am_apply_on_end(
+        self,
+        base: str,
+        op_name: str,
+        targets: Iterable[Address],
+        *,
+        op_uid: Optional[int] = None,
+    ) -> None:
+        """Apply ERASE/PROGRAM effects to AddressManager on OP_END and log PROGRAM commits."""
         d = self._deps
         am = getattr(d, "addrman", None)
         if am is None:
@@ -532,15 +545,6 @@ class Scheduler:
             return
         # Build ndarray (#, 1, 3): (die, block, page)
         rows = []
-        for t in t_list:
-            die = int(getattr(t, "die", 0))
-            block = int(getattr(t, "block", 0))
-            page_val = getattr(t, "page", None)
-            page = 0 if (is_erase or page_val is None) else int(page_val)
-            rows.append([die, block, page])
-        if not rows:
-            return
-        addrs = np.array(rows, dtype=int).reshape(-1, 1, 3)
         mode = _celltype_from_cfg(d.cfg, op_name)
         # Whitelist of PROGRAM bases that are allowed to commit addr_state at OP_END
         allowed_program_commit = set(get_allowed_program_bases(d.cfg))
@@ -556,9 +560,51 @@ class Scheduler:
         except Exception:
             pass
         is_program_commit = b in allowed_program_commit
+        should_log_apply = is_program_commit and hasattr(am, "apply_pgm")
+        log_rows: List[Dict[str, Any]] = []
+        call_seq: Optional[int] = None
+        resume_flag = bool(op_uid is not None and op_uid in self._resumed_op_uids)
+        for t in t_list:
+            die = self._coerce_int(getattr(t, "die", 0))
+            block = self._coerce_int(getattr(t, "block", 0))
+            plane = self._coerce_int(getattr(t, "plane", 0))
+            page_attr = getattr(t, "page", None)
+            try:
+                page_raw = None if page_attr is None else int(page_attr)
+            except Exception:
+                page_raw = None
+            page = 0 if (is_erase or page_raw is None) else int(page_raw)
+            rows.append([die, block, page])
+            # Log PROGRAM commits per target when apply_pgm executes
+            if should_log_apply:
+                if call_seq is None:
+                    key = op_uid
+                    prev = self._apply_pgm_call_seq.get(key, 0)
+                    call_seq = prev + 1
+                    self._apply_pgm_call_seq[key] = call_seq
+                log_rows.append(
+                    {
+                        "triggered_us": float(self.now_us),
+                        "op_uid": op_uid if op_uid is not None else 0,
+                        "op_name": str(op_name),
+                        "base": b,
+                        "celltype": mode,
+                        "die": die,
+                        "plane": plane,
+                        "block": block,
+                        "page": page_raw if page_raw is not None else -1,
+                        "resume": resume_flag,
+                        "call_seq": call_seq,
+                    }
+                )
+        if not rows:
+            return
+        addrs = np.array(rows, dtype=int).reshape(-1, 1, 3)
+        if log_rows and should_log_apply:
+            self._apply_pgm_rows.extend(log_rows)
         if is_erase and hasattr(am, "apply_erase"):
             am.apply_erase(addrs, mode=mode)
-        elif is_program_commit and hasattr(am, "apply_pgm"):
+        elif should_log_apply:
             am.apply_pgm(addrs, mode=mode)
 
     # -----------------
