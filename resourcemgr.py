@@ -80,19 +80,21 @@ class _StateTimeline:
             seg=lst[i]
             if seg.start_us < t < seg.end_us and (pred is None or pred(seg)):
                 seg.end_us = t
-        # Remove following matching segments that start at or after t
-        k=j
-        while k < len(lst):
-            seg=lst[k]
-            if seg.start_us >= t and (pred is None or pred(seg)):
-                k+=1
-            else:
-                break
-        # delete lst[j:k]
-        if j < k:
-            del lst[j:k]
-        # rebuild starts
-        self._starts_by_plane[key]=[s.start_us for s in lst]
+        # Remove any matching segments at or after t, even if interleaved with non-matching ones
+        removed = False
+        def _match(s: _StateInterval) -> bool:
+            return True if pred is None else bool(pred(s))
+        new_lst: List[_StateInterval] = []
+        for idx, seg in enumerate(lst):
+            if idx >= j and seg.start_us >= t and _match(seg):
+                removed = True
+                continue
+            new_lst.append(seg)
+        if removed:
+            self.by_plane[key] = new_lst
+            self._starts_by_plane[key] = [s.start_us for s in new_lst]
+        else:
+            self._starts_by_plane[key]=[s.start_us for s in lst]
 @dataclass
 class _StOpEntry:
     die: int
@@ -901,35 +903,34 @@ class ResourceManager:
                     except Exception:
                         # best-effort; continue even if no ongoing meta
                         pass
-                    # Determine planes to truncate based on just-moved meta when available
-                    planes_to_cut: List[int]
+                    # Determine planes and bases to truncate based on just-moved meta when available
                     try:
-                        if fam == "ERASE":
-                            meta_list = self._suspended_ops_erase.get(int(die), [])
-                        else:
-                            meta_list = self._suspended_ops_program.get(int(die), [])
-                        meta = meta_list[-1] if meta_list else None
-                        planes_from_meta: Set[int] = set(entry_plane_set)
-                        if meta:
-                            try:
-                                planes_from_meta.update(int(p) for p in getattr(meta, "planes", []) or [])
-                            except Exception:
-                                pass
-                            if not planes_from_meta and meta.targets:
-                                planes_from_meta.update(int(t.plane) for t in meta.targets)
-                        if not planes_from_meta and meta and meta.scope == Scope.DIE_WIDE:
-                            planes_from_meta.update(range(self.planes))
-                        if not planes_from_meta:
-                            planes_from_meta.update(range(self.planes))
-                        planes_to_cut = sorted(planes_from_meta)
+                        planes_to_cut, bases_to_cut = self._suspend_axes_targets(
+                            int(die),
+                            fam,
+                            entry_plane_set,
+                        )
                     except Exception:
-                        planes_to_cut = sorted(entry_plane_set) if entry_plane_set else list(range(self.planes))
-                    # Predicate: cut only CORE_BUSY segments of the target family
+                        planes_to_cut = (
+                            sorted(entry_plane_set) if entry_plane_set else list(range(self.planes))
+                        )
+                        bases_to_cut = set()
+                    bases_upper = {str(b).upper() for b in bases_to_cut if str(b).strip()}
+                    fam_upper = str(fam).upper()
+
                     def _pred(seg: _StateInterval) -> bool:
                         try:
-                            return (seg.state == "CORE_BUSY") and (fam in str(seg.op_base)) and ("SUSPEND" not in str(seg.op_base)) and ("RESUME" not in str(seg.op_base))
+                            base = str(seg.op_base).upper()
+                            state = str(seg.state).upper()
                         except Exception:
                             return False
+                        if "SUSPEND" in base or "RESUME" in base:
+                            return False
+                        if "SUSPEND" in state or "RESUME" in state:
+                            return False
+                        if bases_upper:
+                            return base in bases_upper
+                        return fam_upper in base
                     for p in planes_to_cut:
                         try:
                             self._st.truncate_after(int(die), int(p), float(start), pred=_pred)
@@ -1418,6 +1419,69 @@ class ResourceManager:
         if "PROGRAM" in bb and "SUSPEND" not in bb and "RESUME" not in bb:
             return "PROGRAM"
         return None
+
+    def _suspend_axes_targets(
+        self,
+        die: int,
+        axis: str,
+        entry_plane_set: Set[int],
+    ) -> Tuple[List[int], Set[str]]:
+        """Return planes and op bases that should be truncated for a suspend event."""
+
+        axis_key = str(axis).upper()
+        planes: Set[int] = set()
+
+        def _add_plane(raw: Any) -> None:
+            try:
+                planes.add(int(raw))
+            except Exception:
+                return
+
+        for plane in entry_plane_set:
+            _add_plane(plane)
+
+        bases: Set[str] = set()
+        meta = None
+        try:
+            if axis_key == "ERASE":
+                meta_list = self._suspended_ops_erase.get(int(die), [])
+            else:
+                meta_list = self._suspended_ops_program.get(int(die), [])
+            if meta_list:
+                meta = meta_list[-1]
+        except Exception:
+            meta = None
+
+        if meta is not None:
+            for attr in ("base", "op_name"):
+                val = getattr(meta, attr, None)
+                if val:
+                    bases.add(str(val).upper())
+            try:
+                for plane in getattr(meta, "planes", []) or []:
+                    _add_plane(plane)
+            except Exception:
+                pass
+            try:
+                for tgt in getattr(meta, "targets", []) or []:
+                    _add_plane(getattr(tgt, "plane", None))
+            except Exception:
+                pass
+            try:
+                if not planes and getattr(meta, "scope", None) == Scope.DIE_WIDE:
+                    for plane in range(self.planes):
+                        planes.add(int(plane))
+            except Exception:
+                pass
+
+        if not planes:
+            for plane in entry_plane_set:
+                _add_plane(plane)
+        if not planes:
+            for plane in range(self.planes):
+                planes.add(int(plane))
+
+        return sorted(planes), bases
 
     def _slice_states(self, states: List[Tuple[str, float]], consumed_us: float) -> Tuple[List[Tuple[str, float]], float]:
         remaining: List[Tuple[str, float]] = []

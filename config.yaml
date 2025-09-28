@@ -150,7 +150,7 @@ op_bases:
       - CORE_BUSY:
         bus: false
         duration: 8.0
-      - DATA_IN:
+      - DATAIN:
         bus: false
         duration: 8.0
   ONESHOT_PROGRAM_LSB:
@@ -1545,7 +1545,7 @@ exclusion_groups:
     - ODTENABLE
   after_cache_program:
     - ETC
-    - NOP
+    # - NOP
     - ERASE
     - DSL_VTH_CHECK
     # - PROGRAM_SLC

@@ -10,7 +10,7 @@ import pytest
 import scheduler as sched_mod
 
 from addrman import AddressManager
-from resourcemgr import Address, ResourceManager, Scope, Reservation
+from resourcemgr import Address, ResourceManager, Scope, Reservation, SIM_RES_US
 from scheduler import Scheduler
 from proposer import ProposeDiagnostics, ProposeResult
 
@@ -71,6 +71,26 @@ def _mk_op(base: str, dur_us: float):
             self.states = [_State("CORE_BUSY", dur)]
 
     return _Op(base, dur_us)
+
+
+def _mk_program_with_tail(base: str, issue: float, core_busy: float, data_in: float):
+    class _State:
+        def __init__(self, name: str, dur: float, bus: bool) -> None:
+            self.name = name
+            self.dur_us = float(dur)
+            self.bus = bus
+
+    class _Op:
+        def __init__(self) -> None:
+            self.base = base
+            self.name = base
+            self.states = [
+                _State("ISSUE", issue, True),
+                _State("CORE_BUSY", core_busy, False),
+                _State("DATAIN", data_in, True),
+            ]
+
+    return _Op()
 
 
 def _setup_scheduler_with_backlog(monkeypatch):
@@ -430,6 +450,63 @@ class SuspendResumeTests(unittest.TestCase):
         self.assertIsNotNone(final_start)
         assert final_start is not None
         self.assertGreaterEqual(final_start, 90.0)
+
+    def test_suspend_truncates_tail_states_for_same_base(self) -> None:
+        rm = ResourceManager(cfg={}, dies=1, planes=2)
+        targets = [Address(die=0, plane=0, block=0, page=0)]
+        uid = 808
+        op = _mk_program_with_tail("CACHE_PROGRAM_SLC", issue=1.0, core_busy=20.0, data_in=5.0)
+
+        txn = rm.begin(0.0)
+        res = rm.reserve(txn, op, targets, Scope.DIE_WIDE)
+        self.assertTrue(res.ok)
+        rm.commit(txn)
+        rm.register_ongoing(
+            die=0,
+            op_id=uid,
+            op_name="CACHE_PROGRAM_SLC",
+            base="CACHE_PROGRAM_SLC",
+            targets=targets,
+            start_us=float(res.start_us or 0.0),
+            end_us=float(res.end_us or 0.0),
+            scope=Scope.DIE_WIDE,
+            op=op,
+        )
+
+        suspend_at = 15.0
+        txn_suspend = rm.begin(suspend_at)
+        txn_suspend.st_ops.append(
+            types.SimpleNamespace(
+                die=0,
+                planes=[],
+                base="PROGRAM_SUSPEND",
+                states=[("ISSUE", 0.2)],
+                start_us=suspend_at,
+            )
+        )
+        rm.commit(txn_suspend)
+
+        for plane in range(rm.planes):
+            key = (0, plane)
+            segs = [
+                seg
+                for seg in rm._st.by_plane.get(key, [])
+                if seg.op_base == "CACHE_PROGRAM_SLC"
+            ]
+            self.assertTrue(segs)
+            self.assertNotIn("DATAIN", {seg.state for seg in segs})
+            self.assertLessEqual(
+                max(seg.end_us for seg in segs),
+                suspend_at + SIM_RES_US,
+            )
+
+        core_segments = [
+            seg
+            for seg in rm._st.by_plane[(0, 0)]
+            if seg.op_base == "CACHE_PROGRAM_SLC" and seg.state == "CORE_BUSY"
+        ]
+        self.assertTrue(core_segments)
+        self.assertAlmostEqual(core_segments[-1].end_us, suspend_at, places=4)
 
     def test_scheduler_records_op_start_event(self) -> None:
         rm = _StubRM()
