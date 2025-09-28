@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 # Ports: use narrow types from ResourceManager for Address/Scope
 from resourcemgr import Address, Scope  # runtime types shared across modules
@@ -26,6 +26,82 @@ class ProposedBatch:
     source: str
     hook: Dict[str, Any]
     metrics: Optional[Dict[str, Any]] = None
+
+
+# ------------------------------
+# Diagnostics DTOs
+# ------------------------------
+@dataclass(frozen=True)
+class StateBlockInfo:
+    axis: str
+    state: str
+    groups: Tuple[str, ...]
+    base: str
+    die: Optional[int] = None
+    plane: Optional[int] = None
+
+    def as_dict(self) -> Dict[str, Any]:
+        data: Dict[str, Any] = {
+            "axis": self.axis,
+            "state": self.state,
+            "groups": list(self.groups),
+            "base": self.base,
+        }
+        if self.die is not None:
+            data["die"] = self.die
+        if self.plane is not None:
+            data["plane"] = self.plane
+        return data
+
+
+@dataclass(frozen=True)
+class AttemptRecord:
+    name: str
+    prob: float
+    reason: str
+    details: Optional[Dict[str, Any]] = None
+
+    def as_dict(self) -> Dict[str, Any]:
+        data: Dict[str, Any] = {
+            "name": self.name,
+            "prob": float(self.prob),
+            "reason": self.reason,
+        }
+        if self.details:
+            data["details"] = dict(self.details)
+        return data
+
+
+@dataclass(frozen=True)
+class ProposeDiagnostics:
+    attempts: Tuple[AttemptRecord, ...]
+    last_state_block: Optional[StateBlockInfo] = None
+
+    def attempts_as_dict(self) -> List[Dict[str, Any]]:
+        return [rec.as_dict() for rec in self.attempts]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "attempts": self.attempts_as_dict(),
+            "last_state_block": None
+            if self.last_state_block is None
+            else self.last_state_block.as_dict(),
+        }
+
+    @property
+    def last_state_block_details(self) -> Optional[Dict[str, Any]]:
+        if self.last_state_block is None:
+            return None
+        return self.last_state_block.as_dict()
+
+
+@dataclass(frozen=True)
+class ProposeResult:
+    batch: Optional[ProposedBatch]
+    diagnostics: ProposeDiagnostics
+
+    def has_batch(self) -> bool:
+        return self.batch is not None
 
 
 # ------------------------------
@@ -179,12 +255,20 @@ def _exclusion_groups(cfg: Dict[str, Any]) -> Dict[str, List[str]]:
     return out
 
 
-def _blocked_by_groups(cfg: Dict[str, Any], base: str, groups: List[str]) -> bool:
+def _blocking_groups(cfg: Dict[str, Any], base: str, groups: Iterable[str]) -> Tuple[str, ...]:
     eg = _exclusion_groups(cfg)
+    matched: List[str] = []
+    base_str = str(base)
     for g in groups or []:
-        if str(base) in set(eg.get(str(g), []) or []):
-            return True
-    return False
+        g_str = str(g)
+        members = set(eg.get(g_str, []) or [])
+        if base_str in members:
+            matched.append(g_str)
+    return tuple(matched)
+
+
+def _blocked_by_groups(cfg: Dict[str, Any], base: str, groups: List[str]) -> bool:
+    return bool(_blocking_groups(cfg, base, groups))
 
 
 def _pol_validate_pc(cfg: Dict[str, Any]) -> bool:
@@ -373,47 +457,79 @@ def _candidate_blocked_by_states(
     res_view: Any,
     op_name: str,
     hook: Dict[str, Any],
-) -> bool:
-    # derive base
+) -> Tuple[bool, Optional[StateBlockInfo]]:
+    # derive base context
     base = str(((cfg.get("op_names", {}) or {}).get(op_name, {}) or {}).get("base"))
     die = int(hook.get("die", 0))
     plane = int(hook.get("plane", 0))
 
-    # ODT
+    def _make_info(
+        axis: str,
+        state: Optional[str],
+        groups: Iterable[str],
+        *,
+        die_hint: Optional[int] = None,
+        plane_hint: Optional[int] = None,
+    ) -> Optional[StateBlockInfo]:
+        if not state:
+            return None
+        matched = _blocking_groups(cfg, base, groups)
+        if not matched:
+            return None
+        return StateBlockInfo(
+            axis=str(axis),
+            state=str(state),
+            groups=matched,
+            base=base,
+            die=die_hint,
+            plane=plane_hint,
+        )
+
+    # ODT (global)
     try:
         odt = res_view.odt_state()
     except Exception:
         odt = None
     if odt:
-        groups = (cfg.get("exclusions_by_odt_state", {}) or {}).get(str(odt), [])
-        if _blocked_by_groups(cfg, base, groups):
-            return True
+        groups = list((cfg.get("exclusions_by_odt_state", {}) or {}).get(str(odt), []) or [])
+        info = _make_info("ODT", str(odt), groups, die_hint=die)
+        if info:
+            return True, info
 
     # Suspend (die-level) — evaluate both axes when available
-    groups_suspend: List[str] = []
-    susp_eval_done = False
+    axis_states: List[Tuple[str, str]] = []
+    by_state_suspend: Dict[str, List[str]] = (cfg.get("exclusions_by_suspend_state", {}) or {})
+    suspend_axes_supported = False
     try:
         es = getattr(res_view, "erase_suspend_state")(die, at_us=float(now))  # type: ignore[attr-defined]
-        ps = getattr(res_view, "program_suspend_state")(die, at_us=float(now))  # type: ignore[attr-defined]
-        by_state = (cfg.get("exclusions_by_suspend_state", {}) or {})
+        suspend_axes_supported = True
         if isinstance(es, str):
-            groups_suspend.extend(by_state.get(str(es), []) or [])
-        if isinstance(ps, str):
-            groups_suspend.extend(by_state.get(str(ps), []) or [])
-        susp_eval_done = True
+            axis_states.append(("ERASE", str(es)))
     except Exception:
-        susp_eval_done = False
-    if not susp_eval_done:
+        pass
+    try:
+        ps = getattr(res_view, "program_suspend_state")(die, at_us=float(now))  # type: ignore[attr-defined]
+        suspend_axes_supported = True
+        if isinstance(ps, str):
+            axis_states.append(("PROGRAM", str(ps)))
+    except Exception:
+        pass
+    for axis, state_val in axis_states:
+        groups = list(by_state_suspend.get(str(state_val), []) or [])
+        info = _make_info(axis, state_val, groups, die_hint=die)
+        if info:
+            return True, info
+    if not suspend_axes_supported:
         # Fallback to legacy single-axis API (no NOT_* defaults available)
         try:
             susp = res_view.suspend_states(die, at_us=float(now))
         except Exception:
             susp = None
         if susp:
-            groups_suspend.extend((cfg.get("exclusions_by_suspend_state", {}) or {}).get(str(susp), []) or [])
-    if groups_suspend:
-        if _blocked_by_groups(cfg, base, groups_suspend):
-            return True
+            groups = list(by_state_suspend.get(str(susp), []) or [])
+            info = _make_info("SUSPEND", susp, groups, die_hint=die)
+            if info:
+                return True, info
 
     # Cache (die-level or plane-level)
     try:
@@ -421,11 +537,13 @@ def _candidate_blocked_by_states(
     except Exception:
         cst = None
     if cst:
-        groups = (cfg.get("exclusions_by_cache_state", {}) or {}).get(str(cst), [])
-        if _blocked_by_groups(cfg, base, groups):
-            return True
+        groups = list((cfg.get("exclusions_by_cache_state", {}) or {}).get(str(cst), []) or [])
+        plane_hint = plane if "READ" in str(cst).upper() else None
+        info = _make_info("CACHE", str(cst), groups, die_hint=die, plane_hint=plane_hint)
+        if info:
+            return True, info
 
-    return False
+    return False, None
 
 
 def _build_states_from_cfg(cfg: Dict[str, Any], op_name: str, base: str) -> List[_StateSeg]:
@@ -1424,20 +1542,31 @@ def validate_phase_conditional(cfg: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: ResourceView, addr_sampler: AddressSampler, rng: Any) -> Optional[ProposedBatch]:
+def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: ResourceView, addr_sampler: AddressSampler, rng: Any) -> ProposeResult:
     """
     Top‑N greedy proposer (single-op batch, pure):
       - Reads phase-conditional distribution
       - Filters/samples targets and checks earliest feasible start within window
       - Picks earliest start among evaluated candidates with tie-break on prob
 
-    Returns None if no candidate fits the admission window.
+    Returns a ProposeResult that includes the selected batch (if any) and
+    structured diagnostics for evaluated candidates.
     """
+    attempt_records: List[AttemptRecord] = []
+    last_state_block: Optional[StateBlockInfo] = None
+
+    def _build_result(batch: Optional[ProposedBatch]) -> ProposeResult:
+        diagnostics = ProposeDiagnostics(
+            attempts=tuple(attempt_records),
+            last_state_block=last_state_block,
+        )
+        return ProposeResult(batch=batch, diagnostics=diagnostics)
+
     # Phase distribution
     key = _phase_key(cfg, hook, res_view, now)
     dist = _phase_dist(cfg, key)
     if not dist:
-        return None
+        return _build_result(None)
 
     topN = max(1, _pol_topN(cfg))
     eps = _pol_epsilon(cfg)
@@ -1458,10 +1587,9 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
     if not cands:
         cands = _sorted_candidates(dist, eps)[:topN]
     if not cands:
-        return None
+        return _build_result(None)
 
     best: Optional[Tuple[float, ProposedOp, float, List[ProposedOp]]] = None  # (t0, first_op, prob, full_plan)
-    attempts: List[Dict[str, Any]] = []
     tried = 0
     try:
         _log(f"[proposer] candidates (topN={topN}): {[(n, round(p, 6)) for (n,p) in cands]}")
@@ -1472,11 +1600,34 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
         tried += 1
         if tried > maxtry:
             break
+        try:
+            prob_val = float(prob)
+        except Exception:
+            prob_val = float(prob or 0.0) if prob is not None else 0.0
         # Light prefilter based on ODT/SUSPEND/CACHE states
-        if _candidate_blocked_by_states(now, cfg, res_view, name, hook):
-            attempts.append({"name": name, "prob": prob, "reason": "state_block"})
+        blocked, blocked_info = _candidate_blocked_by_states(now, cfg, res_view, name, hook)
+        if blocked:
+            details = None
+            if blocked_info:
+                details = blocked_info.as_dict()
+                last_state_block = blocked_info
+            attempt_records.append(
+                AttemptRecord(name=name, prob=prob_val, reason="state_block", details=details)
+            )
             try:
-                _log(f"[proposer] try name={name} p={prob:.6f} -> state_block")
+                if blocked_info:
+                    groups_str = ",".join(blocked_info.groups)
+                    extra = []
+                    if blocked_info.die is not None:
+                        extra.append(f"die={blocked_info.die}")
+                    if blocked_info.plane is not None:
+                        extra.append(f"plane={blocked_info.plane}")
+                    extra_payload = f" {' '.join(extra)}" if extra else ""
+                    _log(
+                        f"[proposer] try name={name} p={prob:.6f} -> state_block axis={blocked_info.axis} state={blocked_info.state} base={blocked_info.base} groups={groups_str}{extra_payload}"
+                    )
+                else:
+                    _log(f"[proposer] try name={name} p={prob:.6f} -> state_block")
             except Exception:
                 pass
             continue
@@ -1497,7 +1648,9 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
                 cfg, addr_sampler, name, sel_die=(int(sel_die) if sel_die is not None else None), planes_hint=planes_hint
             )
             if not targets:
-                attempts.append({"name": name, "prob": prob, "reason": "sample_none"})
+                attempt_records.append(
+                    AttemptRecord(name=name, prob=prob_val, reason="sample_none")
+                )
                 try:
                     _log(f"[proposer] try name={name} p={prob:.6f} -> sample_none")
                 except Exception:
@@ -1540,7 +1693,9 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
         scope = _base_scope(cfg, op_stub.base)
         t0 = res_view.feasible_at(op_stub, targets, start_hint=float(now), scope=scope)
         if t0 is None:
-            attempts.append({"name": name, "prob": prob, "reason": "feasible_none"})
+            attempt_records.append(
+                AttemptRecord(name=name, prob=prob_val, reason="feasible_none")
+            )
             try:
                 _log(f"[proposer] try name={name} p={prob:.6f} -> feasible_none")
             except Exception:
@@ -1549,7 +1704,14 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
         # Admission window check unless instant reservation
         instant = _base_instant(cfg, op_stub.base)
         if (not instant) and (t0 >= (now + W)):
-            attempts.append({"name": name, "prob": prob, "reason": "window_exceed", "t0": float(t0)})
+            attempt_records.append(
+                AttemptRecord(
+                    name=name,
+                    prob=prob_val,
+                    reason="window_exceed",
+                    details={"t0": float(t0)},
+                )
+            )
             try:
                 _log(f"[proposer] try name={name} p={prob:.6f} -> window_exceed(t0={float(t0):.3f}, now={float(now):.3f}, W={W})")
             except Exception:
@@ -1559,7 +1721,14 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
         ops_chain = _expand_sequence_chain(cfg, name, targets, hook, res_view, rng)
         planned = _preflight_schedule(now, cfg, res_view, ops_chain)
         if not planned:
-            attempts.append({"name": name, "prob": prob, "reason": "preflight_fail", "t0": float(t0)})
+            attempt_records.append(
+                AttemptRecord(
+                    name=name,
+                    prob=prob_val,
+                    reason="preflight_fail",
+                    details={"t0": float(t0)},
+                )
+            )
             try:
                 _log(f"[proposer] try name={name} p={prob:.6f} -> preflight_fail")
             except Exception:
@@ -1581,17 +1750,19 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
             except Exception:
                 pass
 
-        rec: Dict[str, Any] = {"name": name, "prob": prob, "reason": "ok", "t0": float(p_first.start_us)}
+        rec_details: Dict[str, Any] = {"t0": float(p_first.start_us)}
         if used_hook_ctx:
-            rec["note"] = "skip_non_epr_sample"
-        attempts.append(rec)
+            rec_details["note"] = "skip_non_epr_sample"
+        attempt_records.append(
+            AttemptRecord(name=name, prob=prob_val, reason="ok", details=rec_details)
+        )
         try:
             _log(f"[proposer] try name={name} p={prob:.6f} -> ok(t0={float(p_first.start_us):.3f})")
         except Exception:
             pass
 
     if best is None:
-        return None
+        return _build_result(None)
     # Whole-batch return (first op inside admission window already enforced)
     metrics = {
         "phase_key": key,
@@ -1599,7 +1770,7 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
         "topN": topN,
         "epsilon_greedy": eps,
         "maxtry_candidate": maxtry,
-        "attempts": attempts,
+        "attempts": [rec.as_dict() for rec in attempt_records],
         "selected": {
             "op_name": best[1].op_name,
             "base": best[1].base,
@@ -1614,4 +1785,10 @@ def propose(now: float, hook: Dict[str, Any], cfg: Dict[str, Any], res_view: Res
         )
     except Exception:
         pass
-    return ProposedBatch(ops=list(best[3]), source="proposer.topN_greedy", hook=dict(hook or {}), metrics=metrics)
+    batch = ProposedBatch(
+        ops=list(best[3]),
+        source="proposer.topN_greedy",
+        hook=dict(hook or {}),
+        metrics=metrics,
+    )
+    return _build_result(batch)

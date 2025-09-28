@@ -876,15 +876,16 @@ class ResourceManager:
                 if ent and ent.end_us is None:
                     ent.end_us = end
             # SUSPEND bookkeeping (split axes) + timeline truncation + meta move
-            if b in ("ERASE_SUSPEND", "PROGRAM_SUSPEND"):
-                fam = "ERASE" if b == "ERASE_SUSPEND" else "PROGRAM"
+            bb = str(b).upper()
+            if ("ERASE_SUSPEND" in bb) or ("PROGRAM_SUSPEND" in bb):
+                fam = "ERASE" if "ERASE" in bb else "PROGRAM"
                 # Open axis state at suspend time
-                if b == "ERASE_SUSPEND":
+                if "ERASE_SUSPEND" in bb:
                     self._erase_susp[die] = _AxisState(die=die, state="ERASE_SUSPENDED", start_us=start)
                 else:
                     self._pgm_susp[die] = _AxisState(die=die, state="PROGRAM_SUSPENDED", start_us=start)
                 # Guard: handle once per die per suspend base within this commit
-                key_s = (b, int(die))
+                key_s = (fam, int(die))
                 entry_plane_set: Set[int] = {int(p) for p in planes}
                 if key_s not in _susp_processed:
                     _susp_processed.add(key_s)
@@ -1414,7 +1415,7 @@ class ResourceManager:
         bb = str(base or "").upper()
         if "ERASE" in bb and "SUSPEND" not in bb and "RESUME" not in bb:
             return "ERASE"
-        if "PROGRAM" in bb and "SUSPEND" not in bb and "RESUME" not in bb and "CACHE" not in bb:
+        if "PROGRAM" in bb and "SUSPEND" not in bb and "RESUME" not in bb:
             return "PROGRAM"
         return None
 

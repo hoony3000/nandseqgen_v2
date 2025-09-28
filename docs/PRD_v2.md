@@ -474,6 +474,7 @@ class Operation:
 - ERASE_SUSPEND/ERASE_RESUME: ERASE 중단 후 재개 시 타임라인 복원이 정확한지 검증.
 - PROGRAM_SUSPEND/PROGRAM_RESUME: 중단 시 제거됐던 꼬리 state가 재개 시 복구되는지 확인.
 - suspend→resume 후 중단된 erase/program이 재스케쥴되고 `op_state_timeline`이 의도대로 갱신되는지 확인.
+- 동일 die 에서 SUSPEND 이후 예약된 후속 PROGRAM/ERASE 작업은 Scheduler 백로그 큐에 보관된다. RESUME 커밋 시 `BACKLOG_REFILL` 이벤트가 생성되어 FIFO 순서로 재예약되며, 예약 실패 시 `policies.backlog_retry_delay_us` (기본 5us) 이후 `BACKLOG_RETRY` 이벤트로 재시도한다. 진행 상황은 `metrics['backlog_size']`, `metrics['backlog_flush']`, `metrics['backlog_retry']`, `metrics['backlog_retry_events']`, `metrics['backlog_flush_pending']`, `metrics['backlog_drop']` 로 추적한다.
 
 ### 7.6 스냅샷 일관성
 - 스냅샷 저장 → 재시작 → 동일 RNG 상태에서 동일한 후속 시퀀스를 생성하는지 확인(3.6, 6 참조).

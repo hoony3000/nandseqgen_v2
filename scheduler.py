@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, TypedDict, Tuple
 
@@ -43,6 +44,31 @@ class _Deps:
     logger: Optional[Any]
 
 
+@dataclass
+class _BacklogEntry:
+    base: str
+    op_name: str
+    targets: List[Any]
+    scope: Any
+    op: Any
+    start_delta_us: float
+    duration_us: float
+    source: Any
+    hook: Dict[str, Any]
+    phase_key: Optional[str]
+    phase_key_used: Optional[str]
+    inherit_hints: Optional[Dict[str, Any]]
+    celltype_hint: Optional[str]
+    phase_hook_die: Optional[int]
+    phase_hook_plane: Optional[int]
+    phase_hook_label: Optional[str]
+    axis: str
+    die: int
+    propose_now: float
+    original_start_us: float
+    suspend_end_us: float
+
+
 class Scheduler:
 
     def __init__(
@@ -60,11 +86,16 @@ class Scheduler:
         # Deterministic RNG (no system time)
         if rng is None:
             import random as _r
+
             rng = _r.Random(0)
-        self._deps = _Deps(cfg=cfg, rm=rm, addrman=addrman, validator=validator, rng=rng, logger=logger)
+        self._deps = _Deps(
+            cfg=cfg, rm=rm, addrman=addrman, validator=validator, rng=rng, logger=logger
+        )
         # Start simulation time: align with provided start_at_us if any; else 0.0
         try:
-            self.now_us: float = quantize(float(start_at_us)) if start_at_us is not None else 0.0
+            self.now_us: float = (
+                quantize(float(start_at_us)) if start_at_us is not None else 0.0
+            )
         except Exception:
             self.now_us = 0.0
         self._hooks: int = 0
@@ -78,12 +109,14 @@ class Scheduler:
             "propose_success": 0,
             "last_reason": None,
             # window stats
-            "window_us": float(((cfg.get("policies", {}) or {}).get("admission_window", 0.0))),
+            "window_us": float(
+                ((cfg.get("policies", {}) or {}).get("admission_window", 0.0))
+            ),
             "window_attempts": 0,
             "window_exceeds": 0,
             # latencies (logical)
-            "sum_wait_us": 0.0,   # sum(start_us - now)
-            "sum_exec_us": 0.0,   # sum(end_us - start_us)
+            "sum_wait_us": 0.0,  # sum(start_us - now)
+            "sum_exec_us": 0.0,  # sum(end_us - start_us)
             # per-base commits
             "committed_by_base": {},
             # bootstrap
@@ -119,16 +152,36 @@ class Scheduler:
         self._op_uid_seq: int = 0
         # Resume diagnostics & OP event export buffers
         self._resumed_op_uids: set[int] = set()
-        self._resume_expected_targets: Dict[int, List[Tuple[int, int, int, Optional[int]]]] = {}
+        self._resume_expected_targets: Dict[
+            int, List[Tuple[int, int, int, Optional[int]]]
+        ] = {}
         self._op_event_rows: List[Dict[str, Any]] = []
         self._apply_pgm_rows: List[Dict[str, Any]] = []
         self._apply_pgm_call_seq: Dict[Optional[int], int] = {}
         self.metrics["program_resume_page_mismatch"] = 0
+        # Backlog queues for suspended axes
+        self._backlog: Dict[Tuple[str, int], deque[_BacklogEntry]] = {}
+        self._backlog_pending: set[Tuple[str, int]] = set()
+        pol = cfg.get("policies", {}) or {}
+        try:
+            self._backlog_retry_delay_us: float = float(
+                pol.get("backlog_retry_delay_us", 5.0)
+            )
+        except Exception:
+            self._backlog_retry_delay_us = 5.0
+        self.metrics["backlog_size"] = 0
+        self.metrics["backlog_flush"] = 0
+        self.metrics["backlog_retry"] = 0
+        self.metrics["backlog_flush_pending"] = 0
+        self.metrics["backlog_drop"] = 0
+        self.metrics["backlog_retry_events"] = 0
 
     # -----------------
     # Public API
     # -----------------
-    def run(self, run_until_us: Optional[int] = None, max_hooks: Optional[int] = None) -> SchedulerResult:
+    def run(
+        self, run_until_us: Optional[int] = None, max_hooks: Optional[int] = None
+    ) -> SchedulerResult:
         hooks_budget = float("inf") if max_hooks is None else int(max_hooks)
         stop_reason: Optional[str] = None
         while True:
@@ -164,28 +217,44 @@ class Scheduler:
         rolled_back_any = False
         reason: Optional[str] = None
         # OP_END -> PHASE_HOOK -> QUEUE_REFILL -> OP_START
-        for (_t, _prio, _seq, kind, payload) in batch:
+        for _t, _prio, _seq, kind, payload in batch:
             if kind == "OP_END":
                 self._handle_op_end(payload)
-        for (_t, _prio, _seq, kind, payload) in batch:
+        for _t, _prio, _seq, kind, payload in batch:
             if kind == "PHASE_HOOK":
-                c, rb, rsn = self._propose_and_schedule(self.now_us, payload.get("hook", {"label": "DEFAULT"}))
+                c, rb, rsn = self._propose_and_schedule(
+                    self.now_us, payload.get("hook", {"label": "DEFAULT"})
+                )
                 committed_total += c
                 rolled_back_any = rolled_back_any or rb
                 reason = reason or rsn
-        for (_t, _prio, _seq, kind, payload) in batch:
+        for _t, _prio, _seq, kind, payload in batch:
+            if kind == "BACKLOG_REFILL":
+                committed = self._handle_backlog_event(payload, retry=False)
+                committed_total += committed
+        for _t, _prio, _seq, kind, payload in batch:
+            if kind == "BACKLOG_RETRY":
+                committed = self._handle_backlog_event(payload, retry=True)
+                committed_total += committed
+        for _t, _prio, _seq, kind, payload in batch:
             if kind == "QUEUE_REFILL":
-                c, rb, rsn = self._propose_and_schedule(self.now_us, self._next_refill_hook())
+                c, rb, rsn = self._propose_and_schedule(
+                    self.now_us, self._next_refill_hook()
+                )
                 # schedule next periodic refill
-                self._eq.push(self.now_us + self._queue_period(), "QUEUE_REFILL", payload={})
+                self._eq.push(
+                    self.now_us + self._queue_period(), "QUEUE_REFILL", payload={}
+                )
                 committed_total += c
                 rolled_back_any = rolled_back_any or rb
                 reason = reason or rsn
-        for (_t, _prio, _seq, kind, payload) in batch:
+        for _t, _prio, _seq, kind, payload in batch:
             if kind == "OP_START":
                 self._handle_op_start(payload)
         # OP_START events are logged for diagnostics; no additional side-effects
-        return TickResult(committed=committed_total, rolled_back=rolled_back_any, reason=reason)
+        return TickResult(
+            committed=committed_total, rolled_back=rolled_back_any, reason=reason
+        )
 
     def close(self) -> None:
         return
@@ -204,7 +273,7 @@ class Scheduler:
         drained = 0
         kept: List[Tuple[float, int, int, str, Dict[str, Any]]] = []
         last_time = self.now_us
-        for (when, prio, seq, kind, payload) in queue:
+        for when, prio, seq, kind, payload in queue:
             if kind != "OP_END":
                 kept.append((when, prio, seq, kind, payload))
                 continue
@@ -229,7 +298,9 @@ class Scheduler:
             last_time = self.now_us
         self._eq._q = kept
         if drained:
-            self.metrics["drain_op_end_processed"] = int(self.metrics.get("drain_op_end_processed", 0)) + drained
+            self.metrics["drain_op_end_processed"] = (
+                int(self.metrics.get("drain_op_end_processed", 0)) + drained
+            )
         return drained
 
     # bootstrap progress helpers moved to bootstrap.py
@@ -238,7 +309,13 @@ class Scheduler:
     # Event queue helpers
     # -----------------
     def _queue_period(self) -> float:
-        return float(((self._deps.cfg.get("policies", {}) or {}).get("queue_refill_period_us", 50.0)))
+        return float(
+            (
+                (self._deps.cfg.get("policies", {}) or {}).get(
+                    "queue_refill_period_us", 50.0
+                )
+            )
+        )
 
     def _next_op_uid(self) -> int:
         self._op_uid_seq += 1
@@ -248,12 +325,12 @@ class Scheduler:
         bb = str(base or "").upper()
         if bb == "ERASE":
             return "ERASE"
-        if ("PROGRAM" in bb) and ("SUSPEND" not in bb) and ("RESUME" not in bb) and ("CACHE" not in bb):
+        if ("PROGRAM" in bb) and ("SUSPEND" not in bb) and ("RESUME" not in bb):
             return "PROGRAM"
         return None
 
     def _topology(self) -> tuple[int, int]:
-        topo = (self._deps.cfg.get("topology", {}) or {})
+        topo = self._deps.cfg.get("topology", {}) or {}
         try:
             dies = int(topo.get("dies", 1))
         except Exception:
@@ -267,7 +344,11 @@ class Scheduler:
     def _next_refill_hook(self) -> Dict[str, Any]:
         dies, planes = self._topology()
         # build hook from current cursor
-        hook = {"label": "DEFAULT", "die": int(self._rr_die), "plane": int(self._rr_plane)}
+        hook = {
+            "label": "DEFAULT",
+            "die": int(self._rr_die),
+            "plane": int(self._rr_plane),
+        }
         # advance plane-major, wrap across dies
         self._rr_plane += 1
         if self._rr_plane >= planes:
@@ -398,9 +479,15 @@ class Scheduler:
                 "triggered_us": float(triggered_us),
             }
             self._op_event_rows.append(row)
-        if check_expected and expected is not None and sorted(actual) != sorted(expected):
+        if (
+            check_expected
+            and expected is not None
+            and sorted(actual) != sorted(expected)
+        ):
             try:
-                self.metrics["program_resume_page_mismatch"] = int(self.metrics.get("program_resume_page_mismatch", 0)) + 1
+                self.metrics["program_resume_page_mismatch"] = (
+                    int(self.metrics.get("program_resume_page_mismatch", 0)) + 1
+                )
             except Exception:
                 self.metrics["program_resume_page_mismatch"] = 1
 
@@ -420,6 +507,261 @@ class Scheduler:
         rows = list(self._apply_pgm_rows)
         self._apply_pgm_rows.clear()
         return rows
+
+    def _backlog_queue(self, axis: str, die: int) -> deque[_BacklogEntry]:
+        key = (str(axis), int(die))
+        return self._backlog.setdefault(key, deque())
+
+    def _enqueue_backlog_entry(self, axis: str, die: int, entry: _BacklogEntry) -> None:
+        queue = self._backlog_queue(axis, die)
+        queue.append(entry)
+        try:
+            self.metrics["backlog_size"] = int(self.metrics.get("backlog_size", 0)) + 1
+        except Exception:
+            self._recompute_backlog_size()
+
+    def _create_backlog_entry(
+        self,
+        *,
+        axis: str,
+        die: int,
+        suspend_end_us: float,
+        op_obj: Any,
+        base: str,
+        op_name: str,
+        targets: List[Any],
+        scope: Any,
+        phase_key: Optional[str],
+        phase_key_used: Optional[str],
+        inherit_hints: Optional[Dict[str, Any]],
+        celltype_hint: Optional[str],
+        hook: Dict[str, Any],
+        source: Any,
+        propose_now: float,
+        original_start_us: float,
+        phase_hook_die: Optional[int],
+        phase_hook_plane: Optional[int],
+        phase_hook_label: Optional[str],
+    ) -> _BacklogEntry:
+        duration = 0.0
+        for seg in getattr(op_obj, "states", []) or []:
+            try:
+                duration += float(getattr(seg, "dur_us", 0.0))
+            except Exception:
+                continue
+        suspend_end = float(suspend_end_us)
+        try:
+            start_raw = float(original_start_us)
+        except Exception:
+            start_raw = suspend_end
+        start_delta = max(0.0, start_raw - suspend_end)
+        return _BacklogEntry(
+            base=str(base),
+            op_name=str(op_name),
+            targets=list(targets or []),
+            scope=scope,
+            op=op_obj,
+            start_delta_us=start_delta,
+            duration_us=float(duration),
+            source=source,
+            hook=dict(hook or {}),
+            phase_key=phase_key,
+            phase_key_used=phase_key_used,
+            inherit_hints=dict(inherit_hints or {}) if inherit_hints else None,
+            celltype_hint=str(celltype_hint) if celltype_hint is not None else None,
+            phase_hook_die=(None if phase_hook_die is None else int(phase_hook_die)),
+            phase_hook_plane=(
+                None if phase_hook_plane is None else int(phase_hook_plane)
+            ),
+            phase_hook_label=(
+                None if phase_hook_label is None else str(phase_hook_label)
+            ),
+            axis=str(axis),
+            die=int(die),
+            propose_now=float(propose_now),
+            original_start_us=start_raw,
+            suspend_end_us=suspend_end,
+        )
+
+    def _recompute_backlog_size(self) -> int:
+        total = 0
+        for queue in self._backlog.values():
+            total += len(queue)
+        self.metrics["backlog_size"] = total
+        return total
+
+    def _flush_backlog_entry(
+        self,
+        *,
+        axis: str,
+        die: int,
+        entry: _BacklogEntry,
+        resume_at_us: float,
+    ) -> bool:
+        start_target = max(
+            float(self.now_us), float(resume_at_us) + float(entry.start_delta_us)
+        )
+        txn = self._deps.rm.begin(start_target)
+        try:
+            txn.now_us = quantize(float(start_target))
+        except Exception:
+            txn.now_us = float(start_target)
+        res = self._deps.rm.reserve(txn, entry.op, entry.targets, entry.scope)
+        if not res.ok:
+            try:
+                self._deps.rm.rollback(txn)
+            except Exception:
+                pass
+            return False
+        self._deps.rm.commit(txn)
+        start_us = float(res.start_us or start_target)
+        end_us = float(res.end_us or (res.start_us or start_target) + entry.duration_us)
+        rec: Dict[str, Any] = {
+            "base": entry.base,
+            "op_name": entry.op_name,
+            "targets": list(entry.targets),
+            "scope": entry.scope,
+            "start_us": start_us,
+            "end_us": end_us,
+            "op": entry.op,
+            "phase_key": entry.phase_key,
+            "phase_key_used": entry.phase_key_used,
+            "propose_now": entry.propose_now,
+            "phase_hook_die": entry.phase_hook_die,
+            "phase_hook_plane": entry.phase_hook_plane,
+            "phase_hook_label": entry.phase_hook_label,
+        }
+        if entry.inherit_hints:
+            rec["inherit_hints"] = dict(entry.inherit_hints)
+        if entry.celltype_hint is not None:
+            rec["celltype_hint"] = entry.celltype_hint
+        axis_track = self._tracking_axis(entry.base)
+        rec["_tracking_axis"] = axis_track
+        rec["op_uid"] = self._next_op_uid() if axis_track else None
+        self._emit_op_events(rec)
+        if axis_track:
+            tgs = rec.get("targets") or []
+            if tgs:
+                try:
+                    die0 = int(getattr(tgs[0], "die", die))
+                except Exception:
+                    die0 = int(die)
+            else:
+                die0 = int(die)
+            try:
+                self._deps.rm.register_ongoing(
+                    die=die0,
+                    op_id=(None if rec.get("op_uid") is None else int(rec["op_uid"])),
+                    op_name=(
+                        str(rec.get("op_name", ""))
+                        if rec.get("op_name") is not None
+                        else None
+                    ),
+                    base=str(rec.get("base")),
+                    targets=list(tgs),
+                    start_us=float(rec.get("start_us", start_us)),
+                    end_us=float(rec.get("end_us", end_us)),
+                    scope=rec.get("scope"),
+                    op=rec.get("op"),
+                )
+            except Exception:
+                pass
+        self._ops_committed += 1
+        try:
+            self.metrics["ckpt_ops_committed"] = (
+                int(self.metrics.get("ckpt_ops_committed", 0)) + 1
+            )
+        except Exception:
+            self.metrics["ckpt_ops_committed"] = 1
+        try:
+            base_key = str(rec.get("base"))
+            self.metrics["committed_by_base"][base_key] = (
+                int(self.metrics["committed_by_base"].get(base_key, 0)) + 1
+            )
+        except Exception:
+            self.metrics["committed_by_base"] = {str(rec.get("base")): 1}
+        self.metrics["last_commit_bases"] = [str(rec.get("base"))]
+        self.metrics["sum_wait_us"] += max(0.0, start_us - float(resume_at_us))
+        self.metrics["sum_exec_us"] += max(0.0, end_us - start_us)
+        return True
+
+    def _handle_backlog_event(self, payload: Dict[str, Any], retry: bool) -> int:
+        axis_raw = payload.get("axis")
+        die_raw = payload.get("die")
+        resume_at_us = float(payload.get("resume_at_us", self.now_us))
+        if axis_raw is None or die_raw is None:
+            return 0
+        axis = str(axis_raw)
+        try:
+            die = int(die_raw)
+        except Exception:
+            return 0
+        if retry:
+            try:
+                self.metrics["backlog_retry_events"] = (
+                    int(self.metrics.get("backlog_retry_events", 0)) + 1
+                )
+            except Exception:
+                self.metrics["backlog_retry_events"] = 1
+        key = (axis, die)
+        self._backlog_pending.discard(key)
+        queue = self._backlog.get(key)
+        if not queue:
+            try:
+                self.metrics["backlog_drop"] = (
+                    int(self.metrics.get("backlog_drop", 0)) + 1
+                )
+            except Exception:
+                self.metrics["backlog_drop"] = 1
+            self._recompute_backlog_size()
+            self.metrics["backlog_flush_pending"] = len(self._backlog_pending)
+            return 0
+        entry = queue[0]
+        succeeded = self._flush_backlog_entry(
+            axis=axis, die=die, entry=entry, resume_at_us=resume_at_us
+        )
+        if not succeeded:
+            retry_delay = max(self._backlog_retry_delay_us, SIM_RES_US)
+            next_at = self.now_us + retry_delay
+            self._eq.push(
+                next_at,
+                "BACKLOG_RETRY",
+                {"axis": axis, "die": die, "resume_at_us": resume_at_us},
+            )
+            self._backlog_pending.add(key)
+            try:
+                self.metrics["backlog_retry"] = (
+                    int(self.metrics.get("backlog_retry", 0)) + 1
+                )
+            except Exception:
+                self.metrics["backlog_retry"] = 1
+            self.metrics["backlog_flush_pending"] = len(self._backlog_pending)
+            return 0
+        queue.popleft()
+        try:
+            current_size = int(self.metrics.get("backlog_size", 0)) - 1
+            self.metrics["backlog_size"] = max(0, current_size)
+        except Exception:
+            self._recompute_backlog_size()
+        try:
+            self.metrics["backlog_flush"] = (
+                int(self.metrics.get("backlog_flush", 0)) + 1
+            )
+        except Exception:
+            self.metrics["backlog_flush"] = 1
+        committed = 1
+        if queue:
+            self._backlog_pending.add(key)
+            self._eq.push(
+                self.now_us + max(SIM_RES_US, 0.0),
+                "BACKLOG_REFILL",
+                {"axis": axis, "die": die, "resume_at_us": resume_at_us},
+            )
+        else:
+            self._backlog.pop(key, None)
+            self._recompute_backlog_size()
+        self.metrics["backlog_flush_pending"] = len(self._backlog_pending)
+        return committed
 
     def _handle_resume_commit(self, rec: Dict[str, Any]) -> None:
         b = str(rec.get("base", ""))
@@ -467,7 +809,9 @@ class Scheduler:
         resume_at = float(rec.get("end_us", self.now_us))
         rm = self._deps.rm
         try:
-            meta = rm.resume_from_suspended_axis(int(die0), op_id=None, axis=axis, now_us=resume_at)
+            meta = rm.resume_from_suspended_axis(
+                int(die0), op_id=None, axis=axis, now_us=resume_at
+            )
         except TypeError:
             # Backward compat: older RM signature without now_us
             meta = rm.resume_from_suspended_axis(int(die0), op_id=None, axis=axis)  # type: ignore[call-arg]
@@ -494,6 +838,15 @@ class Scheduler:
         op_uid = getattr(meta, "op_id", None)
         if op_uid is None:
             return
+        key = (axis, int(die0))
+        if self._backlog.get(key) and key not in self._backlog_pending:
+            self._eq.push(
+                resume_at,
+                "BACKLOG_REFILL",
+                {"axis": axis, "die": int(die0), "resume_at_us": resume_at},
+            )
+            self._backlog_pending.add(key)
+            self.metrics["backlog_flush_pending"] = len(self._backlog_pending)
         payload = {
             "base": meta.base,
             "op_name": meta.op_name,
@@ -536,18 +889,23 @@ class Scheduler:
         am = getattr(d, "addrman", None)
         if am is None:
             return
+
         # Determine op celltype from cfg when available
         def _celltype_from_cfg(cfg: Dict[str, Any], name: str) -> str:
             try:
-                ct = ((cfg.get("op_names", {}) or {}).get(name or "", {}) or {}).get("celltype")
+                ct = ((cfg.get("op_names", {}) or {}).get(name or "", {}) or {}).get(
+                    "celltype"
+                )
                 return "TLC" if ct in (None, "None", "NONE") else str(ct)
             except Exception:
                 return "TLC"
 
         b = str(base or "").upper()
         # Only handle ERASE and PROGRAM-like bases (final-step commit whitelist for PROGRAM)
-        is_erase = (b == "ERASE")
-        is_program_like = ("PROGRAM" in b) and ("SUSPEND" not in b) and ("RESUME" not in b)
+        is_erase = b == "ERASE"
+        is_program_like = (
+            ("PROGRAM" in b) and ("SUSPEND" not in b) and ("RESUME" not in b)
+        )
         if not (is_erase or is_program_like):
             return
         t_list = list(targets or [])
@@ -564,7 +922,7 @@ class Scheduler:
         allowed_program_commit = set(get_allowed_program_bases(d.cfg))
         # Optional runtime extension via cfg.features.extra_allowed_program_bases
         try:
-            feats = (d.cfg.get("features", {}) or {})
+            feats = d.cfg.get("features", {}) or {}
             extra = feats.get("extra_allowed_program_bases", []) or []
             for x in extra:
                 try:
@@ -624,7 +982,9 @@ class Scheduler:
     # -----------------
     # Propose and schedule
     # -----------------
-    def _propose_and_schedule(self, now: float, hook: Dict[str, Any]) -> Tuple[int, bool, Optional[str]]:
+    def _propose_and_schedule(
+        self, now: float, hook: Dict[str, Any]
+    ) -> Tuple[int, bool, Optional[str]]:
         d = self._deps
         self.metrics["propose_calls"] += 1
         cfg_used = d.cfg
@@ -632,21 +992,78 @@ class Scheduler:
             cfg_used = self._boot.overlay_cfg(d.cfg)
             self.metrics["bootstrap_stage"] = self._boot.stage()
             self.metrics["bootstrap_active"] = True
-        batch = _proposer.propose(now, hook=hook, cfg=cfg_used, res_view=d.rm, addr_sampler=d.addrman, rng=d.rng)
-        if not batch:
-            self.metrics["last_reason"] = "no_candidate"
-            return (0, False, "no_candidate")
+        result = _proposer.propose(
+            now,
+            hook=hook,
+            cfg=cfg_used,
+            res_view=d.rm,
+            addr_sampler=d.addrman,
+            rng=d.rng,
+        )
+        diagnostics = result.diagnostics
+        batch = result.batch
+        attempts_payload: Optional[List[Dict[str, Any]]] = None
+        state_block_details: Optional[Dict[str, Any]] = None
+        try:
+            attempts_payload = diagnostics.attempts_as_dict()
+        except Exception:
+            attempts_payload = None
+        try:
+            sb_details = diagnostics.last_state_block_details
+            if sb_details is not None:
+                state_block_details = dict(sb_details)
+        except Exception:
+            state_block_details = None
+        if attempts_payload is not None:
+            self.metrics["last_propose_attempts"] = attempts_payload
+        if state_block_details is not None:
+            self.metrics["last_state_block_details"] = state_block_details
+        else:
+            self.metrics["last_state_block_details"] = None
+
+        if batch is None:
+            reason = "no_candidate"
+            if state_block_details:
+                axis = state_block_details.get("axis", "unknown")
+                state_val = state_block_details.get("state", "unknown")
+                reason = f"state_block:{axis}:{state_val}"
+                logger = d.logger
+                if logger is not None and hasattr(logger, "debug"):
+                    try:
+                        logger.debug(
+                            "scheduler_state_block axis=%s state=%s base=%s groups=%s die=%s plane=%s",
+                            axis,
+                            state_val,
+                            state_block_details.get("base"),
+                            ",".join(str(g) for g in state_block_details.get("groups", [])),
+                            state_block_details.get("die"),
+                            state_block_details.get("plane"),
+                        )
+                    except Exception:
+                        pass
+            self.metrics["last_reason"] = reason
+            return (0, False, reason)
 
         # Feature: Skip Delay in proposal — do not reserve/commit or emit events; advance to next hook.
         def _skip_delay_enabled(cfg: Dict[str, Any]) -> bool:
             try:
-                return bool(((cfg.get("features", {}) or {}).get("skip_delay_in_proposal", True)))
+                return bool(
+                    (
+                        (cfg.get("features", {}) or {}).get(
+                            "skip_delay_in_proposal", True
+                        )
+                    )
+                )
             except Exception:
                 return True
 
         try:
             first = batch.ops[0] if getattr(batch, "ops", None) else None
-            if first is not None and str(getattr(first, "op_name", "")) == "Delay" and _skip_delay_enabled(cfg_used):
+            if (
+                first is not None
+                and str(getattr(first, "op_name", "")) == "Delay"
+                and _skip_delay_enabled(cfg_used)
+            ):
                 self.metrics["last_reason"] = "skip_delay"
                 return (0, False, "skip_delay")
         except Exception:
@@ -678,10 +1095,94 @@ class Scheduler:
 
         # Reset last reserved records for observability/testing
         self.metrics["last_reserved_records"] = []
+        hook_copy = dict(hook) if isinstance(hook, dict) else {"label": str(hook)}
+        batch_source = getattr(batch, "source", None)
+        suspend_axes: Dict[Tuple[str, int], Dict[str, Any]] = {}
+
+        def _first_target_die(targets: Iterable[Any]) -> Optional[int]:
+            for tgt in targets or []:
+                try:
+                    return int(getattr(tgt, "die"))
+                except Exception:
+                    continue
+            return None
+
+        def _extract_hints(meta: Any) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+            inherit = None
+            cell_hint = None
+            if isinstance(meta, dict):
+                hints = meta.get("inherit_hints")
+                if isinstance(hints, dict) and hints:
+                    inherit = dict(hints)
+                    ct = hints.get("celltype")
+                    if ct not in (None, "None", "NONE"):
+                        cell_hint = str(ct)
+            return inherit, cell_hint
 
         for idx, p in enumerate(batch.ops):
             op = _proposer._build_op(d.cfg, p.op_name, p.targets)
             instant = _is_instant_base(d.cfg, p.base)
+            base_upper = str(p.base or "").upper()
+            suspend_axis_for_rec: Optional[str] = None
+            if "PROGRAM_SUSPEND" in base_upper:
+                suspend_axis_for_rec = "PROGRAM"
+            elif "ERASE_SUSPEND" in base_upper:
+                suspend_axis_for_rec = "ERASE"
+            axis_candidate = self._tracking_axis(p.base)
+            die_candidate = _first_target_die(p.targets)
+            suspend_info = None
+            backlog_axis: Optional[str] = None
+            axes_to_check: List[str] = []
+            if axis_candidate:
+                axes_to_check.append(axis_candidate)
+            else:
+                axes_to_check.extend(["PROGRAM", "ERASE"])
+            die_candidate_int: Optional[int]
+            try:
+                die_candidate_int = int(die_candidate) if die_candidate is not None else None
+            except Exception:
+                die_candidate_int = None
+            for ax in axes_to_check:
+                key_die_specific = (
+                    (ax, die_candidate_int)
+                )
+                info = suspend_axes.get(key_die_specific)
+                if info is None:
+                    info = suspend_axes.get((ax, None))
+                if info is not None:
+                    backlog_axis = ax
+                    suspend_info = info
+                    break
+            if (
+                backlog_axis
+                and suspend_info is not None
+                and die_candidate is not None
+                and base_upper not in {"PROGRAM_RESUME", "ERASE_RESUME"}
+            ):
+                inherit_hints, celltype_hint = _extract_hints(getattr(p, "meta", None))
+                entry = self._create_backlog_entry(
+                    axis=backlog_axis,
+                    die=die_candidate,
+                    suspend_end_us=suspend_info["end_us"],
+                    op_obj=op,
+                    base=p.base,
+                    op_name=p.op_name,
+                    targets=list(p.targets),
+                    scope=p.scope,
+                    phase_key=pk,
+                    phase_key_used=None,
+                    inherit_hints=inherit_hints,
+                    celltype_hint=celltype_hint,
+                    hook=hook_copy,
+                    source=batch_source,
+                    propose_now=now,
+                    original_start_us=getattr(p, "start_us", suspend_info["end_us"]),
+                    phase_hook_die=suspend_info.get("phase_hook_die", hook_die),
+                    phase_hook_plane=suspend_info.get("phase_hook_plane", hook_plane),
+                    phase_hook_label=suspend_info.get("phase_hook_label", hook_label),
+                )
+                self._enqueue_backlog_entry(backlog_axis, die_candidate, entry)
+                continue
             # Admission window is enforced only for the first op in the batch.
             # Proposer already guarantees the first op is within window; follow that contract here.
             if idx == 0 and (not instant) and W > 0 and p.start_us >= (now + W):
@@ -698,7 +1199,6 @@ class Scheduler:
                 # print(f"[reserve] base={p.base} instant={instant} start_hint={now:.3f} -> ok={r.ok} reason={r.reason} start={r.start_us} end={r.end_us} failed_rule={failed}")
             except Exception:
                 pass
-            # print(f"{p.op_name}, {p.base}, {p.targets}, {p.scope} -> {r}") # DEBUG
             if not r.ok:
                 ok_all = False
                 self.metrics["last_reason"] = f"reserve_fail:{r.reason}"
@@ -720,21 +1220,14 @@ class Scheduler:
                 "phase_hook_plane": (None if hook_plane is None else int(hook_plane)),
                 "phase_hook_label": (None if hook_label is None else str(hook_label)),
             }
-            # Propagate inherit hints (e.g., celltype) for exporter
-            try:
-                meta = getattr(p, "meta", None)
-                if isinstance(meta, dict):
-                    ih = meta.get("inherit_hints")
-                    if isinstance(ih, dict):
-                        rec["inherit_hints"] = dict(ih)
-                        ct = ih.get("celltype")
-                        if ct not in (None, "None", "NONE"):
-                            rec["celltype_hint"] = str(ct)
-            except Exception:
-                pass
+            inherit_hints, celltype_hint = _extract_hints(getattr(p, "meta", None))
+            if inherit_hints:
+                rec["inherit_hints"] = inherit_hints
+            if celltype_hint is not None:
+                rec["celltype_hint"] = celltype_hint
             # Reserved-time phase key normalization (feature-guarded, prioritize instant bases)
             try:
-                feats = (d.cfg.get("features", {}) or {})
+                feats = d.cfg.get("features", {}) or {}
                 guard = feats.get("phase_key_used_reserved_time", True)
             except Exception:
                 guard = True
@@ -757,6 +1250,26 @@ class Scheduler:
             rec["_tracking_axis"] = axis
             rec["op_uid"] = self._next_op_uid() if axis else None
             resv_records.append(rec)
+            if suspend_axis_for_rec and base_upper in {
+                "PROGRAM_SUSPEND",
+                "ERASE_SUSPEND",
+            }:
+                die_for_suspend = (
+                    die_candidate
+                    if die_candidate is not None
+                    else _first_target_die(rec.get("targets"))
+                )
+                key_die = (
+                    int(die_for_suspend)
+                    if die_for_suspend is not None
+                    else None
+                )
+                suspend_axes[(suspend_axis_for_rec, key_die)] = {
+                    "end_us": float(rec["end_us"]),
+                    "phase_hook_die": rec.get("phase_hook_die"),
+                    "phase_hook_plane": rec.get("phase_hook_plane"),
+                    "phase_hook_label": rec.get("phase_hook_label"),
+                }
             # Public metrics: expose a thin copy for observability/tests
             try:
                 pub = {
@@ -772,7 +1285,9 @@ class Scheduler:
                 pass
             # accumulate logical latencies
             self.metrics["sum_wait_us"] += max(0.0, float(p.start_us) - now)
-            self.metrics["sum_exec_us"] += max(0.0, float((r.end_us or p.start_us)) - float(p.start_us))
+            self.metrics["sum_exec_us"] += max(
+                0.0, float((r.end_us or p.start_us)) - float(p.start_us)
+            )
             # Ensure sequential reservation within a transaction: advance txn.now_us to the
             # end of the just-reserved op so follow-ups cannot overlap the current one.
             # This keeps READ -> DOUT strictly ordered and avoids die-level multi exclusion.
@@ -794,7 +1309,9 @@ class Scheduler:
             for rec in resv_records:
                 b = str(rec["base"])
                 bases.append(b)
-                self.metrics["committed_by_base"][b] = int(self.metrics["committed_by_base"].get(b, 0)) + 1
+                self.metrics["committed_by_base"][b] = (
+                    int(self.metrics["committed_by_base"].get(b, 0)) + 1
+                )
                 # emit OP_START/OP_END and state PHASE_HOOKs
                 self._emit_op_events(rec)
                 b_upper = b.upper()
@@ -809,14 +1326,18 @@ class Scheduler:
                     if die_val is None:
                         hook_die = rec.get("phase_hook_die")
                         try:
-                            die_val = None if hook_die in (None, "None") else int(hook_die)
+                            die_val = (
+                                None if hook_die in (None, "None") else int(hook_die)
+                            )
                         except Exception:
                             die_val = None
                     if die_val is None:
                         continue
                     axis = "PROGRAM" if b_upper == "PROGRAM_SUSPEND" else "ERASE"
                     try:
-                        suspended_ids = self._deps.rm.consume_suspended_op_ids(axis, die_val)
+                        suspended_ids = self._deps.rm.consume_suspended_op_ids(
+                            axis, die_val
+                        )
                     except Exception:
                         suspended_ids = []
                     for op_id in suspended_ids:
@@ -834,8 +1355,14 @@ class Scheduler:
                     die0 = int(getattr(tgs[0], "die", 0))
                     d.rm.register_ongoing(
                         die=die0,
-                        op_id=(None if rec.get("op_uid") is None else int(rec["op_uid"])),
-                        op_name=str(rec.get("op_name", "")) if rec.get("op_name") is not None else None,
+                        op_id=(
+                            None if rec.get("op_uid") is None else int(rec["op_uid"])
+                        ),
+                        op_name=(
+                            str(rec.get("op_name", ""))
+                            if rec.get("op_name") is not None
+                            else None
+                        ),
                         base=str(rec.get("base")),
                         targets=list(tgs),
                         start_us=float(rec.get("start_us")),
@@ -848,7 +1375,7 @@ class Scheduler:
                 pass
             # Bootstrap progress + possible stage advancement
             self._boot.record_committed(bases, batch)
-            topo = (d.cfg.get("topology", {}) or {})
+            topo = d.cfg.get("topology", {}) or {}
             self._boot.maybe_advance(self._boot.progress_snapshot(topo))
             self.metrics["bootstrap_active"] = self._boot.active()
             self.metrics["bootstrap_stage"] = self._boot.stage()
@@ -865,9 +1392,9 @@ class Scheduler:
             return (0, True, str(self.metrics.get("last_reason")))
 
     def _emit_op_events(self, rec: Dict[str, Any]) -> None:
-        start = float(rec["start_us"]) 
-        end = float(rec["end_us"]) 
-        base = str(rec["base"]) 
+        start = float(rec["start_us"])
+        end = float(rec["end_us"])
+        base = str(rec["base"])
         op = rec["op"]
         targets = rec["targets"]
         # PHASE_HOOK generation guard per PRD v2 §5.3
@@ -875,22 +1402,38 @@ class Scheduler:
         # - Skip PHASE_HOOKs entirely when op base affect_state == false
         #   (OP_START/OP_END events are still emitted as usual)
         SKIP_STATES = {"ISSUE", "DATA_IN", "DATA_OUT"}
+
         def _affects_state(cfg: Dict[str, Any], b: str) -> bool:
             try:
-                return bool(((cfg.get("op_bases", {}) or {}).get(str(b), {}) or {}).get("affect_state", True))
+                return bool(
+                    ((cfg.get("op_bases", {}) or {}).get(str(b), {}) or {}).get(
+                        "affect_state", True
+                    )
+                )
             except Exception:
                 return True
+
         # Policy: enrich READ-family PHASE_HOOK payload with plane_set and targets to guide non‑EPR ops (e.g., DOUT)
         def _hook_targets_enabled(cfg: Dict[str, Any]) -> bool:
             try:
-                pol = (cfg.get("policies", {}) or {})
+                pol = cfg.get("policies", {}) or {}
                 v = pol.get("hook_targets_enabled", True)
                 return bool(True if v in (None, "None") else v)
             except Exception:
                 return True
+
         def _is_read_family(b: str) -> bool:
             bb = str(b or "").upper()
-            return bb in {"READ", "READ4K", "PLANE_READ", "PLANE_READ4K", "CACHE_READ", "PLANE_CACHE_READ", "COPYBACK_READ"}
+            return bb in {
+                "READ",
+                "READ4K",
+                "PLANE_READ",
+                "PLANE_READ4K",
+                "CACHE_READ",
+                "PLANE_CACHE_READ",
+                "COPYBACK_READ",
+            }
+
         enrich_hook = _hook_targets_enabled(self._deps.cfg) and _is_read_family(base)
         plane_set_sorted: Optional[List[int]] = None
         hook_targets_payload: Optional[List[tuple]] = None
@@ -899,7 +1442,13 @@ class Scheduler:
                 plane_set_sorted = sorted({int(t.plane) for t in targets})
                 cell = _proposer._op_celltype(self._deps.cfg, rec.get("op_name"))
                 hook_targets_payload = [
-                    (int(t.die), int(t.plane), int(t.block), (None if t.page is None else int(t.page)), cell)
+                    (
+                        int(t.die),
+                        int(t.plane),
+                        int(t.block),
+                        (None if t.page is None else int(t.page)),
+                        cell,
+                    )
                     for t in targets
                 ]
             except Exception:
@@ -908,8 +1457,18 @@ class Scheduler:
         # OP_START and OP_END
         targets_payload = list(targets)
         op_uid_raw = rec.get("op_uid")
-        payload_start = {"base": base, "op_name": rec["op_name"], "targets": targets_payload, "op_uid": op_uid_raw}
-        payload_end = {"base": base, "op_name": rec["op_name"], "targets": targets_payload, "op_uid": op_uid_raw}
+        payload_start = {
+            "base": base,
+            "op_name": rec["op_name"],
+            "targets": targets_payload,
+            "op_uid": op_uid_raw,
+        }
+        payload_end = {
+            "base": base,
+            "op_name": rec["op_name"],
+            "targets": targets_payload,
+            "op_uid": op_uid_raw,
+        }
         self._eq.push(start, "OP_START", payload=payload_start)
         seq_end = self._eq.push(end, "OP_END", payload=payload_end)
         try:
@@ -935,16 +1494,32 @@ class Scheduler:
                 pre_t = quantize(pre_t)
                 # one PHASE_HOOK per target plane
                 for tgt in targets:
-                    hook = {"die": int(tgt.die), "plane": int(tgt.plane), "label": f"{base}.{name}"}
-                    if enrich_hook and plane_set_sorted is not None and hook_targets_payload is not None:
+                    hook = {
+                        "die": int(tgt.die),
+                        "plane": int(tgt.plane),
+                        "label": f"{base}.{name}",
+                    }
+                    if (
+                        enrich_hook
+                        and plane_set_sorted is not None
+                        and hook_targets_payload is not None
+                    ):
                         hook["plane_set"] = list(plane_set_sorted)
                         hook["targets"] = list(hook_targets_payload)
                     self._eq.push(pre_t, "PHASE_HOOK", payload={"hook": hook})
                 # also immediately after state end to drive next-stage proposals
                 post_t = quantize(t_end + 0.6)
                 for tgt in targets:
-                    hook = {"die": int(tgt.die), "plane": int(tgt.plane), "label": f"{base}.{name}"}
-                    if enrich_hook and plane_set_sorted is not None and hook_targets_payload is not None:
+                    hook = {
+                        "die": int(tgt.die),
+                        "plane": int(tgt.plane),
+                        "label": f"{base}.{name}",
+                    }
+                    if (
+                        enrich_hook
+                        and plane_set_sorted is not None
+                        and hook_targets_payload is not None
+                    ):
                         hook["plane_set"] = list(plane_set_sorted)
                         hook["targets"] = list(hook_targets_payload)
                     self._eq.push(post_t, "PHASE_HOOK", payload={"hook": hook})
@@ -962,9 +1537,9 @@ class Scheduler:
         removed = self._eq.remove(seq, kind="OP_END")
         if removed:
             try:
-                self.metrics["suspended_op_end_cancelled"] = int(
-                    self.metrics.get("suspended_op_end_cancelled", 0)
-                ) + 1
+                self.metrics["suspended_op_end_cancelled"] = (
+                    int(self.metrics.get("suspended_op_end_cancelled", 0)) + 1
+                )
             except Exception:
                 self.metrics["suspended_op_end_cancelled"] = 1
             return True
@@ -983,6 +1558,10 @@ class Scheduler:
 
 def _is_instant_base(cfg: Dict[str, Any], base: str) -> bool:
     try:
-        return bool(((cfg.get("op_bases", {}) or {}).get(base, {}) or {}).get("instant_resv", False))
+        return bool(
+            ((cfg.get("op_bases", {}) or {}).get(base, {}) or {}).get(
+                "instant_resv", False
+            )
+        )
     except Exception:
         return False

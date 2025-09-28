@@ -7,9 +7,12 @@ from typing import Optional
 
 import pytest
 
+import scheduler as sched_mod
+
 from addrman import AddressManager
-from resourcemgr import Address, ResourceManager, Scope
+from resourcemgr import Address, ResourceManager, Scope, Reservation
 from scheduler import Scheduler
+from proposer import ProposeDiagnostics, ProposeResult
 
 
 class _StubRM:
@@ -17,10 +20,14 @@ class _StubRM:
         self.suspended: set[int] = set()
         self.completed: list[int] = []
 
-    def release_on_dout_end(self, targets, now_us: float) -> None:  # pragma: no cover - simple stub
+    def release_on_dout_end(
+        self, targets, now_us: float
+    ) -> None:  # pragma: no cover - simple stub
         return
 
-    def release_on_exec_msb_end(self, die: int, now_us: float) -> None:  # pragma: no cover
+    def release_on_exec_msb_end(
+        self, die: int, now_us: float
+    ) -> None:  # pragma: no cover
         return
 
     def is_op_suspended(self, op_id: int) -> bool:
@@ -66,6 +73,77 @@ def _mk_op(base: str, dur_us: float):
     return _Op(base, dur_us)
 
 
+def _setup_scheduler_with_backlog(monkeypatch):
+    cfg = {
+        "topology": {"dies": 1, "planes": 1, "blocks_per_die": 4, "pages_per_block": 8},
+        "program_base_whitelist": ["PROGRAM_SLC"],
+        "op_bases": {"PROGRAM_SLC": {"affect_state": True}},
+    }
+    rm = ResourceManager(cfg=cfg, dies=1, planes=1)
+    addr = AddressManager.from_topology(cfg["topology"])
+    sched = Scheduler(cfg=cfg, rm=rm, addrman=addr)
+
+    class _FakeProposal:
+        def __init__(self, base: str, targets, start: float) -> None:
+            self.base = base
+            self.op_name = base
+            self.targets = targets
+            self.scope = Scope.PLANE_SET
+            self.start_us = start
+            self.meta = {"inherit_hints": {"celltype": "TLC"}}
+
+    class _FakeBatch:
+        def __init__(self, ops) -> None:
+            self.ops = ops
+            self.metrics = {"phase_key": "HOOK0"}
+            self.source = "unit"
+
+    targets = [Address(die=0, plane=0, block=0, page=0)]
+    backlog_targets = [Address(die=0, plane=0, block=0, page=1)]
+    suspend_prop = _FakeProposal("PROGRAM_SUSPEND", targets, start=5.0)
+    backlog_prop = _FakeProposal("PROGRAM_SLC", backlog_targets, start=8.0)
+    batch = _FakeBatch([suspend_prop, backlog_prop])
+
+    call_state = {"count": 0}
+
+    def fake_propose(now, hook, cfg, res_view, addr_sampler, rng):
+        diag = ProposeDiagnostics(attempts=tuple(), last_state_block=None)
+        if call_state["count"] == 0:
+            call_state["count"] += 1
+            return ProposeResult(batch=batch, diagnostics=diag)
+        call_state["count"] += 1
+        return ProposeResult(batch=None, diagnostics=diag)
+
+    def fake_build_op(cfg, op_name, targets):
+        base = str(op_name)
+        dur = 4.0 if base.endswith("SUSPEND") else 6.0
+        return _mk_op(base, dur)
+
+    monkeypatch.setattr(sched_mod._proposer, "propose", fake_propose)
+    monkeypatch.setattr(sched_mod._proposer, "_build_op", fake_build_op)
+
+    def fake_resume_from_suspended_axis(die, op_id=None, axis="PROGRAM", now_us=None):
+        end_us = now_us if now_us is not None else sched.now_us + 5.0
+        return types.SimpleNamespace(
+            op_id=777,
+            base="PROGRAM_RESUME",
+            op_name="PROGRAM_RESUME",
+            targets=list(targets),
+            end_us=end_us,
+        )
+
+    monkeypatch.setattr(
+        rm, "resume_from_suspended_axis", fake_resume_from_suspended_axis
+    )
+
+    tick_result = sched.tick()
+    assert tick_result["committed"] >= 1
+    key = ("PROGRAM", 0)
+    assert key in sched._backlog
+    assert len(sched._backlog[key]) == 1
+    return sched, rm, key, targets
+
+
 class SuspendResumeTests(unittest.TestCase):
     def test_resource_manager_repeat_suspend_updates_remaining_us(self) -> None:
         rm = ResourceManager(cfg={}, dies=1, planes=1)
@@ -97,7 +175,9 @@ class SuspendResumeTests(unittest.TestCase):
         self.assertEqual(rm._plane_resv[(0, 0)], [(0.0, 10.0)])
         self.assertTrue(rm.is_op_suspended(uid))
 
-        resumed_meta = rm.resume_from_suspended_axis(0, op_id=uid, axis="PROGRAM", now_us=25.0)
+        resumed_meta = rm.resume_from_suspended_axis(
+            0, op_id=uid, axis="PROGRAM", now_us=25.0
+        )
         self.assertIsNotNone(resumed_meta)
         assert resumed_meta is not None  # type: ignore[unreachable]
         self.assertAlmostEqual(resumed_meta.start_us, 25.0, places=6)
@@ -176,7 +256,9 @@ class SuspendResumeTests(unittest.TestCase):
         suspended = rm.suspended_ops_program(0)[-1]
         self.assertEqual(sorted(suspended["planes"]), [0, 1, 2])
 
-        resumed_meta = rm.resume_from_suspended_axis(0, op_id=uid, axis="PROGRAM", now_us=20.0)
+        resumed_meta = rm.resume_from_suspended_axis(
+            0, op_id=uid, axis="PROGRAM", now_us=20.0
+        )
         self.assertIsNotNone(resumed_meta)
         for plane in range(rm.planes):
             self.assertEqual(rm._plane_resv[(0, plane)], [(0.0, 12.0), (20.0, 38.0)])
@@ -216,7 +298,9 @@ class SuspendResumeTests(unittest.TestCase):
         target = Address(die=0, plane=0, block=1, page=3)
         # Preload expected resume metadata
         sched._resumed_op_uids.add(uid)
-        sched._resume_expected_targets[uid] = [(target.die, target.plane, target.block, target.page)]
+        sched._resume_expected_targets[uid] = [
+            (target.die, target.plane, target.block, target.page)
+        ]
 
         payload = {
             "base": "PROGRAM_SLC",
@@ -250,7 +334,9 @@ class SuspendResumeTests(unittest.TestCase):
         target = Address(die=0, plane=0, block=3, page=5)
         # Store mismatched expectation (page differs)
         sched._resumed_op_uids.add(uid)
-        sched._resume_expected_targets[uid] = [(target.die, target.plane, target.block, target.page - 1)]
+        sched._resume_expected_targets[uid] = [
+            (target.die, target.plane, target.block, target.page - 1)
+        ]
 
         payload = {
             "base": "PROGRAM_SLC",
@@ -294,7 +380,9 @@ class SuspendResumeTests(unittest.TestCase):
         )
 
         rm.move_to_suspended_axis(0, op_id=uid, now_us=10.0, axis="PROGRAM")
-        resumed_meta = rm.resume_from_suspended_axis(0, op_id=uid, axis="PROGRAM", now_us=25.0)
+        resumed_meta = rm.resume_from_suspended_axis(
+            0, op_id=uid, axis="PROGRAM", now_us=25.0
+        )
         self.assertIsNotNone(resumed_meta)
         self.assertEqual(rm._plane_resv[(0, 0)], [(0.0, 10.0), (25.0, 55.0)])
 
@@ -320,9 +408,13 @@ class SuspendResumeTests(unittest.TestCase):
         )
 
         rm.move_to_suspended_axis(0, op_id=uid, now_us=35.0, axis="PROGRAM")
-        resumed_meta2 = rm.resume_from_suspended_axis(0, op_id=uid, axis="PROGRAM", now_us=60.0)
+        resumed_meta2 = rm.resume_from_suspended_axis(
+            0, op_id=uid, axis="PROGRAM", now_us=60.0
+        )
         self.assertIsNotNone(resumed_meta2)
-        self.assertEqual(rm._plane_resv[(0, 0)], [(0.0, 10.0), (25.0, 35.0), (60.0, 80.0)])
+        self.assertEqual(
+            rm._plane_resv[(0, 0)], [(0.0, 10.0), (25.0, 35.0), (60.0, 80.0)]
+        )
 
         second_start = _reserve_start_at(70.0)
         self.assertIsNotNone(second_start)
@@ -401,10 +493,17 @@ class SuspendResumeTests(unittest.TestCase):
         self.assertEqual(second["page"], 4)
         self.assertEqual(sched.drain_apply_pgm_rows(), [])
 
-    def test_scheduler_cancels_op_end_on_suspend_then_applies_once_on_resume(self) -> None:
+    def test_scheduler_cancels_op_end_on_suspend_then_applies_once_on_resume(
+        self,
+    ) -> None:
         cfg = {
             "program_base_whitelist": ["PROGRAM_SLC"],
-            "topology": {"dies": 1, "planes": 1, "blocks_per_die": 4, "pages_per_block": 8},
+            "topology": {
+                "dies": 1,
+                "planes": 1,
+                "blocks_per_die": 4,
+                "pages_per_block": 8,
+            },
             "op_bases": {"PROGRAM_SLC": {"affect_state": True}},
         }
         addr = AddressManager.from_topology(cfg["topology"])
@@ -555,7 +654,9 @@ class SuspendResumeTests(unittest.TestCase):
         self.assertTrue(res_block.ok)
         rm.commit(txn_block)
 
-        resumed = rm.resume_from_suspended_axis(0, op_id=uid, axis="PROGRAM", now_us=25.0)
+        resumed = rm.resume_from_suspended_axis(
+            0, op_id=uid, axis="PROGRAM", now_us=25.0
+        )
         self.assertIsNone(resumed)
         err = rm.last_resume_error()
         self.assertIsInstance(err, dict)
@@ -564,6 +665,69 @@ class SuspendResumeTests(unittest.TestCase):
         self.assertEqual(err.get("axis"), "PROGRAM")
         self.assertEqual(len(rm.suspended_ops_program(0)), 1)
         self.assertEqual(rm._plane_resv[(0, 0)], [(0.0, 10.0), (25.0, 55.0)])
+
+
+def test_scheduler_backlog_flush_on_resume(monkeypatch):
+    sched, _rm, key, targets = _setup_scheduler_with_backlog(monkeypatch)
+    assert int(sched.metrics["backlog_size"]) == 1
+    resume_rec = {
+        "base": "PROGRAM_RESUME",
+        "op_name": "PROGRAM_RESUME",
+        "targets": targets,
+        "end_us": sched.now_us + 4.0,
+    }
+    sched._handle_resume_commit(resume_rec)
+    assert key in sched._backlog_pending
+
+    for _ in range(6):
+        sched.tick()
+        if not sched._backlog.get(key):
+            break
+
+    assert not sched._backlog.get(key)
+    assert key not in sched._backlog_pending
+    assert int(sched.metrics["backlog_size"]) == 0
+    assert int(sched.metrics["backlog_flush"]) >= 1
+    assert sched.metrics["committed_by_base"]["PROGRAM_SLC"] >= 1
+
+
+def test_scheduler_backlog_retry_flow(monkeypatch):
+    sched, rm, key, targets = _setup_scheduler_with_backlog(monkeypatch)
+
+    original_reserve = rm.reserve
+    fail_state = {"done": False}
+
+    def failing_reserve(txn, op, target_list, scope, duration_us=None):
+        if not fail_state["done"]:
+            fail_state["done"] = True
+            return Reservation(False, "forced", op, list(target_list), None, None)
+        return original_reserve(txn, op, target_list, scope, duration_us)
+
+    monkeypatch.setattr(rm, "reserve", failing_reserve)
+
+    resume_rec = {
+        "base": "PROGRAM_RESUME",
+        "op_name": "PROGRAM_RESUME",
+        "targets": targets,
+        "end_us": sched.now_us + 4.0,
+    }
+    sched._handle_resume_commit(resume_rec)
+
+    sched.tick()
+    assert sched._backlog.get(key)
+    assert int(sched.metrics["backlog_retry"]) == 1
+    assert int(sched.metrics["backlog_flush"]) == 0
+
+    monkeypatch.setattr(rm, "reserve", original_reserve)
+
+    for _ in range(8):
+        sched.tick()
+        if not sched._backlog.get(key):
+            break
+
+    assert not sched._backlog.get(key)
+    assert int(sched.metrics["backlog_flush"]) >= 1
+    assert int(sched.metrics["backlog_retry_events"]) >= 1
 
 
 if __name__ == "__main__":

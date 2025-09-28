@@ -60,5 +60,5 @@ config_*.yaml
 op_state_probs.yaml
 
 # not to be included in context window
-nandsim_demo.py
 tools/
+INPUT.md

@@ -3,7 +3,14 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple, Optional
 
 
-_PRIO = {"OP_END": 0, "PHASE_HOOK": 1, "QUEUE_REFILL": 2, "OP_START": 3}
+_PRIO = {
+    "OP_END": 0,
+    "PHASE_HOOK": 1,
+    "BACKLOG_REFILL": 2,
+    "BACKLOG_RETRY": 3,
+    "QUEUE_REFILL": 4,
+    "OP_START": 5,
+}
 
 
 class EventQueue:
