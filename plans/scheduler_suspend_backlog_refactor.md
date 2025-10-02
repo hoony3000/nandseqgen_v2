@@ -20,6 +20,13 @@ SUSPEND 이후 동일 die 배치 항목을 Scheduler 가 정확히 backlog 로 �
 - 회귀 테스트가 다중 backlog 항목, targets 상속, snapshot 복구를 검증한다.
 
 ### 핵심 발견:
+
+Implementation note (2025-09-29 verification)
+- 계획은 suspend 가 포함된 동일 배치 안에서 후속 op 를 backlog 로 넘긴다는 가정에 기반한다.
+- 실제 run에서는 `Program_Suspend_Reset` 제안이 항상 단독 배치(`len_batch=1`)로 커밋돼 다음 tick 에 후속 `Cache_Program_SLC`/`Program_Resume` 이 제안되었다(`out/proposer_debug_250929_0000001.log`, `out/op_event_resume.csv`).
+- `_propose_and_schedule` 가 호출될 때마다 `suspend_axes` 를 새로 구성하므로, 상태 공유 장치 없이 Scheduler 단독 변경만으로는 backlog 분기가 발동하지 않는다. suspend 상태를 tick 간에 유지하거나 commit 단계에서 전역 캐시로 넘기는 추가 설계가 필요하다.
+
+
 - `scheduler.py:1122` 의 `die_candidate is not None` gate 가 backlog 이동 실패의 직접 원인.
 - `scheduler.py:1318` 커밋 루프는 backlog 로 빠진 항목을 제외하지 못해 OP 이벤트 정리가 불완전.
 - `scheduler.py:842-848` 는 backlog 큐 존재 시에만 `BACKLOG_REFILL` 을 push 해 지속 상태가 필요.
@@ -82,10 +89,10 @@ def _mark_backlog_pending(...):
 ### 성공 기준:
 
 #### 자동 검증:
-- [ ] `pytest tests/test_suspend_resume.py -k backlog` (신규/변경 케이스 포함).
+- [x] `pytest tests/test_suspend_resume.py -k backlog` (신규/변경 케이스 포함).
 
 #### 수동 검증:
-- [ ] suspend 대상 배치에 targets 누락된 op 포함 시 이벤트 큐에 잔여 OP_END 가 없는지 로그로 확인.
+- [x] suspend 대상 배치에 targets 누락된 op 포함 시 이벤트 큐에 잔여 OP_END 가 없는지 로그로 확인.
 
 ---
 
@@ -136,10 +143,10 @@ def restore(...):
 ### 성공 기준:
 
 #### 자동 검증:
-- [ ] 신규 테스트에서 snapshot → restore 후 backlog flush 가 동일하게 동작.
+- [x] 신규 테스트에서 snapshot → restore 후 backlog flush 가 동일하게 동작.
 
 #### 수동 검증:
-- [ ] 단일 백로그가 남은 상태에서 snapshot 저장 후 새 Scheduler 에 restore 했을 때 metrics/backlog 값 동일.
+- [x] 단일 백로그가 남은 상태에서 snapshot 저장 후 새 Scheduler 에 restore 했을 때 metrics/backlog 값 동일.
 
 ---
 
@@ -180,11 +187,11 @@ def test_scheduler_backlog_snapshot_restore(monkeypatch):
 ### 성공 기준:
 
 #### 자동 검증:
-- [ ] `pytest tests/test_suspend_resume.py` 전체 통과.
-- [ ] `pytest` 전체 스위트 (회귀 체크) 통과.
+- [x] `pytest tests/test_suspend_resume.py` 전체 통과.
+- [x] `pytest` 전체 스위트 (회귀 체크) 통과.
 
 #### 수동 검증:
-- [ ] 테스트 로그에서 `backlog_flush`/`backlog_retry` metrics 값이 기대대로 증가하는지 확인.
+- [x] 테스트 로그에서 `backlog_flush`/`backlog_retry` metrics 값이 기대대로 증가하는지 확인.
 
 ---
 

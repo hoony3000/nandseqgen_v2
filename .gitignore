@@ -52,6 +52,7 @@ payloads.txt
 sample*csv
 op_name_counts.csv
 op_base_counts.csv
+badlist.csv
 
 # tmp yaml files
 config_*.yaml

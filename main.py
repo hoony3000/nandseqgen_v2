@@ -29,14 +29,33 @@ except Exception:
 # ------------------------------
 # Minimal AddressManager factory (fallback-friendly)
 # ------------------------------
-def _mk_addrman(cfg: Dict[str, Any]):
+def _mk_addrman(
+    cfg: Dict[str, Any],
+    *,
+    badlist: Optional[List[Tuple[int, int]]] = None,
+):
     topo = cfg.get("topology", {}) or {}
     dies = int(topo.get("dies", 1))
     planes = int(topo.get("planes", 1))
     blocks = int(topo.get("blocks_per_die", 128))
     pages = int(topo.get("pages_per_block", 128))
     if AddressManager is not None:
-        am = AddressManager(num_planes=planes, num_blocks=blocks, pagesize=pages, num_dies=dies)
+        badlist_payload = None
+        if badlist:
+            badlist_payload = badlist
+            try:
+                import numpy as _np  # type: ignore
+
+                badlist_payload = _np.array(badlist, dtype=int)
+            except Exception:
+                pass
+        am = AddressManager(
+            num_planes=planes,
+            num_blocks=blocks,
+            pagesize=pages,
+            num_dies=dies,
+            badlist=badlist_payload,
+        )
         try:
             import numpy as _np  # type: ignore
             am._rng = _np.random.default_rng(1234)
@@ -66,6 +85,50 @@ def _mk_addrman(cfg: Dict[str, Any]):
             return self.sample_erase(sel_plane=sel_plane, mode=mode, size=size, sel_die=sel_die)
 
     return _SimpleAM(dies, planes, blocks, pages)
+
+
+# ------------------------------
+# Badlist loader
+# ------------------------------
+def _load_badlist_csv(
+    path: str,
+    *,
+    dies: int,
+    blocks_per_die: int,
+) -> Optional[List[Tuple[int, int]]]:
+    if not path:
+        return None
+    if not os.path.exists(path):
+        return None
+
+    with open(path, newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        fieldnames = reader.fieldnames
+        if fieldnames is None or [c.strip().lower() for c in fieldnames] != ["die", "block"]:
+            raise ValueError(f"badlist CSV must have 'die,block' header: {path}")
+
+        rows: List[Tuple[int, int]] = []
+        for idx, row in enumerate(reader, start=2):
+            try:
+                die_value = row["die"]
+                block_value = row["block"]
+            except KeyError as exc:
+                raise ValueError(f"missing column in badlist CSV at line {idx}: {exc}") from exc
+
+            try:
+                die = int(str(die_value).strip())
+                block = int(str(block_value).strip())
+            except Exception as exc:
+                raise ValueError(f"invalid die/block at line {idx}: {exc}") from exc
+
+            if not (0 <= die < dies):
+                raise ValueError(f"die {die} out of range [0,{dies}) at line {idx}")
+            if not (0 <= block < blocks_per_die):
+                raise ValueError(f"block {block} out of range [0,{blocks_per_die}) at line {idx}")
+
+            rows.append((die, block))
+
+    return rows
 
 
 # ------------------------------
@@ -1122,6 +1185,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--admission-window", type=float, default=None, help="Override policies.admission_window (us)")
     p.add_argument("--seed", type=int, default=42, help="Base RNG seed")
     p.add_argument("--out-dir", default="out", help="Output directory root")
+    p.add_argument(
+        "--badlist",
+        default="badlist.csv",
+        help="CSV file with 'die,block' header; missing file disables badlist",
+    )
     p.add_argument("--pc-demo", choices=["erase-only","mix","pgm-read"], default=None,
                    help="Override phase_conditional DEFAULT to a preset: erase-only | mix | pgm-read")
     p.add_argument("--autofill-pc", action="store_true", help="Autofill phase_conditional from CFG (PRD policy)")
@@ -1178,6 +1246,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     topo = cfg.get("topology", {}) or {}
     dies = int(topo.get("dies", 1))
     planes = int(topo.get("planes", 1))
+    blocks_per_die = int(topo.get("blocks_per_die", 128))
+    try:
+        badlist_rows = _load_badlist_csv(
+            args.badlist,
+            dies=dies,
+            blocks_per_die=blocks_per_die,
+        )
+    except (OSError, ValueError) as exc:
+        print(f"Failed to load badlist CSV '{args.badlist}': {exc}", file=sys.stderr)
+        return 2
 
     def _coerce_flag(val: Any) -> Optional[bool]:
         if val is None:
@@ -1216,7 +1294,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
             # Site-local state (independent across sites)
             rm = ResourceManager(cfg=cfg, dies=dies, planes=planes)
-            am = _mk_addrman(cfg)
+            am = _mk_addrman(cfg, badlist=badlist_rows)
             try:
                 if hasattr(rm, "register_addr_policy") and hasattr(am, "check_epr"):
                     rm.register_addr_policy(am.check_epr)  # type: ignore[attr-defined]
@@ -1334,7 +1412,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Default single-site path (backward-compatible)
     # Shared state across runs for continuity
     rm = ResourceManager(cfg=cfg, dies=dies, planes=planes)
-    am = _mk_addrman(cfg)
+    am = _mk_addrman(cfg, badlist=badlist_rows)
     # Register address-dependent policy (EPR) when available
     try:
         if hasattr(rm, "register_addr_policy") and hasattr(am, "check_epr"):

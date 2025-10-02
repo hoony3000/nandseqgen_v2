@@ -76,6 +76,12 @@ scheduler_backlog_resume.md 에서 batch 로 예약된 operation 을 backlog 로
 - pop 대상 meta 가 아직 실행을 시작하지 않은 경우에는 `remaining_us`, `bus_segments` 가 원본 값으로 남아 있어 `move_to_suspended_axis` 의 슬라이스 로직을 다시 적용하는 것이 애매하다. 잘못 다루면 `plane_resv`/`_excl_die` 가 무효화되거나 다른 die 의 진행 중 오퍼레이션과 충돌할 수 있다.
 
 **Scheduler 즉시 backlog 전환안**
+
+Implementation note (2025-09-29 verification)
+- 계획: Scheduler 측에서 SUSPEND 직후 같은 batch 안의 후속 op를 backlog 로 보내도록 분기를 강화한다.
+- 관찰: 실제 run에서는 `Program_Suspend_Reset` 제안이 항상 `len_batch=1`로 잡혀 suspend 배치와 후속 배치가 서로 다른 tick에서 커밋됐다(`out/proposer_debug_250929_0000001.log:523-528`).
+- 영향: `_propose_and_schedule` 가 호출될 때마다 `suspend_axes` 를 새로 만드는 구조라, 후속 배치의 `Cache_Program_SLC`/`Program_Resume` 들은 backlog 조건을 만나지 못하고 그대로 예약되었다 (`out/op_event_resume.csv`). Scheduler 만 고쳐서는 백로그 이동이 이뤄지지 않으므로, suspend 상태를 tick 간에 유지하거나 commit 시 전역 캐시로 넘기는 추가 설계가 필요하다.
+
 - `scheduler.py:1100-1184` 의 backlog 분기에서 `die_candidate is not None` 검사를 완화해 `suspend_info` 가 들고 있는 `phase_hook_die` 나 `hook_die` 를 fallback 으로 사용하면 SUSPEND 이후 op 를 reserve 이전에 바로 backlog 로 옮길 수 있다.
 - `_backlog_queue` 키가 `(axis, die)` 로 고정되어 있으므로, fallback die 를 확보하면 기존 deque/metrics(`scheduler.py:515-742`)를 그대로 재사용할 수 있고, ResourceManager 인터페이스는 손댈 필요가 없다.
 - commit 루프가 backlog 로 빠진 rec 를 건너뛰기 때문에 `_emit_op_events` 와 `rm.register_ongoing` 호출도 발생하지 않아 OP_END 정리나 `_suspend_transfers` 확장 없이도 후속 정합성을 확보할 수 있다. 테스트는 die fallback 시나리오를 추가하면 된다(`tests/test_suspend_resume.py:747` 이후 케이스 확장 필요).
