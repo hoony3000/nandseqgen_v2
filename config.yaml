@@ -5090,7 +5090,7 @@ phase_conditional_overrides:
     # Read_Status_Enhanced_70h: 0.1
     # Read_Status_Enhanced_7Ch: 0.1
     # Read_Status_Enhanced_78h: 0.1
-    ERASE: 0.01
+    ERASE: 0.05
     # ERASE_SUSPEND: 0.0
     # ERASE_RESUME: 0.1
     PROGRAM_SUSPEND: 0.0
@@ -5159,9 +5159,9 @@ phase_conditional_overrides:
     # ERASE_SUSPEND: 0.1
   PROGRAM_SLC.CORE_BUSY:
     NOP: 0.5
-    PROGRAM_SUSPEND: 0.1
+    # PROGRAM_SUSPEND: 0.1
   CACHE_PROGRAM_SLC.CORE_BUSY:
-    # NOP: 0.5
+    NOP: 0.5
     PROGRAM_SUSPEND: 0.1
   ONESHOT_PROGRAM_MSB_23H.CORE_BUSY:
     NOP: 0.5
