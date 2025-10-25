@@ -53,7 +53,7 @@ addr_dependency
 - operation 간 dependency : 특정 operation 은 이전에 어떤 operation 이 수행된 이후에만 수행될 수 있다. 이 때, 두 operation 간에는 operation 의 address 속성이 상속되거나 특정한 제한을 가할 수도 있다.
 - operation 간 chaining : 특정 operation 이 수행되면 반드시 뒤따라 수행되어야 하는 operation 이 하나이상 예약될 수 있다.
 - multi-plane operation : 특정 동작은 plane resource 를 여러 개 동시에 점유할 수 있다.
-- probablistic scheduling : operation 의 예약은 resource state 에 따라 가능한 후보 operation 중 확률적으로 선택되어진다. 그 확률은 사전에 정의한 가중치에 따라 샘플링 된다.
+- probablistic scheduling : operation 의 예약은 resource state 에 따라 가능한 후보 operation 중 확률적으로 선택되어진다. **중요! 이 확률은 사전에 정의한 가중치에 따라 샘플되고, operation 에 bound 되지 않고, resource state 에 따라 샘플된다.**
 
 # resource
 - multi-level 구조 : nand resources 는 plane, die level, global 별로 state 가 할당되어 있으며, resource 별로 어느 level 에서 변경되는지는 다르다.
